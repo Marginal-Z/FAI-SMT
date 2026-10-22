@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/widgets.dart';
+
 import 'icons.dart';
 
 import 'theme.dart';
@@ -68,18 +69,18 @@ class RibbonButton extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, pressed) => Container(
-        constraints: const BoxConstraints(minWidth: 64),
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+        constraints: BoxConstraints(minWidth: Metrics.of(context).touch ? 76 : 64),
+        padding: const EdgeInsets.fromLTRB(8, 7, 8, 5),
         decoration: BoxDecoration(
           color: active
               ? c.selected
               : pressed
-                  ? c.pressed
-                  : hover
-                      ? c.hover
-                      : null,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: active ? c.accent.withValues(alpha: 0.6) : const Color(0x00000000)),
+              ? c.pressed
+              : hover
+              ? c.hover
+              : null,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: active ? c.accent.withValues(alpha: 0.55) : const Color(0x00000000)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -87,7 +88,7 @@ class RibbonButton extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Icon(icon, size: 26, color: enabled ? (active ? c.accent : c.text) : c.textFaint),
+                Icon(icon, size: 25, color: enabled ? (active ? c.accent : c.text) : c.textFaint),
                 if (badge != null)
                   Positioned(
                     right: -3,
@@ -95,16 +96,22 @@ class RibbonButton extends StatelessWidget {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: BoxDecoration(color: badge, shape: BoxShape.circle, border: Border.all(color: c.ribbon, width: 1.5)),
+                      decoration: BoxDecoration(
+                        color: badge,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: c.ribbon, width: 1.5),
+                      ),
                     ),
                   ),
               ],
             ),
             const SizedBox(height: 4),
-            Text(label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                style: TextStyle(fontSize: 12, color: enabled ? c.text : c.textFaint)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              style: TextStyle(fontSize: 12, color: enabled ? c.text : c.textFaint),
+            ),
           ],
         ),
       ),
@@ -114,7 +121,15 @@ class RibbonButton extends StatelessWidget {
 
 /// Compact button with optional icon, used in toolbars and dialogs.
 class FlatButton extends StatelessWidget {
-  const FlatButton({super.key, this.icon, required this.label, this.onTap, this.primary = false, this.compact = false, this.danger = false});
+  const FlatButton({
+    super.key,
+    this.icon,
+    required this.label,
+    this.onTap,
+    this.primary = false,
+    this.compact = false,
+    this.danger = false,
+  });
 
   final IconData? icon;
   final String label;
@@ -126,29 +141,41 @@ class FlatButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final m = Metrics.of(context);
     final enabled = onTap != null;
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, pressed) {
         final bg = primary
-            ? (pressed ? c.accent.withValues(alpha: 0.8) : hover ? c.accent.withValues(alpha: 0.9) : c.accent)
-            : (pressed ? c.pressed : hover ? c.hover : c.panelAlt);
-        final fg = !enabled ? c.textFaint : primary ? c.accentText : danger ? c.ng : c.text;
+            ? (pressed
+                  ? c.accent.withValues(alpha: 0.8)
+                  : hover
+                  ? c.accent.withValues(alpha: 0.9)
+                  : c.accent)
+            : (pressed
+                  ? c.pressed
+                  : hover
+                  ? c.hover
+                  : c.panelAlt);
+        final fg = !enabled
+            ? c.textFaint
+            : primary
+            ? c.accentText
+            : danger
+            ? c.ng
+            : c.text;
         return Container(
-          height: compact ? 26 : 30,
-          padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 14),
+          height: compact ? m.compactControl : m.control,
+          padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 16),
           decoration: BoxDecoration(
             color: enabled ? bg : c.panelAlt,
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(4),
             border: Border.all(color: primary && enabled ? c.accent : c.borderStrong),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (icon != null) ...[
-                Icon(icon, size: 15, color: fg),
-                const SizedBox(width: 6),
-              ],
+              if (icon != null) ...[Icon(icon, size: 15, color: fg), const SizedBox(width: 6)],
               Text(label, style: TextStyle(color: fg, fontSize: 12.5)),
             ],
           ),
@@ -160,17 +187,20 @@ class FlatButton extends StatelessWidget {
 
 /// Square icon-only button.
 class IconBtn extends StatelessWidget {
-  const IconBtn({super.key, required this.icon, this.onTap, this.size = 26, this.tooltip, this.active = false});
+  const IconBtn({super.key, required this.icon, this.onTap, this.size, this.tooltip, this.active = false});
 
   final IconData icon;
   final VoidCallback? onTap;
-  final double size;
+
+  /// Defaults to the metrics' icon-button size.
+  final double? size;
   final String? tooltip;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final size = this.size ?? Metrics.of(context).iconButton;
     return Hoverable(
       onTap: onTap,
       tooltip: tooltip,
@@ -179,10 +209,24 @@ class IconBtn extends StatelessWidget {
         height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? c.selected : pressed ? c.pressed : hover ? c.hover : null,
-          borderRadius: BorderRadius.circular(3),
+          color: active
+              ? c.selected
+              : pressed
+              ? c.pressed
+              : hover
+              ? c.hover
+              : null,
+          borderRadius: BorderRadius.circular(4),
         ),
-        child: Icon(icon, size: size * 0.6, color: onTap == null ? c.textFaint : active ? c.accent : c.textDim),
+        child: Icon(
+          icon,
+          size: (size * 0.6).clamp(14, 20),
+          color: onTap == null
+              ? c.textFaint
+              : active
+              ? c.accent
+              : c.textDim,
+        ),
       ),
     );
   }
@@ -190,7 +234,16 @@ class IconBtn extends StatelessWidget {
 
 /// Underlined tab used for ribbon tabs and workspace tabs.
 class TabItem extends StatelessWidget {
-  const TabItem({super.key, required this.label, required this.active, required this.onTap, this.icon, this.count, this.color, this.dense = false});
+  const TabItem({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.icon,
+    this.count,
+    this.color,
+    this.dense = false,
+  });
 
   final String label;
   final bool active;
@@ -209,37 +262,31 @@ class TabItem extends StatelessWidget {
       builder: (context, hover, pressed) => Container(
         padding: EdgeInsets.symmetric(horizontal: dense ? 12 : 16),
         decoration: BoxDecoration(
-          color: active ? null : hover ? c.hover : null,
+          color: active
+              ? null
+              : hover
+              ? c.hover
+              : null,
           border: Border(bottom: BorderSide(color: active ? accent : const Color(0x00000000), width: 2)),
         ),
         alignment: Alignment.center,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[
-              Icon(icon, size: 15, color: active ? accent : c.textDim),
-              const SizedBox(width: 6),
-            ],
-            Text(label,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: active ? c.text : c.textDim,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                )),
+            if (icon != null) ...[Icon(icon, size: 15, color: active ? accent : c.textDim), const SizedBox(width: 6)],
+            Text(
+              label,
+              style: TextStyle(fontSize: 13, color: active ? c.text : c.textDim, fontWeight: active ? FontWeight.w600 : FontWeight.w400),
+            ),
             if (count != null) ...[
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: active ? accent : c.hover,
-                  borderRadius: BorderRadius.circular(8),
+                decoration: BoxDecoration(color: active ? accent : c.hover, borderRadius: BorderRadius.circular(8)),
+                child: Text(
+                  '$count',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: active ? const Color(0xFFFFFFFF) : c.textDim),
                 ),
-                child: Text('$count',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: active ? const Color(0xFFFFFFFF) : c.textDim,
-                    )),
               ),
             ],
           ],
@@ -261,25 +308,31 @@ class RefChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: soft,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: color.withValues(alpha: 0.7)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 5, height: 5, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
           const SizedBox(width: 4),
-          Text(text,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: color,
-                decoration: strike ? TextDecoration.lineThrough : null,
-                decorationColor: color,
-              )),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+              decoration: strike ? TextDecoration.lineThrough : null,
+              decorationColor: color,
+            ),
+          ),
         ],
       ),
     );
@@ -304,7 +357,10 @@ class ResultBadge extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: const Color(0xFFFFFFFF)),
           const SizedBox(width: 5),
-          Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFFFFFFF))),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFFFFFFF)),
+          ),
         ],
       ),
     );
@@ -313,7 +369,16 @@ class ResultBadge extends StatelessWidget {
 
 /// Single- or multi-line text input built on [EditableText].
 class TextInput extends StatefulWidget {
-  const TextInput({super.key, required this.controller, this.hint, this.maxLines = 1, this.onChanged, this.prefix, this.mono = false, this.width});
+  const TextInput({
+    super.key,
+    required this.controller,
+    this.hint,
+    this.maxLines = 1,
+    this.onChanged,
+    this.prefix,
+    this.mono = false,
+    this.width,
+  });
 
   final TextEditingController controller;
   final String? hint;
@@ -349,10 +414,7 @@ class _TextInputState extends State<TextInput> {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final style = baseTextStyle(c).copyWith(
-      fontSize: 13,
-      fontFamily: widget.mono ? monoFontFamily : null,
-    );
+    final style = baseTextStyle(c).copyWith(fontSize: 13, fontFamily: widget.mono ? monoFontFamily : null);
     final multi = widget.maxLines > 1;
     return GestureDetector(
       onTap: () => _focus.requestFocus(),
@@ -360,25 +422,29 @@ class _TextInputState extends State<TextInput> {
         cursor: SystemMouseCursors.text,
         child: Container(
           width: widget.width,
-          height: multi ? null : 28,
+          height: multi ? null : Metrics.of(context).compactControl + 2,
           padding: EdgeInsets.symmetric(horizontal: 8, vertical: multi ? 6 : 0),
           decoration: BoxDecoration(
             color: c.input,
-            borderRadius: BorderRadius.circular(3),
-            border: Border.all(color: _focus.hasFocus ? c.accent : c.borderStrong),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: _focus.hasFocus ? c.accent : c.borderStrong, width: _focus.hasFocus ? 1.5 : 1),
           ),
           child: Row(
             crossAxisAlignment: multi ? CrossAxisAlignment.start : CrossAxisAlignment.center,
             children: [
-              if (widget.prefix != null) ...[
-                Icon(widget.prefix, size: 14, color: c.textFaint),
-                const SizedBox(width: 6),
-              ],
+              if (widget.prefix != null) ...[Icon(widget.prefix, size: 14, color: c.textFaint), const SizedBox(width: 6)],
               Expanded(
                 child: Stack(
                   children: [
                     if (widget.controller.text.isEmpty && widget.hint != null)
-                      IgnorePointer(child: Text(widget.hint!, style: style.copyWith(color: c.textFaint), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      IgnorePointer(
+                        child: Text(
+                          widget.hint!,
+                          style: style.copyWith(color: c.textFaint),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     EditableText(
                       controller: widget.controller,
                       focusNode: _focus,
@@ -418,7 +484,7 @@ class CheckBox extends StatelessWidget {
     return Hoverable(
       onTap: () => onChanged(!value),
       builder: (context, hover, pressed) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: EdgeInsets.symmetric(vertical: Metrics.of(context).touch ? 7 : 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -428,12 +494,20 @@ class CheckBox extends StatelessWidget {
               decoration: BoxDecoration(
                 color: value ? c.accent : c.input,
                 borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: value ? c.accent : hover ? c.textDim : c.borderStrong),
+                border: Border.all(
+                  color: value
+                      ? c.accent
+                      : hover
+                      ? c.textDim
+                      : c.borderStrong,
+                ),
               ),
               child: value ? const _CheckMark() : null,
             ),
             const SizedBox(width: 8),
-            Flexible(child: Text(label, style: TextStyle(color: c.text, fontSize: 13))),
+            Flexible(
+              child: Text(label, style: TextStyle(color: c.text, fontSize: 13)),
+            ),
           ],
         ),
       ),
@@ -479,9 +553,10 @@ class Segmented<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     return Container(
-      height: 28,
+      height: Metrics.of(context).compactControl + 2,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: c.borderStrong),
         color: c.input,
       ),
@@ -497,10 +572,17 @@ class Segmented<T> extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: on ? c.accent : hover ? c.hover : null,
+                    color: on
+                        ? c.accent.withValues(alpha: c.dark ? 0.22 : 0.12)
+                        : hover
+                        ? c.hover
+                        : null,
                     border: i == 0 ? null : Border(left: BorderSide(color: c.borderStrong)),
                   ),
-                  child: Text(options[i].$2, style: TextStyle(fontSize: 12.5, color: on ? c.accentText : c.text)),
+                  child: Text(
+                    options[i].$2,
+                    style: TextStyle(fontSize: 12.5, color: on ? c.accent : c.textDim, fontWeight: on ? FontWeight.w700 : FontWeight.w500),
+                  ),
                 );
               },
             ),
@@ -527,14 +609,19 @@ class DockPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            height: 28,
-            padding: const EdgeInsets.only(left: 10, right: 4),
-            decoration: BoxDecoration(color: c.panelAlt, border: Border(bottom: BorderSide(color: c.border))),
+            height: Metrics.of(context).touch ? 36 : 30,
+            padding: const EdgeInsets.only(left: 12, right: 4),
+            decoration: BoxDecoration(
+              color: c.panel,
+              border: Border(bottom: BorderSide(color: c.border)),
+            ),
             child: Row(
               children: [
                 Expanded(
-                  child: Text(title.toUpperCase(),
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: c.textDim)),
+                  child: Text(
+                    title.toUpperCase(),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: c.textDim),
+                  ),
                 ),
                 ...actions,
               ],
@@ -554,10 +641,10 @@ class VDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: 1,
-        margin: EdgeInsets.symmetric(vertical: indent),
-        color: AppTheme.of(context).border,
-      );
+    width: 1,
+    margin: EdgeInsets.symmetric(vertical: indent),
+    color: AppTheme.of(context).border,
+  );
 }
 
 class HDivider extends StatelessWidget {
@@ -591,7 +678,12 @@ class ThinScrollbar extends StatelessWidget {
 }
 
 /// Shows a modal dialog with a flat frame.
-Future<T?> showAppDialog<T>(BuildContext context, {required String title, required Widget Function(BuildContext) body, double width = 520}) {
+Future<T?> showAppDialog<T>(
+  BuildContext context, {
+  required String title,
+  required Widget Function(BuildContext) body,
+  double width = 520,
+}) {
   return showGeneralDialog<T>(
     context: context,
     barrierDismissible: true,
@@ -602,35 +694,43 @@ Future<T?> showAppDialog<T>(BuildContext context, {required String title, requir
       final c = AppTheme.of(context);
       return AppTheme(
         colors: c,
-        child: DefaultTextStyle(
-          style: baseTextStyle(c),
-          child: Center(
-            child: Container(
-              width: width,
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height - 80),
-              decoration: BoxDecoration(
-                color: c.panel,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: c.borderStrong),
-                boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 24, offset: Offset(0, 8))],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    height: 36,
-                    padding: const EdgeInsets.only(left: 14, right: 6),
-                    decoration: BoxDecoration(color: c.panelAlt, border: Border(bottom: BorderSide(color: c.border))),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
-                        IconBtn(icon: Ic.x, onTap: () => Navigator.of(ctx).pop()),
-                      ],
+        child: MetricsScope(
+          metrics: Metrics.of(context),
+          child: DefaultTextStyle(
+            style: baseTextStyle(c),
+            child: Center(
+              child: Container(
+                width: width.clamp(0, MediaQuery.sizeOf(ctx).width - 24).toDouble(),
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height - 48),
+                decoration: BoxDecoration(
+                  color: c.panel,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: c.borderStrong),
+                  boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 28, offset: Offset(0, 10))],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      height: Metrics.of(context).touch ? 46 : 40,
+                      padding: const EdgeInsets.only(left: 16, right: 6),
+                      decoration: BoxDecoration(
+                        color: c.panelAlt,
+                        border: Border(bottom: BorderSide(color: c.border)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          ),
+                          IconBtn(icon: Ic.x, onTap: () => Navigator.of(ctx).pop()),
+                        ],
+                      ),
                     ),
-                  ),
-                  Flexible(child: body(ctx)),
-                ],
+                    Flexible(child: body(ctx)),
+                  ],
+                ),
               ),
             ),
           ),
@@ -641,7 +741,14 @@ Future<T?> showAppDialog<T>(BuildContext context, {required String title, requir
 }
 
 /// Simple message / confirm dialog. Returns true when confirmed.
-Future<bool> showMessage(BuildContext context, {required String title, required String message, required String ok, String? cancel, bool error = false}) async {
+Future<bool> showMessage(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String ok,
+  String? cancel,
+  bool error = false,
+}) async {
   final r = await showAppDialog<bool>(
     context,
     title: title,
@@ -658,17 +765,16 @@ Future<bool> showMessage(BuildContext context, {required String title, required 
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(width: 3, height: 18, color: error ? c.ng : c.accent, margin: const EdgeInsets.only(right: 10, top: 1)),
-                Expanded(child: Text(message, style: TextStyle(color: c.text))),
+                Expanded(
+                  child: Text(message, style: TextStyle(color: c.text)),
+                ),
               ],
             ),
             const SizedBox(height: 18),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (cancel != null) ...[
-                  FlatButton(label: cancel, onTap: () => Navigator.of(ctx).pop(false)),
-                  const SizedBox(width: 8),
-                ],
+                if (cancel != null) ...[FlatButton(label: cancel, onTap: () => Navigator.of(ctx).pop(false)), const SizedBox(width: 8)],
                 FlatButton(label: ok, primary: true, onTap: () => Navigator.of(ctx).pop(true)),
               ],
             ),
@@ -678,4 +784,108 @@ Future<bool> showMessage(BuildContext context, {required String title, required 
     },
   );
   return r ?? false;
+}
+
+/// Rounded filter pill with a colour dot and a count, used for result areas.
+class FilterPill extends StatelessWidget {
+  const FilterPill({super.key, required this.label, required this.active, required this.onTap, this.color, this.count});
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final Color? color;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final m = Metrics.of(context);
+    final tone = color ?? c.accent;
+    return Hoverable(
+      onTap: onTap,
+      builder: (context, hover, pressed) => Container(
+        height: m.compactControl,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: active
+              ? tone.withValues(alpha: c.dark ? 0.18 : 0.10)
+              : hover
+              ? c.hover
+              : null,
+          borderRadius: BorderRadius.circular(m.compactControl / 2),
+          border: Border.all(color: active ? tone.withValues(alpha: 0.75) : c.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color ?? c.textDim, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(fontSize: 12.5, fontWeight: active ? FontWeight.w600 : FontWeight.w500, color: active ? c.text : c.textDim),
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: active ? tone : c.textFaint,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Slide-in panel over the workspace (project drawer, floating inspector).
+class OverlayPanel extends StatelessWidget {
+  const OverlayPanel({super.key, required this.child, required this.onClose, this.left = false, this.width = 340});
+
+  final Widget child;
+  final VoidCallback onClose;
+  final bool left;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: onClose,
+            child: ColoredBox(color: c.dark ? const Color(0x66000000) : const Color(0x33000000)),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: left ? 0 : null,
+          right: left ? null : 0,
+          width: width.clamp(0, MediaQuery.sizeOf(context).width - 40).toDouble(),
+          child: Container(
+            decoration: BoxDecoration(
+              color: c.panel,
+              border: Border(
+                right: left ? BorderSide(color: c.borderStrong) : BorderSide.none,
+                left: left ? BorderSide.none : BorderSide(color: c.borderStrong),
+              ),
+              boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 24)],
+            ),
+            child: child,
+          ),
+        ),
+      ],
+    );
+  }
 }

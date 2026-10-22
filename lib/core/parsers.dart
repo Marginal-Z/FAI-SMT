@@ -112,7 +112,7 @@ ParseResult<StationItem> parseStation(List<Grid> sheets, StationSide side) {
     final qtyText = map.get(row, 'qty');
     final qty = qtyText.isEmpty ? null : parseNumber(qtyText);
     if (qty != null && refs.isNotEmpty && qty != refs.length) {
-      issues.add(ParseIssue('parse_station_qty', row: rowNo, detail: '$pn ($qtyText ≠ ${refs.length})'));
+      issues.add(ParseIssue('parse_station_qty', row: rowNo, detail: '$pn ($qtyText / ${refs.length})'));
     }
     final related = map.get(row, 'related').toUpperCase();
     items.add(StationItem(

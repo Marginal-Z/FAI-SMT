@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,48 +18,63 @@ Future<void> main() async {
   runApp(SmtFaiApp(state: AppState(settings, dir)));
 }
 
+bool get _isTouchPlatform => Platform.isAndroid || Platform.isIOS;
+
 class SmtFaiApp extends StatelessWidget {
-  const SmtFaiApp({super.key, required this.state});
+  const SmtFaiApp({super.key, required this.state, this.touch});
 
   final AppState state;
+
+  /// Forces touch sizing (tests); defaults to the platform.
+  final bool? touch;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
-        final colors = state.dark ? AppColors.darkTheme : AppColors.lightTheme;
         final strings = Strings(state.language);
         return WidgetsApp(
           title: 'SMT-FAI',
-          color: colors.accent,
+          color: AppColors.darkTheme.accent,
           debugShowCheckedModeBanner: false,
           locale: Locale(state.language),
           supportedLocales: [for (final l in supportedLanguages) Locale(l)],
-          localizationsDelegates: const [
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          builder: (context, child) => AppTheme(
-            colors: colors,
-            child: StringsScope(
-              strings: strings,
-              child: DefaultTextStyle(style: baseTextStyle(colors), child: child!),
-            ),
-          ),
-          home: _Root(state: state),
+          localizationsDelegates: const [GlobalWidgetsLocalizations.delegate],
+          builder: (context, child) {
+            final dark = switch (state.theme) {
+              ThemePref.dark => true,
+              ThemePref.light => false,
+              ThemePref.system => MediaQuery.platformBrightnessOf(context) == Brightness.dark,
+            };
+            final colors = dark ? AppColors.darkTheme : AppColors.lightTheme;
+            if (Platform.isAndroid) {
+              SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+                statusBarColor: colors.chrome,
+                statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+                systemNavigationBarColor: colors.chrome,
+                systemNavigationBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+              ));
+            }
+            return AppTheme(
+              colors: colors,
+              child: MetricsScope(
+                metrics: Metrics(touch: touch ?? _isTouchPlatform),
+                child: StringsScope(
+                  strings: strings,
+                  child: DefaultTextStyle(
+                    style: baseTextStyle(colors),
+                    child: ColoredBox(color: colors.chrome, child: SafeArea(child: child!)),
+                  ),
+                ),
+              ),
+            );
+          },
+          home: HomeWindow(state: state),
           pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) =>
               PageRouteBuilder<T>(settings: settings, pageBuilder: (context, _, _) => builder(context)),
         );
       },
     );
   }
-}
-
-class _Root extends StatelessWidget {
-  const _Root({required this.state});
-
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context) => HomeWindow(state: state);
 }

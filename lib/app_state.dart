@@ -56,7 +56,7 @@ class AppState extends ChangeNotifier {
   Map<String, Object?> statusArgs = const {};
 
   String get language => settings.language;
-  bool get dark => settings.dark;
+  ThemePref get theme => settings.theme;
 
   void _status(String key, [Map<String, Object?> args = const {}]) {
     statusKey = key;
@@ -71,11 +71,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setDark(bool v) {
-    settings.dark = v;
+  void setTheme(ThemePref t) {
+    settings.theme = t;
     persist();
     notifyListeners();
   }
+
+  /// Cycles system → light → dark, for the title-bar toggle.
+  void cycleTheme() => setTheme(ThemePref.values[(theme.index + 1) % ThemePref.values.length]);
 
   void setRibbonTab(int i) {
     ribbonTab = i;

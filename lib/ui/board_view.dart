@@ -30,6 +30,7 @@ class _BoardViewState extends State<BoardView> {
   double _zoom = 1;
   Offset _pan = Offset.zero;
   Placement? _hover;
+  double _gestureZoom = 1;
   Offset _hoverPos = Offset.zero;
 
   void _fit() => setState(() {
@@ -146,7 +147,15 @@ class _BoardViewState extends State<BoardView> {
                 },
                 onExit: (_) => setState(() => _hover = null),
                 child: GestureDetector(
-                  onPanUpdate: (d) => setState(() => _pan += d.delta),
+                  // One handler for mouse drag, touch pan and pinch zoom.
+                  onScaleStart: (_) => _gestureZoom = _zoom,
+                  onScaleUpdate: (d) => setState(() {
+                    final center = Offset(size.width / 2, size.height / 2);
+                    final newZoom = (_gestureZoom * d.scale).clamp(0.2, 80.0);
+                    final f = newZoom / _zoom;
+                    _pan = (d.localFocalPoint - center) * (1 - f) + _pan * f + d.focalPointDelta;
+                    _zoom = newZoom;
+                  }),
                   onDoubleTap: _fit,
                   child: ClipRect(
                     child: Stack(

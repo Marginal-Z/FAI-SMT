@@ -6,6 +6,7 @@ import 'icons.dart';
 
 import '../app_state.dart';
 import '../core/parsers.dart';
+import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'dialogs.dart';
@@ -20,33 +21,55 @@ class Ribbon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final m = Metrics.of(context);
     final s = Strings.of(context);
     final tabs = ['tab_home', 'tab_rules', 'tab_output', 'tab_view', 'tab_help'];
+    final width = MediaQuery.sizeOf(context).width;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Menu-tab strip
         Container(
-          height: 34,
-          color: c.chrome,
+          height: m.menuBar,
+          decoration: BoxDecoration(color: c.chrome, border: Border(bottom: BorderSide(color: c.border))),
           child: Row(
             children: [
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               const _AppMark(),
               const SizedBox(width: 8),
-              Text(s.t('app_name'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.text, letterSpacing: 0.3)),
-              const SizedBox(width: 18),
-              for (var i = 0; i < tabs.length; i++)
-                _MenuTab(label: s.t(tabs[i]), active: state.ribbonTab == i, onTap: () => state.setRibbonTab(i)),
-              const Spacer(),
-              Text(s.t('app_subtitle'), style: TextStyle(fontSize: 12, color: c.textFaint)),
-              const SizedBox(width: 12),
+              Text(s.t('app_name'), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: c.text, letterSpacing: 0.4)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (var i = 0; i < tabs.length; i++)
+                      _MenuTab(label: s.t(tabs[i]), active: state.ribbonTab == i, onTap: () => state.setRibbonTab(i)),
+                  ]),
+                ),
+              ),
+              if (width >= 1280) ...[
+                Text(s.t('app_subtitle'), style: TextStyle(fontSize: 12, color: c.textFaint)),
+                const SizedBox(width: 14),
+              ],
+              _LanguageSwitch(state: state),
+              const SizedBox(width: 6),
+              IconBtn(
+                icon: switch (state.theme) {
+                  ThemePref.system => Ic.circleHalf,
+                  ThemePref.light => Ic.sun,
+                  ThemePref.dark => Ic.moon,
+                },
+                tooltip: s.t('theme_now_${state.theme.name}'),
+                onTap: state.cycleTheme,
+              ),
+              const SizedBox(width: 8),
             ],
           ),
         ),
         // Command area
         Container(
-          height: 96,
+          height: m.ribbon,
           decoration: BoxDecoration(color: c.ribbon, border: Border(bottom: BorderSide(color: c.border))),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -169,8 +192,9 @@ class Ribbon extends StatelessWidget {
             ),
         ]),
         RibbonGroup(label: s.t('grp_theme'), children: [
-          RibbonButton(icon: Ic.moon, label: s.t('btn_dark'), active: state.dark, onTap: () => state.setDark(true)),
-          RibbonButton(icon: Ic.sun, label: s.t('btn_light'), active: !state.dark, onTap: () => state.setDark(false)),
+          RibbonButton(icon: Ic.sun, label: s.t('btn_light'), active: state.theme == ThemePref.light, onTap: () => state.setTheme(ThemePref.light)),
+          RibbonButton(icon: Ic.moon, label: s.t('btn_dark'), active: state.theme == ThemePref.dark, onTap: () => state.setTheme(ThemePref.dark)),
+          RibbonButton(icon: Ic.circleHalf, label: s.t('btn_system'), active: state.theme == ThemePref.system, onTap: () => state.setTheme(ThemePref.system)),
         ]),
         RibbonGroup(label: s.t('grp_panels'), children: [
           RibbonButton(icon: Ic.sidebarSimple, label: s.t('btn_files_panel'), active: state.showProject, onTap: () => state.togglePanel(project: true)),
@@ -200,7 +224,7 @@ class RibbonGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
       decoration: BoxDecoration(border: Border(right: BorderSide(color: c.border))),
       child: Column(
         children: [
@@ -210,8 +234,8 @@ class RibbonGroup extends StatelessWidget {
             ]),
           ),
           Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(label, style: TextStyle(fontSize: 11, color: c.textFaint)),
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Text(label, style: TextStyle(fontSize: 11, color: c.textFaint, letterSpacing: 0.3)),
           ),
         ],
       ),
@@ -229,18 +253,37 @@ class _MenuTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final m = Metrics.of(context);
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => Container(
-        margin: const EdgeInsets.only(top: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: m.menuBar,
+        padding: EdgeInsets.symmetric(horizontal: m.touch ? 18 : 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? c.ribbon : hover ? c.hover : null,
-          border: active ? Border(top: BorderSide(color: c.accent, width: 2), left: BorderSide(color: c.border), right: BorderSide(color: c.border)) : null,
+          color: hover && !active ? c.hover : null,
+          border: Border(bottom: BorderSide(color: active ? c.accent : const Color(0x00000000), width: 2)),
         ),
-        child: Text(label, style: TextStyle(fontSize: 13, color: active ? c.text : c.textDim, fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+        child: Text(label,
+            style: TextStyle(fontSize: 13, color: active ? c.text : c.textDim, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
       ),
+    );
+  }
+}
+
+/// Compact 中 / EN / ไทย switch in the title bar.
+class _LanguageSwitch extends StatelessWidget {
+  const _LanguageSwitch({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    const short = {'zh': '中', 'en': 'EN', 'th': 'ไทย'};
+    return Segmented<String>(
+      value: state.language,
+      options: [for (final l in supportedLanguages) (l, short[l]!)],
+      onChanged: state.setLanguage,
     );
   }
 }

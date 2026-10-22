@@ -197,9 +197,12 @@ class _SummaryLine extends StatelessWidget {
 }
 
 class InspectorPanel extends StatelessWidget {
-  const InspectorPanel({super.key, required this.state});
+  const InspectorPanel({super.key, required this.state, this.onClose});
 
   final AppState state;
+
+  /// Shown as a close button when the inspector floats over the workspace.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +211,7 @@ class InspectorPanel extends StatelessWidget {
     final row = state.selected;
     return DockPanel(
       title: s.t('panel_inspector'),
+      actions: [if (onClose != null) IconBtn(icon: Ic.x, onTap: onClose)],
       child: row == null
           ? Padding(padding: const EdgeInsets.all(12), child: Text(s.t('inspector_empty'), style: TextStyle(color: c.textFaint, fontSize: 12)))
           : ListView(
@@ -269,7 +273,7 @@ class _Prop extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 92, child: Text(label, style: TextStyle(color: c.textDim, fontSize: 12))),
+          SizedBox(width: 112, child: Text(label, style: TextStyle(color: c.textDim, fontSize: 12))),
           Expanded(child: Text(value, style: TextStyle(fontSize: 12.5, color: c.text))),
         ],
       ),

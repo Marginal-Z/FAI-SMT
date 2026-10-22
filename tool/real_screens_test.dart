@@ -23,7 +23,11 @@ Future<void> _font(String family, List<String> files) async {
 void main() {
   setUpAll(() async {
     await _font('Noto Sans', ['/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf', '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf']);
-    await _font('Noto Sans CJK SC', ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc']);
+    // Unregistered fallback names resolve to the test font (boxes), so the
+    // first CJK fallback name must be a registered family.
+    for (final f in ['Microsoft YaHei UI', 'Noto Sans CJK SC']) {
+      await _font(f, ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc']);
+    }
     await _font('Noto Sans Thai', ['/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf', '/usr/share/fonts/truetype/noto/NotoSansThai-Bold.ttf']);
     await _font('DejaVu Sans Mono', ['/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf']);
     await _font('PhosphorRegular', ['assets/fonts/Phosphor-Regular.ttf']);
@@ -31,7 +35,7 @@ void main() {
   });
 
   AppState demoState({String lang = 'zh', bool dark = true}) {
-    final state = AppState(AppSettings(language: lang, dark: dark), Directory.systemTemp.path);
+    final state = AppState(AppSettings(language: lang, theme: dark ? ThemePref.dark : ThemePref.light), Directory.systemTemp.path);
     void load(InputKind k, String dir, [String suffix = '']) {
       final f = Directory('samples/$dir').listSync().whereType<File>().firstWhere((f) => f.path.endsWith('$suffix.xlsx'));
       state.load(k, f.uri.pathSegments.last, f.readAsBytesSync());
@@ -44,10 +48,10 @@ void main() {
     return state;
   }
 
-  Future<void> shot(WidgetTester tester, AppState state, String name, {Size size = const Size(1600, 940)}) async {
+  Future<void> shot(WidgetTester tester, AppState state, String name, {Size size = const Size(1600, 940), bool touch = false}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
-    await tester.pumpWidget(SmtFaiApp(state: state));
+    await tester.pumpWidget(SmtFaiApp(state: state, touch: touch));
     await tester.pumpAndSettle();
     await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens_real/$name.png'));
   }

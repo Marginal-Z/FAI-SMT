@@ -16,9 +16,12 @@ import 'theme.dart';
 import 'widgets.dart';
 
 class CadView extends StatefulWidget {
-  const CadView({super.key, required this.state});
+  const CadView({super.key, required this.state, this.compact = false});
 
   final AppState state;
+
+  /// Narrow screens put the build checks under the preview.
+  final bool compact;
 
   @override
   State<CadView> createState() => _CadViewState();
@@ -85,7 +88,8 @@ class _CadViewState extends State<CadView> {
           ),
         ),
         Expanded(
-          child: Row(
+          child: Flex(
+            direction: widget.compact ? Axis.vertical : Axis.horizontal,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (t.format == CadFormat.xlsx)
@@ -135,8 +139,8 @@ class _CadViewState extends State<CadView> {
                     ),
                   ),
                 ),
-              VDivider(),
-              SizedBox(width: 300, child: _Checks(state: state)),
+              if (widget.compact) const HDivider() else const VDivider(),
+              if (widget.compact) SizedBox(height: 220, child: _Checks(state: state)) else SizedBox(width: 300, child: _Checks(state: state)),
             ],
           ),
         ),
@@ -159,11 +163,26 @@ class _CadGrid extends StatelessWidget {
     final t = cad.template;
     final header = cad.header ?? [for (final f in t.fields) t.headerOf(f)];
     String fmt(Object o) => o is double ? o.toStringAsFixed(t.decimals) : '$o';
-    int width(String s) => s.runes.fold(0, (n, r) => n + (r >= 0x1100 ? 2 : 1));
+    const cellStyle = TextStyle(fontSize: 12.5);
+    final base = DefaultTextStyle.of(context).style;
+    double measure(String text, {bool bold = false}) {
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: base.merge(cellStyle).copyWith(fontWeight: bold ? FontWeight.w600 : null)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      return tp.width;
+    }
+
     final widths = [
       for (var i = 0; i < header.length; i++)
-        (cad.cells.take(400).fold<int>(width(header[i]), (m, r) => i < r.length && width(fmt(r[i])) > m ? width(fmt(r[i])) : m) * 6.4 + 20)
-            .clamp(56.0, 340.0),
+        (cad.cells.take(300).fold<double>(measure(header[i], bold: true), (m, r) {
+                  if (i >= r.length) return m;
+                  final w = measure(fmt(r[i]));
+                  return w > m ? w : m;
+                }) +
+                20)
+            .clamp(48.0, 380.0)
     ];
     final total = widths.fold<double>(48, (a, b) => a + b);
     Widget cell(String text, double w, {bool head = false, bool num = false}) => Container(

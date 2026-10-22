@@ -1,9 +1,12 @@
 /// Main window: ribbon, docked panels, workspace tabs, status bar.
+///
+/// Layout adapts to width ([LayoutSize]): desktop docks both side panels;
+/// landscape tablets dock the project panel and float the inspector; portrait
+/// tablets open the project panel as a drawer and show results as cards.
 library;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'icons.dart';
 
 import '../app_state.dart';
 import '../core/models.dart';
@@ -12,20 +15,28 @@ import 'actions.dart';
 import 'board_view.dart';
 import 'cad_view.dart';
 import 'check_view.dart';
+import 'icons.dart';
 import 'panels.dart';
 import 'ribbon.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-class HomeWindow extends StatelessWidget {
+class HomeWindow extends StatefulWidget {
   const HomeWindow({super.key, required this.state});
 
   final AppState state;
 
   @override
+  State<HomeWindow> createState() => _HomeWindowState();
+}
+
+class _HomeWindowState extends State<HomeWindow> {
+  bool _drawer = false;
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final c = AppTheme.of(context);
-    final s = Strings.of(context);
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.f5): () => runCheck(context, state),
@@ -42,24 +53,54 @@ class HomeWindow extends StatelessWidget {
               Ribbon(state: state),
               Expanded(
                 child: LayoutBuilder(builder: (context, box) {
-                  final narrow = box.maxWidth < 1100;
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  final size = LayoutSize.of(box.maxWidth);
+                  final dockProject = state.showProject && size != LayoutSize.compact;
+                  final dockInspector = state.showInspector && size == LayoutSize.wide;
+                  final floatInspector = state.showInspector && !dockInspector && state.selected != null;
+                  return Stack(
                     children: [
-                      if (state.showProject) ...[
-                        SizedBox(width: narrow ? 220 : 240, child: ProjectPanel(state: state)),
-                        VDivider(),
-                      ],
-                      Expanded(child: _Workspace(state: state)),
-                      if (state.showInspector && !narrow) ...[
-                        VDivider(),
-                        SizedBox(width: 260, child: InspectorPanel(state: state)),
-                      ],
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (dockProject) ...[
+                            SizedBox(width: size == LayoutSize.wide ? 256 : 236, child: ProjectPanel(state: state)),
+                            const VDivider(),
+                          ],
+                          Expanded(
+                            child: _Workspace(
+                              state: state,
+                              size: size,
+                              onOpenProject: size == LayoutSize.compact ? () => setState(() => _drawer = true) : null,
+                            ),
+                          ),
+                          if (dockInspector) ...[
+                            const VDivider(),
+                            SizedBox(width: 280, child: InspectorPanel(state: state)),
+                          ],
+                        ],
+                      ),
+                      if (floatInspector)
+                        Positioned.fill(
+                          child: OverlayPanel(
+                            width: 360,
+                            onClose: () => state.select(null),
+                            child: InspectorPanel(state: state, onClose: () => state.select(null)),
+                          ),
+                        ),
+                      if (_drawer && size == LayoutSize.compact)
+                        Positioned.fill(
+                          child: OverlayPanel(
+                            left: true,
+                            width: 320,
+                            onClose: () => setState(() => _drawer = false),
+                            child: ProjectPanel(state: state),
+                          ),
+                        ),
                     ],
                   );
                 }),
               ),
-              _StatusBar(state: state, strings: s),
+              _StatusBar(state: state),
             ],
           ),
         ),
@@ -69,13 +110,16 @@ class HomeWindow extends StatelessWidget {
 }
 
 class _Workspace extends StatelessWidget {
-  const _Workspace({required this.state});
+  const _Workspace({required this.state, required this.size, this.onOpenProject});
 
   final AppState state;
+  final LayoutSize size;
+  final VoidCallback? onOpenProject;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final m = Metrics.of(context);
     final s = Strings.of(context);
     final tabs = [
       (Workspace.check, s.t('ws_check'), Ic.table),
@@ -86,21 +130,37 @@ class _Workspace extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          height: 32,
+          height: m.docTabs,
           decoration: BoxDecoration(color: c.chrome, border: Border(bottom: BorderSide(color: c.border))),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final (w, label, icon) in tabs)
-                _DocTab(label: label, icon: icon, active: state.workspace == w, onTap: () => state.setWorkspace(w)),
+              if (onOpenProject != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(border: Border(right: BorderSide(color: c.border))),
+                  child: Center(child: IconBtn(icon: Ic.sidebarSimple, tooltip: s.t('btn_files_panel'), onTap: onOpenProject)),
+                ),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (w, label, icon) in tabs)
+                        _DocTab(label: label, icon: icon, active: state.workspace == w, onTap: () => state.setWorkspace(w)),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
         Expanded(
           child: switch (state.workspace) {
-            Workspace.check => CheckView(state: state),
+            Workspace.check => CheckView(state: state, cards: size == LayoutSize.compact),
             Workspace.board => BoardView(state: state),
-            Workspace.cad => CadView(state: state),
+            Workspace.cad => CadView(state: state, compact: size == LayoutSize.compact),
           },
         ),
       ],
@@ -120,10 +180,12 @@ class _DocTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final m = Metrics.of(context);
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        constraints: BoxConstraints(minHeight: m.docTabs),
+        padding: EdgeInsets.symmetric(horizontal: m.touch ? 18 : 14),
         decoration: BoxDecoration(
           color: active ? c.panel : hover ? c.hover : null,
           border: Border(
@@ -133,8 +195,9 @@ class _DocTab extends StatelessWidget {
         ),
         child: Row(children: [
           Icon(icon, size: 15, color: active ? c.accent : c.textDim),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(fontSize: 12.5, color: active ? c.text : c.textDim)),
+          const SizedBox(width: 7),
+          Text(label,
+              style: TextStyle(fontSize: 12.5, color: active ? c.text : c.textDim, fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
         ]),
       ),
     );
@@ -142,19 +205,20 @@ class _DocTab extends StatelessWidget {
 }
 
 class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.state, required this.strings});
+  const _StatusBar({required this.state});
 
   final AppState state;
-  final Strings strings;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final s = strings;
+    final m = Metrics.of(context);
+    final s = Strings.of(context);
     final ng = state.report?.count(CheckCategory.ng);
+    final wide = MediaQuery.sizeOf(context).width >= 1100 && !m.touch;
     return Container(
-      height: 24,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: m.statusBar,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(color: c.chrome, border: Border(top: BorderSide(color: c.border))),
       child: Row(
         children: [
@@ -171,10 +235,9 @@ class _StatusBar extends StatelessWidget {
             child: Text(s.t(state.statusKey, state.statusArgs),
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.textDim)),
           ),
-          Text('F5 ${s.t('btn_run')}   Ctrl+E ${s.t('btn_export_report')}   Ctrl+G ${s.t('btn_gen_cad')}',
-              style: TextStyle(fontSize: 11.5, color: c.textFaint)),
-          const SizedBox(width: 16),
-          Text(languageNames[state.language]!, style: TextStyle(fontSize: 12, color: c.textDim)),
+          if (wide)
+            Text('F5 ${s.t('btn_run')}    Ctrl+E ${s.t('btn_export_report')}    Ctrl+G ${s.t('btn_gen_cad')}',
+                style: TextStyle(fontSize: 11.5, color: c.textFaint)),
         ],
       ),
     );

@@ -226,12 +226,15 @@ class CadTemplate {
         );
 }
 
+/// Light / dark appearance, or follow the operating system.
+enum ThemePref { system, light, dark }
+
 class AppSettings {
   AppSettings({
     CheckRules? rules,
     CadTemplate? cad,
     this.language = 'zh',
-    this.dark = true,
+    this.theme = ThemePref.system,
     this.coordUnit = CoordUnit.auto,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate();
@@ -239,14 +242,14 @@ class AppSettings {
   CheckRules rules;
   CadTemplate cad;
   String language;
-  bool dark;
+  ThemePref theme;
   CoordUnit coordUnit;
 
   Map<String, dynamic> toJson() => {
     'rules': rules.toJson(),
     'cad': cad.toJson(),
     'language': language,
-    'dark': dark,
+    'theme': theme.name,
     'coordUnit': coordUnit.name,
   };
 
@@ -254,7 +257,15 @@ class AppSettings {
     rules: j['rules'] is Map ? CheckRules.fromJson((j['rules'] as Map).cast()) : null,
     cad: j['cad'] is Map ? CadTemplate.fromJson((j['cad'] as Map).cast()) : null,
     language: j['language'] as String? ?? 'zh',
-    dark: j['dark'] as bool? ?? true,
+    theme: ThemePref.values.firstWhere(
+      (t) => t.name == j['theme'],
+      // Settings saved before the theme preference existed only had a flag.
+      orElse: () => switch (j['dark']) {
+        true => ThemePref.dark,
+        false => ThemePref.light,
+        _ => ThemePref.system,
+      },
+    ),
     coordUnit: CoordUnit.values.firstWhere((u) => u.name == j['coordUnit'], orElse: () => CoordUnit.auto),
   );
 
