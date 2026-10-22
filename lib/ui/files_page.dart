@@ -165,8 +165,11 @@ class _FileCard extends StatelessWidget {
             width: 46,
             height: 46,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: c.panelAlt, borderRadius: BorderRadius.circular(10), border: Border.all(color: c.border)),
-            child: GlyphIcon(glyph, size: 30),
+            decoration: BoxDecoration(
+              color: loaded ? c.accent.withValues(alpha: c.dark ? 0.14 : 0.08) : c.panelAlt,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: GlyphIcon(glyph, size: 24, color: loaded ? c.accent : c.textDim),
           ),
           const SizedBox(width: 14),
           Expanded(

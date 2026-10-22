@@ -142,7 +142,7 @@ class _RulesPageState extends State<RulesPage> {
                     padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Row(children: [
-                        GlyphIcon(glyph, size: 26),
+                        GlyphIcon(glyph, size: 22, color: c.accent),
                         const SizedBox(width: 10),
                         Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.text)),
                       ]),

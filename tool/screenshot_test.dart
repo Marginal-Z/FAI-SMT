@@ -33,6 +33,8 @@ void main() {
     await _font('DejaVu Sans Mono', ['/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf']);
     await _font('PhosphorRegular', ['assets/fonts/Phosphor-Regular.ttf']);
     await _font('PhosphorBold', ['assets/fonts/Phosphor-Bold.ttf']);
+    await _font('FluentSystemIcons-Regular', ['assets/fonts/FluentSystemIcons-Regular.ttf']);
+    await _font('FluentSystemIcons-Filled', ['assets/fonts/FluentSystemIcons-Filled.ttf']);
   });
 
   AppState demoState({String lang = 'zh', bool dark = true}) {

@@ -339,30 +339,30 @@ class Ribbon extends StatelessWidget {
               onTap: () => importFile(context, state, InputKind.coords)),
         ]),
         RibbonGroup(label: s.t('grp_coord_import'), children: [
-          for (final (u, key, glyph) in [
-            (CoordUnit.auto, 'unit_auto', Glyph.unitAuto),
-            (CoordUnit.mm, 'unit_mm', Glyph.unit),
-            (CoordUnit.mil, 'unit_mil', Glyph.unit),
-            (CoordUnit.inch, 'unit_inch', Glyph.unit),
-          ])
-            RibbonButton(
-              glyph: glyph,
-              label: s.t(key),
-              active: state.settings.coordUnit == u,
-              onTap: () {
-                try {
-                  state.setCoordUnit(u);
-                } catch (e) {
-                  showError(context, e);
-                }
-              },
-            ),
+          RibbonButton(
+            glyph: Glyph.unitAuto,
+            label: s.t('unit_auto'),
+            active: state.settings.coordUnit == CoordUnit.auto,
+            onTap: () => _setUnit(context, CoordUnit.auto),
+          ),
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final u in [CoordUnit.mm, CoordUnit.mil, CoordUnit.inch])
+              RibbonOption(label: s.t('unit_${u.name}'), selected: state.settings.coordUnit == u, onTap: () => _setUnit(context, u)),
+          ]),
         ]),
         RibbonGroup(label: s.t('grp_project'), children: [
           RibbonButton(glyph: Glyph.clear, label: s.t('btn_clear'), onTap: state.clearAll),
           RibbonButton(glyph: Glyph.runCheck, label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state)),
         ]),
       ];
+
+  void _setUnit(BuildContext context, CoordUnit u) {
+    try {
+      state.setCoordUnit(u);
+    } catch (e) {
+      showError(context, e);
+    }
+  }
 
   List<Widget> _check(BuildContext context, Strings s) => [
         RibbonGroup(label: s.t('grp_check'), children: [
@@ -484,12 +484,17 @@ class RibbonButton extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, pressed) => Container(
-        constraints: BoxConstraints(minWidth: m.touch ? 76 : 66),
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+        constraints: BoxConstraints(minWidth: m.touch ? 76 : 64),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 7),
         decoration: BoxDecoration(
-          color: active ? c.selected : pressed ? c.pressed : hover ? c.hover : null,
+          color: active
+              ? c.accent.withValues(alpha: c.dark ? 0.14 : 0.08)
+              : pressed
+                  ? c.pressed
+                  : hover
+                      ? c.hover
+                      : null,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: active ? c.accent.withValues(alpha: 0.45) : const Color(0x00000000)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -497,20 +502,30 @@ class RibbonButton extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                GlyphIcon(glyph, size: 30, disabled: !enabled),
+                GlyphIcon(
+                  glyph,
+                  size: 26,
+                  filled: active,
+                  disabled: !enabled,
+                  color: active || primary
+                      ? c.accent
+                      : hover
+                          ? c.text
+                          : c.textDim,
+                ),
                 if (badge != null)
                   Positioned(
-                    right: -2,
+                    right: -3,
                     top: -1,
                     child: Container(
-                      width: 9,
-                      height: 9,
+                      width: 8,
+                      height: 8,
                       decoration: BoxDecoration(color: badge, shape: BoxShape.circle, border: Border.all(color: c.ribbon, width: 2)),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 7),
             Text(label,
                 textAlign: TextAlign.center,
                 maxLines: 1,
@@ -518,13 +533,58 @@ class RibbonButton extends StatelessWidget {
                   fontSize: 12,
                   color: !enabled
                       ? c.textFaint
-                      : primary || active
+                      : active || primary
                           ? c.accent
-                          : c.text,
-                  fontWeight: primary || active ? FontWeight.w600 : FontWeight.w400,
+                          : hover
+                              ? c.text
+                              : c.textDim,
+                  fontWeight: active || primary ? FontWeight.w600 : FontWeight.w400,
                 )),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Small ribbon option (radio item), stacked three to a column.
+class RibbonOption extends StatelessWidget {
+  const RibbonOption({super.key, required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final m = Metrics.of(context);
+    return Hoverable(
+      onTap: onTap,
+      builder: (context, hover, _) => Container(
+        width: 84,
+        height: m.touch ? 24 : 22,
+        margin: const EdgeInsets.only(bottom: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? c.accent.withValues(alpha: c.dark ? 0.14 : 0.08)
+              : hover
+                  ? c.hover
+                  : null,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(children: [
+          Container(
+            width: 12,
+            height: 12,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: selected ? c.accent : c.textFaint, width: 1.2)),
+            child: selected ? Container(width: 6, height: 6, decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle)) : null,
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(fontSize: 12, color: selected ? c.accent : hover ? c.text : c.textDim, fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+        ]),
       ),
     );
   }

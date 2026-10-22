@@ -69,6 +69,12 @@ flutter:
     - family: PhosphorBold
       fonts:
         - asset: assets/fonts/Phosphor-Bold.ttf
+    - family: FluentSystemIcons-Regular
+      fonts:
+        - asset: assets/fonts/FluentSystemIcons-Regular.ttf
+    - family: FluentSystemIcons-Filled
+      fonts:
+        - asset: assets/fonts/FluentSystemIcons-Filled.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
