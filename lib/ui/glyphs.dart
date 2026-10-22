@@ -32,6 +32,14 @@ enum Glyph {
   moon,
   system,
   info,
+  mirror,
+  rotateLeft,
+  rotateRight,
+  settings,
+  update,
+  download,
+  materials,
+  discrepancies,
 }
 
 const _regular = 'FluentSystemIcons-Regular';
@@ -62,6 +70,14 @@ const Map<Glyph, (IconData, IconData)> _glyphs = {
   Glyph.moon: (IconData(63614, fontFamily: _regular), IconData(63638, fontFamily: _filled)), // weather_moon
   Glyph.system: (IconData(62268, fontFamily: _regular), IconData(62268, fontFamily: _filled)), // dark_theme
   Glyph.info: (IconData(62628, fontFamily: _regular), IconData(62635, fontFamily: _filled)), // info
+  Glyph.mirror: (IconData(58925, fontFamily: _regular), IconData(58938, fontFamily: _filled)), // flip_horizontal
+  Glyph.rotateLeft: (IconData(61832, fontFamily: _regular), IconData(61832, fontFamily: _filled)), // arrow_rotate_counterclockwise
+  Glyph.rotateRight: (IconData(61830, fontFamily: _regular), IconData(61830, fontFamily: _filled)), // arrow_rotate_clockwise
+  Glyph.settings: (IconData(63146, fontFamily: _regular), IconData(63155, fontFamily: _filled)), // settings
+  Glyph.update: (IconData(61841, fontFamily: _regular), IconData(61841, fontFamily: _filled)), // arrow_sync
+  Glyph.download: (IconData(61777, fontFamily: _regular), IconData(61777, fontFamily: _filled)), // arrow_download
+  Glyph.materials: (IconData(62702, fontFamily: _regular), IconData(62712, fontFamily: _filled)), // list
+  Glyph.discrepancies: (IconData(63594, fontFamily: _regular), IconData(63618, fontFamily: _filled)), // warning
 };
 
 class GlyphIcon extends StatelessWidget {

@@ -11,6 +11,7 @@ import '../app_state.dart';
 import '../core/exporters.dart';
 import '../core/models.dart';
 import '../l10n/strings.dart';
+import 'discrepancy_view.dart';
 import 'widgets.dart';
 
 const _tableExts = ['xlsx', 'xlsm', 'xls', 'csv', 'txt'];
@@ -88,7 +89,14 @@ Future<void> exportReport(BuildContext context, AppState state) async {
     await showError(context, UserMessage('msg_need_check'));
     return;
   }
-  final bytes = exportCheckWorkbook(report, exportLabels(s));
+  final discrepancies = state.discrepancies ?? const [];
+  final bytes = exportCheckWorkbook(report, exportLabels(s), extraSheets: {
+    s.t('sheet_discrepancies'): [
+      [s.t('col_severity'), s.t('col_source'), s.t('col_subject'), s.t('col_problem'), s.t('col_explain'), s.t('col_ref')],
+      for (final d in discrepancies)
+        [severityLabel(s, d.severity), sourceLabel(s, d.source), d.subject, problemText(s, d), s.t('why_${d.code}'), d.refs.join(',')],
+    ],
+  });
   if (!context.mounted) return;
   await _save(context, '${state.exportBaseName}_check.xlsx', bytes, ['xlsx']);
 }

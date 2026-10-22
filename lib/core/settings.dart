@@ -235,6 +235,7 @@ class AppSettings {
     CadTemplate? cad,
     this.language = 'zh',
     this.theme = ThemePref.system,
+    this.autoUpdate = true,
     this.coordUnit = CoordUnit.auto,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate();
@@ -243,6 +244,9 @@ class AppSettings {
   CadTemplate cad;
   String language;
   ThemePref theme;
+
+  /// Check GitHub Releases for a newer version at start-up.
+  bool autoUpdate;
   CoordUnit coordUnit;
 
   Map<String, dynamic> toJson() => {
@@ -250,6 +254,7 @@ class AppSettings {
     'cad': cad.toJson(),
     'language': language,
     'theme': theme.name,
+    'autoUpdate': autoUpdate,
     'coordUnit': coordUnit.name,
   };
 
@@ -266,6 +271,7 @@ class AppSettings {
         _ => ThemePref.system,
       },
     ),
+    autoUpdate: j['autoUpdate'] as bool? ?? true,
     coordUnit: CoordUnit.values.firstWhere((u) => u.name == j['coordUnit'], orElse: () => CoordUnit.auto),
   );
 

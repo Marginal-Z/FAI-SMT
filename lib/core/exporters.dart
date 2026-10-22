@@ -38,7 +38,8 @@ class ExportLabels {
   final String Function(StationSide?) side;
 }
 
-Uint8List exportCheckWorkbook(CheckReport report, ExportLabels l) {
+/// [extraSheets] maps a sheet name to rows whose first row is the header.
+Uint8List exportCheckWorkbook(CheckReport report, ExportLabels l, {Map<String, List<List<String>>> extraSheets = const {}}) {
   final book = Excel.createExcel();
   final defaultSheet = book.getDefaultSheet();
   final check = book[l.sheetCheck];
@@ -106,6 +107,21 @@ Uint8List exportCheckWorkbook(CheckReport report, ExportLabels l) {
   const mw = [12.0, 22.0, 22.0, 44.0, 8.0, 12.0, 10.0];
   for (var c = 0; c < mw.length; c++) {
     merged.setColumnWidth(c, mw[c]);
+  }
+  for (final e in extraSheets.entries) {
+    final sheet = book[e.key];
+    for (var i = 0; i < e.value.length; i++) {
+      sheet.appendRow([for (final v in e.value[i]) TextCellValue(v)]);
+      if (i == 0) {
+        for (var col = 0; col < e.value[i].length; col++) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0)).cellStyle = head;
+        }
+      }
+    }
+    const widths = [8.0, 14.0, 20.0, 60.0, 70.0, 40.0];
+    for (var col = 0; col < widths.length; col++) {
+      sheet.setColumnWidth(col, widths[col]);
+    }
   }
   book.setDefaultSheet(l.sheetCheck);
   return Uint8List.fromList(book.encode()!);

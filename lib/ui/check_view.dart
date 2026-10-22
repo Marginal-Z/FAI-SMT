@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../core/models.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
+import 'discrepancy_view.dart';
 import 'icons.dart';
 import 'panels.dart';
 import 'theme.dart';
@@ -51,9 +52,21 @@ class _CheckViewState extends State<CheckView> {
     final s = Strings.of(context);
     final report = state.report;
     final stations = [state.stationA?.name, state.stationB?.name].whereType<String>().length;
+    final discrepancies = state.discrepancies;
     final header = PageHeader(
       title: s.t('mod_check'),
       subtitle: state.bom == null ? null : s.t('page_check_sub', {'bom': state.bom!.name, 'stations': stations}),
+      trailing: [
+        if (discrepancies != null)
+          Segmented<CheckPageView>(
+            value: state.checkView,
+            options: [
+              (CheckPageView.materials, s.t('view_materials')),
+              (CheckPageView.discrepancies, '${s.t('view_discrepancies')}  ${discrepancies.length}'),
+            ],
+            onChanged: state.setCheckView,
+          ),
+      ],
     );
     if (report == null) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -67,6 +80,12 @@ class _CheckViewState extends State<CheckView> {
                 : FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
           ),
         ),
+      ]);
+    }
+    if (state.checkView == CheckPageView.discrepancies) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        header,
+        Expanded(child: DiscrepancyView(state: state, items: discrepancies!)),
       ]);
     }
     if (_search.text != state.search) _search.text = state.search;

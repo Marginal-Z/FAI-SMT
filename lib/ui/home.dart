@@ -15,6 +15,7 @@ import 'check_view.dart';
 import 'files_page.dart';
 import 'ribbon.dart';
 import 'rules_page.dart';
+import 'settings_page.dart';
 import 'theme.dart';
 
 class HomeWindow extends StatelessWidget {
@@ -49,6 +50,7 @@ class HomeWindow extends StatelessWidget {
                     Module.rules => RulesPage(state: state),
                     Module.board => BoardView(state: state),
                     Module.cad => CadView(state: state, compact: compact),
+                    Module.settings => SettingsPage(state: state),
                   };
                 }),
               ),

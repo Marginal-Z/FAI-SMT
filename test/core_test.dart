@@ -1,5 +1,12 @@
+import 'dart:ffi' show Abi;
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/core/checker.dart';
+import 'package:smt_fai/core/discrepancies.dart';
+import 'package:smt_fai/core/footprints.dart';
+import 'package:smt_fai/core/updater.dart';
+import 'package:smt_fai/version.dart';
 import 'package:smt_fai/core/exporters.dart';
 import 'package:smt_fai/core/models.dart';
 import 'package:smt_fai/core/parsers.dart';
@@ -235,6 +242,91 @@ void main() {
       expect(p.x, 119.946);
       expect(p.rotation, 90);
       expect(p.side, BoardSide.top);
+    });
+  });
+
+  group('updates', () {
+    test('appVersion matches pubspec.yaml', () {
+      final v = RegExp(r'^version:\s*([0-9.]+)', multiLine: true).firstMatch(File('pubspec.yaml').readAsStringSync())!.group(1);
+      expect(appVersion, v);
+    });
+    test('version comparison', () {
+      expect(compareVersions('1.2.0', '1.1.9'), greaterThan(0));
+      expect(compareVersions('1.10.0', '1.9.0'), greaterThan(0));
+      expect(compareVersions('1.2', '1.2.0'), 0);
+      expect(compareVersions('1.2.0', '1.2.1'), lessThan(0));
+    });
+    test('asset selection per platform', () {
+      final r = ReleaseInfo.fromJson({
+        'tag_name': 'v1.3.0',
+        'assets': [
+          for (final n in [
+            'SMT-FAI-1.3.0-windows-x64.zip', 'SMT-FAI-1.3.0-windows-arm64.zip', 'SMT-FAI-1.3.0-linux-x64.tar.gz',
+            'SMT-FAI-1.3.0-linux-arm64.tar.gz', 'SMT-FAI-1.3.0-android-arm64-v8a.apk', 'SMT-FAI-1.3.0-android-universal.apk',
+          ])
+            {'name': n, 'browser_download_url': 'https://x/$n', 'size': 1},
+        ],
+      });
+      expect(r.version, '1.3.0');
+      expect(pickAsset(r, Abi.windowsArm64)!.name, endsWith('windows-arm64.zip'));
+      expect(pickAsset(r, Abi.linuxX64)!.name, endsWith('linux-x64.tar.gz'));
+      expect(pickAsset(r, Abi.androidArm64)!.name, endsWith('arm64-v8a.apk'));
+      expect(pickAsset(r, Abi.androidArm)!.name, endsWith('universal.apk'));
+      expect(pickAsset(r, Abi.macosArm64), isNull);
+    });
+  });
+
+  group('assembly drawing shapes', () {
+    test('designator prefixes and package sizes', () {
+      expect(shapeOf('15R3', description: '贴片电阻 RT0201 22R').kind, PartKind.resistor);
+      expect(shapeOf('15R3', description: '贴片电阻 RT0201 22R').width, 0.6);
+      expect(shapeOf('1C4', description: '贴片电容 CC0603 22UF').width, 1.6);
+      expect(shapeOf('1L2', description: '贴片工字电感 一体252012').kind, PartKind.inductor);
+      expect(shapeOf('Y1', description: '贴片晶振 SMD3225').width, 3.2);
+      expect(shapeOf('U5', footprint: 'AML_C3_C308L_BGA_PACKAGE_1').bga, isTrue);
+      expect(shapeOf('8U1', description: 'MSOP_8').pins, 4);
+      expect(shapeOf('1Q2', footprint: 'SOT23').kind, PartKind.transistor);
+      expect(shapeOf('MARK1').kind, PartKind.fiducial);
+      expect(shapeOf('TP10_1').kind, PartKind.testPoint);
+    });
+  });
+
+  group('discrepancies', () {
+    test('description, coordinates and side are cross-checked', () {
+      final bom = [
+        BomItem(partNo: 'A', name: '贴片电感', spec: 'UR0420', qty: 2, refs: ['L1', 'L2']),
+      ];
+      final st = [StationItem(partNo: 'A', side: StationSide.a, slot: '9-17', desc: '贴片电感 4040', refs: ['L1', 'L2'])];
+      final rep = runCheck(bom, st, CheckRules());
+      final ds = findDiscrepancies(
+        bom: bom,
+        stations: st,
+        report: rep,
+        rules: CheckRules(),
+        placements: [
+          Placement(ref: 'L1', x: 0, y: 0, side: BoardSide.bottom),
+          Placement(ref: 'NC9', x: 1, y: 1),
+        ],
+      );
+      final codes = ds.map((d) => d.code).toList();
+      expect(codes, containsAll(['d_desc_mismatch', 'd_coord_missing', 'd_side_mismatch', 'd_coord_extra']));
+      expect(ds.firstWhere((d) => d.code == 'd_coord_missing').subject, 'L2');
+      expect(ds.first.severity, Severity.error);
+      for (final d in ds) {
+        expect(Texts.has(d.code), isTrue, reason: d.code);
+        expect(Texts.has('why_${d.code}'), isTrue, reason: 'why_${d.code}');
+      }
+    });
+
+    test('every check reason has an explanation', () {
+      for (final code in [
+        'not_on_station', 'station_missing_refs', 'station_extra_refs', 'bom_no_refs', 'bom_dup_refs', 'bom_ref_conflict',
+        'station_ref_conflict', 'ref_both_sides', 'qty_mismatch', 'alt_used', 'alt_listed', 'not_in_bom', 'alt_outside_main',
+        'ref_belongs_to', 'excl_keyword', 'excl_prefix', 'excl_no_refs', 'excl_parent', 'excl_programmed',
+        'd_parse_bad_qty', 'd_parse_bad_xy', 'd_parse_dup_ref', 'd_parse_station_qty', 'd_station_dup',
+      ]) {
+        expect(Texts.has('why_$code'), isTrue, reason: code);
+      }
     });
   });
 }

@@ -15,7 +15,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = (await getApplicationSupportDirectory()).path;
   final settings = await AppSettings.load(dir);
-  runApp(SmtFaiApp(state: AppState(settings, dir)));
+  final state = AppState(settings, dir);
+  runApp(SmtFaiApp(state: state));
+  if (settings.autoUpdate) state.checkForUpdates(silent: true);
 }
 
 bool get _isTouchPlatform => Platform.isAndroid || Platform.isIOS;

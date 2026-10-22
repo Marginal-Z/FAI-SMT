@@ -4,6 +4,7 @@
 //   flutter test tool/real_screens_test.dart --update-goldens
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
@@ -51,11 +52,16 @@ void main() {
     return state;
   }
 
-  Future<void> shot(WidgetTester tester, AppState state, String name, {Size size = const Size(1600, 940), bool touch = false}) async {
+  Future<void> shot(WidgetTester tester, AppState state, String name,
+      {Size size = const Size(1600, 940), bool touch = false, int zoomSteps = 0, Offset zoomAt = const Offset(800, 560)}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     await tester.pumpWidget(SmtFaiApp(state: state, touch: touch));
     await tester.pumpAndSettle();
+    for (var i = 0; i < zoomSteps; i++) {
+      tester.binding.handlePointerEvent(PointerScrollEvent(position: zoomAt, scrollDelta: const Offset(0, -50)));
+      await tester.pump();
+    }
     await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens_real/$name.png'));
   }
 
@@ -87,5 +93,17 @@ void main() {
     final s = demoState(dark: false);
     s.setModule(Module.cad);
     await shot(tester, s, 'cad');
+  });
+
+  testWidgets('real assembly zoom', (tester) async {
+    final s = demoState();
+    s.setModule(Module.board);
+    await shot(tester, s, 'board_zoom', zoomSteps: 12, zoomAt: const Offset(800, 520));
+  });
+
+  testWidgets('real discrepancies', (tester) async {
+    final s = demoState(dark: false);
+    s.setCheckView(CheckPageView.discrepancies);
+    await shot(tester, s, 'discrepancies');
   });
 }

@@ -5,13 +5,13 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
+import '../core/discrepancies.dart';
 import '../core/parsers.dart';
 import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'dialogs.dart';
 import 'glyphs.dart';
-import 'logo.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -21,6 +21,7 @@ const moduleLabels = {
   Module.rules: 'mod_rules',
   Module.board: 'mod_board',
   Module.cad: 'mod_cad',
+  Module.settings: 'mod_settings',
 };
 
 class TitleBar extends StatelessWidget {
@@ -40,7 +41,7 @@ class TitleBar extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 14),
-          const AppLogo(size: 22),
+          Image.asset('assets/icon/app_icon_64.png', width: 24, height: 24, filterQuality: FilterQuality.medium),
           const SizedBox(width: 9),
           Text('SMT-FAI', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: c.text, letterSpacing: 0.6)),
           Container(width: 1, height: 18, margin: const EdgeInsets.symmetric(horizontal: 14), color: c.borderStrong),
@@ -57,6 +58,27 @@ class TitleBar extends StatelessWidget {
             Text(s.t('app_subtitle'), style: TextStyle(fontSize: 12, color: c.textFaint)),
             const SizedBox(width: 16),
           ],
+          if (state.updateAvailable) ...[
+            Hoverable(
+              onTap: () => state.setModule(Module.settings),
+              builder: (context, hover, _) => Container(
+                height: m.iconButton,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: c.accent.withValues(alpha: hover ? 0.22 : 0.14),
+                  borderRadius: BorderRadius.circular(m.iconButton / 2),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  GlyphIcon(Glyph.download, size: 15, color: c.accent),
+                  const SizedBox(width: 6),
+                  Text(s.t('upd_available', {'v': state.latestRelease!.version}),
+                      style: TextStyle(fontSize: 12, color: c.accent, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           LanguageMenu(state: state),
           const SizedBox(width: 4),
           _TitleIcon(
@@ -68,7 +90,7 @@ class TitleBar extends StatelessWidget {
             tooltip: s.t('theme_now_${state.theme.name}'),
             onTap: state.cycleTheme,
           ),
-          _TitleIcon(glyph: Glyph.info, tooltip: s.t('btn_about'), onTap: () => showAboutDialog(context, state)),
+          _TitleIcon(glyph: Glyph.settings, tooltip: s.t('mod_settings'), onTap: () => state.setModule(Module.settings)),
           const SizedBox(width: 8),
         ],
       ),
@@ -312,6 +334,7 @@ class Ribbon extends StatelessWidget {
             Module.rules => _rules(context, s),
             Module.board => _board(context, s),
             Module.cad => _cad(context, s),
+            Module.settings => _settings(context, s),
           },
         ),
       ),
@@ -368,6 +391,21 @@ class Ribbon extends StatelessWidget {
         RibbonGroup(label: s.t('grp_check'), children: [
           RibbonButton(glyph: Glyph.runCheck, label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state)),
         ]),
+        RibbonGroup(label: s.t('grp_view'), children: [
+          RibbonButton(
+            glyph: Glyph.materials,
+            label: s.t('view_materials'),
+            active: state.checkView == CheckPageView.materials,
+            onTap: () => state.setCheckView(CheckPageView.materials),
+          ),
+          RibbonButton(
+            glyph: Glyph.discrepancies,
+            label: s.t('view_discrepancies'),
+            active: state.checkView == CheckPageView.discrepancies,
+            badge: (state.discrepancies?.any((d) => d.severity == Severity.error) ?? false) ? AppTheme.of(context).ng : null,
+            onTap: state.report == null ? null : () => state.setCheckView(CheckPageView.discrepancies),
+          ),
+        ]),
         RibbonGroup(label: s.t('grp_export'), children: [
           RibbonButton(glyph: Glyph.report, label: s.t('btn_export_report'), onTap: state.report == null ? null : () => exportReport(context, state)),
         ]),
@@ -412,7 +450,22 @@ class Ribbon extends StatelessWidget {
               onTap: () => state.setBoardSide(BoardSideFilter.bottom)),
         ]),
         RibbonGroup(label: s.t('grp_view'), children: [
+          RibbonButton(glyph: Glyph.mirror, label: s.t('board_mirror'), active: state.boardMirror, onTap: state.toggleBoardMirror),
+          RibbonButton(glyph: Glyph.rotateLeft, label: s.t('board_rotate_left'), onTap: () => state.rotateBoard(1)),
+          RibbonButton(glyph: Glyph.rotateRight, label: s.t('board_rotate_right'), onTap: () => state.rotateBoard(3)),
           RibbonButton(glyph: Glyph.fit, label: s.t('board_fit'), onTap: state.fitBoard),
+        ]),
+        RibbonGroup(label: s.t('grp_coloring'), children: [
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            RibbonOption(
+                label: s.t('color_type'),
+                selected: state.boardColoring == BoardColoring.type,
+                onTap: () => state.setBoardColoring(BoardColoring.type)),
+            RibbonOption(
+                label: s.t('color_status'),
+                selected: state.boardColoring == BoardColoring.status,
+                onTap: () => state.setBoardColoring(BoardColoring.status)),
+          ]),
         ]),
       ];
 
@@ -428,6 +481,36 @@ class Ribbon extends StatelessWidget {
             onTap: state.report == null || state.coords == null ? null : () => exportCad(context, state),
           ),
           RibbonButton(glyph: Glyph.report, label: s.t('btn_export_report'), onTap: state.report == null ? null : () => exportReport(context, state)),
+        ]),
+      ];
+}
+
+extension on Ribbon {
+  List<Widget> _settings(BuildContext context, Strings s) => [
+        RibbonGroup(label: s.t('grp_update'), children: [
+          RibbonButton(
+            glyph: Glyph.update,
+            label: s.t('btn_check_update'),
+            onTap: state.updateStatus == UpdateStatus.checking ? null : () => state.checkForUpdates(),
+          ),
+          RibbonButton(
+            glyph: Glyph.download,
+            label: s.t('btn_install_update'),
+            primary: state.updateAvailable,
+            onTap: state.updateAvailable && state.updateStatus != UpdateStatus.downloading ? state.downloadAndInstall : null,
+          ),
+        ]),
+        RibbonGroup(label: s.t('grp_appearance'), children: [
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final (t, key) in [(ThemePref.light, 'btn_light'), (ThemePref.dark, 'btn_dark'), (ThemePref.system, 'btn_system')])
+              RibbonOption(label: s.t(key), selected: state.theme == t, onTap: () => state.setTheme(t)),
+          ]),
+        ]),
+        RibbonGroup(label: s.t('grp_language'), children: [
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final l in supportedLanguages)
+              RibbonOption(label: languageNames[l]!, selected: state.language == l, onTap: () => state.setLanguage(l)),
+          ]),
         ]),
       ];
 }
@@ -562,7 +645,7 @@ class RibbonOption extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => Container(
-        width: 84,
+        constraints: const BoxConstraints(minWidth: 84),
         height: m.touch ? 24 : 22,
         margin: const EdgeInsets.only(bottom: 1),
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -574,7 +657,7 @@ class RibbonOption extends StatelessWidget {
                   : null,
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Row(children: [
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 12,
             height: 12,

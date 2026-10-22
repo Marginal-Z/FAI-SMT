@@ -5,13 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'icons.dart';
 
 import '../app_state.dart';
+import '../version.dart';
 import '../core/parsers.dart';
 import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-const appVersion = '1.1.0';
 
 Future<void> showCadTemplateDialog(BuildContext context, AppState state) {
   final s = Strings.of(context);

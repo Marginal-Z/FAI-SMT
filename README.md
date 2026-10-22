@@ -7,6 +7,9 @@ SMT 首件核对桌面工具（Windows / Linux，后续可出 Android）：
 3. 核对结果与 **原始坐标文件** 合并，生成 **FAI i450 首件测试仪** 用的 CAD 坐标文件；
 4. 界面支持 中文 / English / ไทย 切换；主题可选 浅色 / 深色 / 跟随系统（标题栏右上角一键切换，或「视图 → 主题」）。
 5. 界面按功能分区：文件导入 / 核对 / 规则 / 坐标视图 / CAD 输出，每个标签对应一个功能页和它自己的功能区按钮；图标为自绘双色线性图标。
+7. 差异清单：汇总 BOM、站位表 A/B、坐标文件之间的全部不一致（缺失、多余、用量、描述不符、坐标缺失、面别不符等），每条给出原因说明。
+8. PCB 装配图：按元件类型与封装尺寸绘制，放大后位号显示在元件内部；TOP 面 / BOT 面 / 所有面、镜像、旋转。
+9. 设置：主题、语言、检查更新与应用内更新（来源为本仓库的 GitHub Releases）。
 6. 自适应布局：宽屏时核对页右侧停靠属性面板，窄屏时属性面板浮出、结果以卡片显示；触屏自动加大点击区域，坐标视图支持双指缩放。
 
 技术栈：Flutter（Dart），界面全部自绘，不使用 Material 组件；图标为 Phosphor 图标字体（MIT）。
@@ -80,7 +83,8 @@ GitHub Actions（`.github/workflows/build.yml`）先跑分析和单元测试，�
 | Android | armeabi-v7a、arm64-v8a、x86_64 | 各架构 APK、通用 APK、AAB |
 
 - Windows / Linux 的 arm64 版本在 GitHub 的 ARM 构建机上原生编译（Flutter 不支持交叉编译这两个平台）。Flutter 已不再支持 32 位 x86 的 Windows / Linux / Android 发布版；Linux riscv64 仍是实验性支持，GitHub 也没有对应构建机，因此不在列表中。
-- 产物在 Actions 运行页的 Artifacts 中下载；打 `v*` 标签时自动发布到 Releases。
+- 产物在 Actions 运行页的 Artifacts 中下载；打 `v*` 标签时自动发布到 Releases（说明取自 `docs/release-notes/<标签>.md`），应用内更新即从这里下载。
+- 发布新版本：修改 `pubspec.yaml` 的 `version` 与 `lib/version.dart`（单元测试会检查两者一致），写好发布说明，构建通过后打标签。
 - 开发提交先推送到 `dev` 分支，全部构建通过后再同步到 `main`，`main` 只包含构建成功的代码。
 - 客户资料（`samples/` 下除 `demo/` 外的文件）和 FAI 程序不进入仓库。
 

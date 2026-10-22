@@ -1,14 +1,22 @@
 /// Application state: loaded files, check report, CAD output, settings.
 library;
 
+import 'dart:ffi' show Abi;
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core/checker.dart';
+import 'core/discrepancies.dart';
 import 'core/exporters.dart';
 import 'core/models.dart';
 import 'core/parsers.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
+import 'core/updater.dart';
+import 'update_installer.dart';
+import 'version.dart';
 
 enum InputKind { bom, stationA, stationB, coords }
 
@@ -28,13 +36,21 @@ class UserMessage implements Exception {
 }
 
 /// Function modules. Each ribbon tab opens exactly one module page.
-enum Module { files, check, rules, board, cad }
+enum Module { files, check, rules, board, cad, settings }
 
 /// Sections of the rules page.
 enum RulesSection { exclusion, alternates, general }
 
+enum UpdateStatus { idle, checking, upToDate, available, downloading, installing, failed }
+
 /// Board view side filter.
 enum BoardSideFilter { both, top, bottom }
+
+/// What the assembly drawing colours components by.
+enum BoardColoring { type, status }
+
+/// Check page view: per-part results or the full discrepancy list.
+enum CheckPageView { materials, discrepancies }
 
 class AppState extends ChangeNotifier {
   AppState(this.settings, this.settingsDir);
@@ -50,6 +66,7 @@ class AppState extends ChangeNotifier {
 
   CheckReport? report;
   CadResult? _cad;
+  List<Discrepancy>? _discrepancies;
 
   // UI state
   Module module = Module.files;
@@ -58,6 +75,20 @@ class AppState extends ChangeNotifier {
 
   /// Incremented to ask the board view to fit the board to the window.
   int boardFitRequest = 0;
+
+  /// View rotation in quarter turns (counter-clockwise) and mirror flag.
+  int boardQuarterTurns = 0;
+  bool boardMirror = false;
+  BoardColoring boardColoring = BoardColoring.type;
+  CheckPageView checkView = CheckPageView.materials;
+
+  // Updates
+  UpdateStatus updateStatus = UpdateStatus.idle;
+  ReleaseInfo? latestRelease;
+  double updateProgress = 0;
+  String updateError = '';
+
+  bool get updateAvailable => latestRelease != null && compareVersions(latestRelease!.version, appVersion) > 0;
   CheckCategory? filter;
   String search = '';
   CheckRow? selected;
@@ -78,6 +109,61 @@ class AppState extends ChangeNotifier {
     settings.language = lang;
     persist();
     notifyListeners();
+  }
+
+  void setAutoUpdate(bool v) {
+    settings.autoUpdate = v;
+    persist();
+    notifyListeners();
+  }
+
+  /// Queries GitHub Releases. [silent] keeps failures out of the status bar
+  /// (used for the start-up check).
+  Future<void> checkForUpdates({bool silent = false}) async {
+    if (updateStatus == UpdateStatus.checking || updateStatus == UpdateStatus.downloading) return;
+    updateStatus = UpdateStatus.checking;
+    updateError = '';
+    notifyListeners();
+    try {
+      latestRelease = await fetchLatestRelease();
+      updateStatus = updateAvailable ? UpdateStatus.available : UpdateStatus.upToDate;
+      if (updateAvailable) _status('update_found', {'v': latestRelease!.version});
+    } on UpdateException catch (e) {
+      updateStatus = silent ? UpdateStatus.idle : UpdateStatus.failed;
+      updateError = e.code == 'no_release' ? 'upd_err_no_release' : 'upd_err_network';
+    }
+    notifyListeners();
+  }
+
+  /// Downloads the package for this platform and hands it to the installer.
+  Future<void> downloadAndInstall() async {
+    final release = latestRelease;
+    if (release == null) return;
+    final asset = pickAsset(release, Abi.current());
+    if (asset == null) {
+      updateStatus = UpdateStatus.failed;
+      updateError = 'upd_err_no_asset';
+      notifyListeners();
+      return;
+    }
+    updateStatus = UpdateStatus.downloading;
+    updateProgress = 0;
+    notifyListeners();
+    try {
+      final base = await getTemporaryDirectory();
+      final dir = Directory('${base.path}${Platform.pathSeparator}smt_fai_update_${release.version}');
+      final file = await downloadAsset(asset, dir, (p) {
+        updateProgress = p;
+        notifyListeners();
+      });
+      updateStatus = UpdateStatus.installing;
+      notifyListeners();
+      await installUpdate(file, release);
+    } on UpdateException catch (e) {
+      updateStatus = UpdateStatus.failed;
+      updateError = 'upd_err_${e.code}';
+      notifyListeners();
+    }
   }
 
   void setTheme(ThemePref t) {
@@ -102,6 +188,28 @@ class AppState extends ChangeNotifier {
 
   void setBoardSide(BoardSideFilter side) {
     boardSide = side;
+    notifyListeners();
+  }
+
+  void rotateBoard(int quarterTurns) {
+    boardQuarterTurns = (boardQuarterTurns + quarterTurns) % 4;
+    boardFitRequest++;
+    notifyListeners();
+  }
+
+  void toggleBoardMirror() {
+    boardMirror = !boardMirror;
+    boardFitRequest++;
+    notifyListeners();
+  }
+
+  void setBoardColoring(BoardColoring c) {
+    boardColoring = c;
+    notifyListeners();
+  }
+
+  void setCheckView(CheckPageView v) {
+    checkView = v;
     notifyListeners();
   }
 
@@ -153,6 +261,7 @@ class AppState extends ChangeNotifier {
       selected = null;
     }
     _cad = null;
+    _discrepancies = null;
     _status('status_loaded', {'name': name});
     notifyListeners();
   }
@@ -174,6 +283,7 @@ class AppState extends ChangeNotifier {
       selected = null;
     }
     _cad = null;
+    _discrepancies = null;
     _status('status_ready');
     notifyListeners();
   }
@@ -184,6 +294,7 @@ class AppState extends ChangeNotifier {
     _coordBytes = null;
     report = null;
     _cad = null;
+    _discrepancies = null;
     selected = null;
     filter = null;
     search = '';
@@ -198,6 +309,8 @@ class AppState extends ChangeNotifier {
     if (c != null && _coordBytes != null) {
       coords = LoadedFile(c.name, parseCoordinates(readTableBytes(_coordBytes!, c.name), unit: u));
       _cad = null;
+      _discrepancies = null;
+    _discrepancies = null;
     }
     notifyListeners();
   }
@@ -208,6 +321,7 @@ class AppState extends ChangeNotifier {
     final stations = [...?stationA?.result.items, ...?stationB?.result.items];
     report = runCheck(bom!.result.items, stations, settings.rules);
     _cad = null;
+    _discrepancies = null;
     selected = null;
     _status('status_checked', {
       'pass': report!.count(CheckCategory.pass),
@@ -232,6 +346,7 @@ class AppState extends ChangeNotifier {
     settings.cad = t;
     persist();
     _cad = null;
+    _discrepancies = null;
     notifyListeners();
   }
 
@@ -240,6 +355,23 @@ class AppState extends ChangeNotifier {
   CadResult? get cad {
     if (report == null || coords == null) return null;
     return _cad ??= buildCad(coords!.result.items, report!, settings.cad, settings.rules);
+  }
+
+  /// All inconsistencies across the loaded files, or null before a check.
+  List<Discrepancy>? get discrepancies {
+    final r = report;
+    if (r == null) return null;
+    return _discrepancies ??= findDiscrepancies(
+      bom: bom!.result.items,
+      stations: [...?stationA?.result.items, ...?stationB?.result.items],
+      report: r,
+      rules: settings.rules,
+      placements: coords?.result.items,
+      bomIssues: bom!.result.issues,
+      stationAIssues: stationA?.result.issues ?? const [],
+      stationBIssues: stationB?.result.issues ?? const [],
+      coordIssues: coords?.result.issues ?? const [],
+    );
   }
 
   List<CheckRow> visibleRows() {

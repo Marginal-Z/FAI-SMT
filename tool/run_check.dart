@@ -3,6 +3,7 @@
 //
 //   dart run tool/run_check.dart <bom> <stationA> [stationB] [coords]
 import 'package:smt_fai/core/checker.dart';
+import 'package:smt_fai/core/discrepancies.dart';
 import 'package:smt_fai/core/exporters.dart';
 import 'package:smt_fai/core/models.dart';
 import 'package:smt_fai/core/parsers.dart';
@@ -42,5 +43,12 @@ Future<void> main(List<String> a) async {
       layers.putIfAbsent(side, () => {}).update(r.placement.side, (n) => n + 1, ifAbsent: () => 1);
     }
     print('station side -> coordinate layer: $layers');
+    final ds = findDiscrepancies(bom: bom.items, stations: st, report: rep, rules: CheckRules(), placements: c.items, coordIssues: c.issues);
+    for (final v in Severity.values) {
+      print('${v.name}: ${ds.where((d) => d.severity == v).length}');
+    }
+    for (final d in ds.where((d) => d.severity != Severity.info).take(30)) {
+      print('  [${d.severity.name}/${d.source.name}] ${d.subject}: ${s.t(d.code, d.args)}');
+    }
   }
 }

@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+<radialGradient id="tileA" cx="0.5" cy="0.2" r="0.95"><stop offset="0" stop-color="#46505B"></stop><stop offset="0.5" stop-color="#1C2127"></stop><stop offset="1" stop-color="#0A0C0F"></stop></radialGradient>
+<radialGradient id="tileB" cx="0.5" cy="0.2" r="0.95"><stop offset="0" stop-color="#2A6FB0"></stop><stop offset="0.5" stop-color="#0E365E"></stop><stop offset="1" stop-color="#051427"></stop></radialGradient>
+<linearGradient id="gFront" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"></stop><stop offset="1" stop-color="#E0E5EA"></stop></linearGradient>
+<linearGradient id="gSide" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D3D9DF"></stop><stop offset="1" stop-color="#AEB6BF"></stop></linearGradient>
+<linearGradient id="gTop" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#F8FAFB"></stop><stop offset="1" stop-color="#E3E8EC"></stop></linearGradient>
+<linearGradient id="gHood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A4148"></stop><stop offset="1" stop-color="#1F2429"></stop></linearGradient>
+<linearGradient id="gGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1E262E"></stop><stop offset="1" stop-color="#06080B"></stop></linearGradient>
+<linearGradient id="gGlassS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2C353E"></stop><stop offset="1" stop-color="#11161B"></stop></linearGradient>
+<linearGradient id="gPcb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2F8C6E"></stop><stop offset="1" stop-color="#1A5343"></stop></linearGradient>
+<linearGradient id="gCone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5CCBFF" stop-opacity="0.38"></stop><stop offset="1" stop-color="#5CCBFF" stop-opacity="0"></stop></linearGradient>
+<linearGradient id="gMetal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6C7680"></stop><stop offset="0.5" stop-color="#D2D8DE"></stop><stop offset="1" stop-color="#6C7680"></stop></linearGradient>
+<linearGradient id="gAO" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0F1419" stop-opacity="0.22"></stop><stop offset="1" stop-color="#0F1419" stop-opacity="0"></stop></linearGradient>
+<linearGradient id="gRed" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3E1410"></stop><stop offset="0.45" stop-color="#8A2A22"></stop><stop offset="1" stop-color="#3E1410"></stop></linearGradient>
+<linearGradient id="gAmber" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3F300C"></stop><stop offset="0.45" stop-color="#8C6B1C"></stop><stop offset="1" stop-color="#3F300C"></stop></linearGradient>
+<linearGradient id="gGreen" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#11804A"></stop><stop offset="0.45" stop-color="#8CFFC8"></stop><stop offset="1" stop-color="#11804A"></stop></linearGradient>
+<radialGradient id="bOrange" cx="0.38" cy="0.32" r="0.7"><stop offset="0" stop-color="#FFC27A"></stop><stop offset="1" stop-color="#D9681A"></stop></radialGradient>
+<radialGradient id="bRed" cx="0.38" cy="0.32" r="0.7"><stop offset="0" stop-color="#FF8A80"></stop><stop offset="1" stop-color="#C42019"></stop></radialGradient>
+<radialGradient id="bBlack" cx="0.38" cy="0.32" r="0.7"><stop offset="0" stop-color="#5A626B"></stop><stop offset="1" stop-color="#0E1114"></stop></radialGradient>
+<clipPath id="cWin"><rect x="282" y="282" width="230" height="258" rx="6"></rect></clipPath>
+<filter id="fSoft" x="-30%" y="-300%" width="160%" height="700%"><feGaussianBlur stdDeviation="18"></feGaussianBlur></filter>
+<filter id="fTight" x="-30%" y="-300%" width="160%" height="700%"><feGaussianBlur stdDeviation="5"></feGaussianBlur></filter>
+<filter id="fGlow" x="-100%" y="-200%" width="300%" height="500%"><feGaussianBlur stdDeviation="8"></feGaussianBlur></filter>
+<g id="machine">
+<ellipse cx="505" cy="886" rx="300" ry="24" fill="#000000" fill-opacity="0.55" filter="url(#fSoft)"></ellipse>
+<ellipse cx="500" cy="870" rx="250" ry="8" fill="#000000" fill-opacity="0.5" filter="url(#fTight)"></ellipse>
+<rect x="738" y="804" width="8" height="16" fill="url(#gMetal)"></rect>
+<ellipse cx="742" cy="822" rx="16" ry="5" fill="#1E2227"></ellipse>
+<path d="M610 250 L760 190 L760 800 L610 860 Z" fill="url(#gSide)"></path>
+<path d="M610 840 L760 780 L760 800 L610 860 Z" fill="#9AA3AC"></path>
+<path d="M630 282 L740 238 L740 498 L630 542 Z" fill="url(#gGlassS)" stroke="#8E98A2" stroke-width="3" stroke-linejoin="round"></path>
+<path d="M630 282 L684 260 L684 330 L630 352 Z" fill="#FFFFFF" fill-opacity="0.07"></path>
+<path d="M610 566 L760 506" stroke="#9AA3AC" stroke-width="2"></path>
+<path d="M726 622 L734 619 L734 694 L726 697 Z" fill="#7E8892"></path>
+<path d="M250 250 L400 190 L760 190 L610 250 Z" fill="url(#gTop)"></path>
+<rect x="250" y="250" width="360" height="610" fill="url(#gFront)"></rect>
+<rect x="250" y="840" width="360" height="20" fill="#CDD3D9"></rect>
+<path d="M250 250 H610 L760 190" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linejoin="round"></path>
+<path d="M610 250 V860" stroke="#FFFFFF" stroke-opacity="0.95" stroke-width="2.5"></path>
+<rect x="266" y="266" width="328" height="290" rx="10" fill="url(#gHood)"></rect>
+<path d="M276 267 H584" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"></path>
+<rect x="266" y="556" width="328" height="14" fill="url(#gAO)"></rect>
+<rect x="282" y="282" width="230" height="258" rx="6" fill="url(#gGlass)"></rect>
+<g clip-path="url(#cWin)">
+<rect x="282" y="282" width="230" height="36" fill="#2A333D" fill-opacity="0.6"></rect>
+<rect x="282" y="310" width="230" height="12" fill="#5A646E"></rect>
+<rect x="282" y="310" width="230" height="2" fill="#9AA4AE"></rect>
+<path d="M375 404 L419 404 L476 494 L318 494 Z" fill="url(#gCone)"></path>
+<rect x="372" y="320" width="50" height="72" rx="4" fill="#2B3239"></rect>
+<rect x="374" y="322" width="6" height="68" fill="#4D5761"></rect>
+<rect x="380" y="390" width="34" height="10" rx="3" fill="#15191D"></rect>
+<ellipse cx="397" cy="403" rx="26" ry="7" fill="#5CCBFF" fill-opacity="0.6" filter="url(#fGlow)"></ellipse>
+<ellipse cx="397" cy="402" rx="22" ry="5" fill="none" stroke="#8ADBFF" stroke-width="3.5"></ellipse>
+<path d="M298 492 L496 492 L510 532 L284 532 Z" fill="#3A424A"></path>
+<path d="M316 488 L478 488 L490 520 L304 520 Z" fill="url(#gPcb)"></path>
+<rect x="380" y="494" width="36" height="14" rx="2" fill="#111417"></rect>
+<rect x="336" y="500" width="16" height="8" rx="1" fill="#C9CED4"></rect>
+<rect x="446" y="499" width="20" height="9" rx="1" fill="#111417"></rect>
+<rect x="430" y="510" width="10" height="6" rx="1" fill="#B9965A"></rect>
+<path d="M314 497 L480 497 L482 503 L312 503 Z" fill="#8ADBFF" fill-opacity="0.85"></path>
+<path d="M314 497 L480 497 L482 503 L312 503 Z" fill="#5CCBFF" filter="url(#fGlow)"></path>
+<path d="M282 282 H404 L330 540 H282 Z" fill="#FFFFFF" fill-opacity="0.06"></path>
+<path d="M432 282 H450 L376 540 H358 Z" fill="#FFFFFF" fill-opacity="0.04"></path>
+</g>
+<rect x="282" y="282" width="230" height="258" rx="6" fill="none" stroke="#0B0E11" stroke-width="3"></rect>
+<rect x="522" y="282" width="60" height="258" rx="4" fill="#1C2126"></rect>
+<g>
+<circle cx="552" cy="318" r="14" fill="#0A0C0E"></circle><circle cx="552" cy="318" r="11" fill="url(#bOrange)"></circle>
+<circle cx="552" cy="358" r="14" fill="#0A0C0E"></circle><circle cx="552" cy="358" r="11" fill="url(#bBlack)"></circle>
+<circle cx="552" cy="398" r="14" fill="#0A0C0E"></circle><circle cx="552" cy="398" r="11" fill="url(#bRed)"></circle>
+<circle cx="552" cy="438" r="14" fill="#0A0C0E"></circle><circle cx="552" cy="438" r="11" fill="url(#bBlack)"></circle>
+</g>
+<g fill="#6B747E">
+<rect x="541" y="336" width="22" height="3" rx="1.5"></rect><rect x="541" y="376" width="22" height="3" rx="1.5"></rect><rect x="541" y="416" width="22" height="3" rx="1.5"></rect><rect x="541" y="456" width="22" height="3" rx="1.5"></rect>
+</g>
+<path d="M250 572 H610" stroke="#C9CFD5" stroke-width="2"></path>
+<text x="430" y="652" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="2.6" fill="#7B848E">SMT FIRST ARTICLE INSPECTION</text>
+<g transform="translate(430 715) scale(0.72) translate(-505 -690)">
+<rect x="520" y="704" width="44" height="12" fill="#0A8FE0"></rect>
+<path d="M350 640 H450 V668 H378 V682 H432 V708 H378 V740 H350 Z M482 740 L530 640 H554 L602 740 H572 L542 677.5 L512 740 Z M632 640 H660 V740 H632 Z" fill="#161B21"></path>
+</g>
+<rect x="400" y="772" width="60" height="6" rx="3" fill="#0A8FE0"></rect>
+<rect x="276" y="860" width="8" height="14" fill="url(#gMetal)"></rect>
+<ellipse cx="280" cy="878" rx="20" ry="6" fill="#1E2227"></ellipse>
+<ellipse cx="280" cy="876" rx="20" ry="3" fill="#4A525A"></ellipse>
+<rect x="300" y="858" width="26" height="20" rx="8" fill="#1A1E22"></rect>
+<rect x="584" y="860" width="8" height="14" fill="url(#gMetal)"></rect>
+<ellipse cx="588" cy="878" rx="20" ry="6" fill="#1E2227"></ellipse>
+<ellipse cx="588" cy="876" rx="20" ry="3" fill="#4A525A"></ellipse>
+<rect x="546" y="858" width="26" height="20" rx="8" fill="#1A1E22"></rect>
+<ellipse cx="318" cy="232" rx="14" ry="5" fill="#A9B1BA"></ellipse>
+<rect x="314" y="152" width="8" height="80" fill="url(#gMetal)"></rect>
+<ellipse cx="318" cy="134" rx="40" ry="26" fill="#2EE68A" fill-opacity="0.45" filter="url(#fGlow)"></ellipse>
+<rect x="300" y="146" width="36" height="9" rx="2" fill="#2A3036"></rect>
+<rect x="300" y="122" width="36" height="24" fill="url(#gGreen)"></rect>
+<rect x="300" y="97" width="36" height="24" fill="url(#gAmber)"></rect>
+<rect x="300" y="72" width="36" height="24" fill="url(#gRed)"></rect>
+<rect x="300" y="121" width="36" height="1.5" fill="#15191D"></rect>
+<rect x="300" y="96" width="36" height="1.5" fill="#15191D"></rect>
+<rect x="300" y="62" width="36" height="11" rx="4" fill="#2A3036"></rect>
+<ellipse cx="318" cy="62" rx="18" ry="5" fill="#454D56"></ellipse>
+</g>
+</defs>
+<symbol id="icA" viewBox="0 0 1024 1024">
+<rect width="1024" height="1024" rx="230" fill="url(#tileA)"></rect>
+<rect x="1.5" y="1.5" width="1021" height="1021" rx="228.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="3"></rect>
+<g transform="translate(512 512) scale(0.92) translate(-505 -481)"><use href="#machine"></use></g>
+</symbol>
+<symbol id="icB" viewBox="0 0 1024 1024">
+<rect width="1024" height="1024" rx="230" fill="url(#tileB)"></rect>
+<rect x="1.5" y="1.5" width="1021" height="1021" rx="228.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="3"></rect>
+<g transform="translate(512 512) scale(0.92) translate(-505 -481)"><use href="#machine"></use></g>
+</symbol>
+<rect width="1024" height="1024" fill="url(#tileA)"/></svg>
