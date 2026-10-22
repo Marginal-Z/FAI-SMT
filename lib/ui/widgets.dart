@@ -50,75 +50,6 @@ class _HoverableState extends State<Hoverable> {
   }
 }
 
-/// Large ribbon button: icon above label, like CAD / image-editor ribbons.
-class RibbonButton extends StatelessWidget {
-  const RibbonButton({super.key, required this.icon, required this.label, this.onTap, this.active = false, this.badge});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool active;
-
-  /// Small status dot colour (e.g. file loaded).
-  final Color? badge;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final enabled = onTap != null;
-    return Hoverable(
-      onTap: onTap,
-      builder: (context, hover, pressed) => Container(
-        constraints: BoxConstraints(minWidth: Metrics.of(context).touch ? 76 : 64),
-        padding: const EdgeInsets.fromLTRB(8, 7, 8, 5),
-        decoration: BoxDecoration(
-          color: active
-              ? c.selected
-              : pressed
-              ? c.pressed
-              : hover
-              ? c.hover
-              : null,
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: active ? c.accent.withValues(alpha: 0.55) : const Color(0x00000000)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(icon, size: 25, color: enabled ? (active ? c.accent : c.text) : c.textFaint),
-                if (badge != null)
-                  Positioned(
-                    right: -3,
-                    bottom: -1,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: badge,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: c.ribbon, width: 1.5),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              style: TextStyle(fontSize: 12, color: enabled ? c.text : c.textFaint),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Compact button with optional icon, used in toolbars and dialogs.
 class FlatButton extends StatelessWidget {
   const FlatButton({
@@ -886,6 +817,61 @@ class OverlayPanel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Slim page header: title, context line, optional trailing actions.
+class PageHeader extends StatelessWidget {
+  const PageHeader({super.key, required this.title, this.subtitle, this.trailing = const []});
+
+  final String title;
+  final String? subtitle;
+  final List<Widget> trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final m = Metrics.of(context);
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, m.touch ? 14 : 12, 16, m.touch ? 14 : 12),
+      decoration: BoxDecoration(color: c.panel, border: Border(bottom: BorderSide(color: c.border))),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.text, letterSpacing: 0.2)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.textFaint)),
+            ],
+          ]),
+        ),
+        for (final t in trailing) ...[const SizedBox(width: 8), t],
+      ]),
+    );
+  }
+}
+
+/// Surface card with a hairline border and soft shadow.
+class SurfaceCard extends StatelessWidget {
+  const SurfaceCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.borderColor});
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: c.panel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor ?? c.border),
+        boxShadow: [BoxShadow(color: c.dark ? const Color(0x22000000) : const Color(0x0D101828), blurRadius: 10, offset: const Offset(0, 2))],
+      ),
+      child: child,
     );
   }
 }

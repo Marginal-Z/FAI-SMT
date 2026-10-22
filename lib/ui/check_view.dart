@@ -9,6 +9,7 @@ import '../core/models.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'icons.dart';
+import 'panels.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -47,64 +48,98 @@ class _CheckViewState extends State<CheckView> {
   Widget build(BuildContext context) {
     final state = widget.state;
     final c = AppTheme.of(context);
-    final m = Metrics.of(context);
     final s = Strings.of(context);
     final report = state.report;
-    if (report == null) return ImportGuide(state: state);
+    final stations = [state.stationA?.name, state.stationB?.name].whereType<String>().length;
+    final header = PageHeader(
+      title: s.t('mod_check'),
+      subtitle: state.bom == null ? null : s.t('page_check_sub', {'bom': state.bom!.name, 'stations': stations}),
+    );
+    if (report == null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        header,
+        Expanded(
+          child: EmptyState(
+            icon: Ic.listChecks,
+            text: s.t('empty_check'),
+            action: state.bom != null && stations > 0
+                ? FlatButton(label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state))
+                : FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
+          ),
+        ),
+      ]);
+    }
     if (_search.text != state.search) _search.text = state.search;
 
-    final pills = <(CheckCategory?, String, Color?)>[
-      (null, s.t('cat_all'), null),
+    final total = report.rows.length;
+    final kpis = <(CheckCategory?, String, Color)>[
+      (null, s.t('cat_all'), c.textDim),
       (CheckCategory.pass, s.t('cat_pass'), c.pass),
       (CheckCategory.ng, s.t('cat_ng'), c.ng),
       (CheckCategory.excluded, s.t('cat_excluded'), c.excluded),
       (CheckCategory.substitute, s.t('cat_substitute'), c.substitute),
     ];
-    final filters = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final (cat, label, color) in pills)
-          FilterPill(
-            label: label,
-            color: color,
-            active: state.filter == cat,
-            count: cat == null ? report.rows.length : report.count(cat),
-            onTap: () => state.setFilter(cat),
-          ),
-      ],
-    );
     final search = TextInput(controller: _search, hint: s.t('search_hint'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch);
     final rows = state.visibleRows();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: m.touch ? 10 : 8),
-          decoration: BoxDecoration(
-            color: c.panel,
-            border: Border(bottom: BorderSide(color: c.border)),
-          ),
-          child: widget.cards
-              ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [filters, const SizedBox(height: 10), search])
-              : Row(
-                  children: [
-                    Expanded(child: filters),
-                    const SizedBox(width: 12),
-                    SizedBox(width: 280, child: search),
+    return LayoutBuilder(builder: (context, box) {
+      final dockInspector = box.maxWidth >= 1240 && !widget.cards;
+      final results = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            decoration: BoxDecoration(color: c.window, border: Border(bottom: BorderSide(color: c.border))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (final (cat, label, color) in kpis) ...[
+                    KpiCard(
+                      label: label,
+                      value: cat == null ? total : report.count(cat),
+                      total: total,
+                      color: color,
+                      active: state.filter == cat,
+                      onTap: () => state.setFilter(cat),
+                    ),
+                    const SizedBox(width: 10),
                   ],
-                ),
-        ),
+                ]),
+              ),
+              const SizedBox(height: 12),
+              if (widget.cards) search else Align(alignment: Alignment.centerLeft, child: SizedBox(width: 320, child: search)),
+            ]),
+          ),
+          Expanded(
+            child: rows.isEmpty
+                ? EmptyState(icon: Ic.funnel, text: s.t('empty_filter'))
+                : widget.cards
+                    ? _cardList(rows)
+                    : _table(context, rows),
+          ),
+        ],
+      );
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        header,
         Expanded(
-          child: rows.isEmpty
-              ? EmptyState(icon: Ic.funnel, text: s.t('empty_filter'))
-              : widget.cards
-              ? _cardList(rows)
-              : _table(context, rows),
+          child: Stack(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: results),
+              if (dockInspector) ...[const VDivider(), SizedBox(width: 300, child: InspectorPanel(state: state))],
+            ]),
+            if (!dockInspector && state.selected != null)
+              Positioned.fill(
+                child: OverlayPanel(
+                  width: 360,
+                  onClose: () => state.select(null),
+                  child: InspectorPanel(state: state, onClose: () => state.select(null)),
+                ),
+              ),
+          ]),
         ),
-      ],
-    );
+      ]);
+    });
   }
 
   Widget _cardList(List<CheckRow> rows) {
@@ -478,178 +513,12 @@ String _sides(Set<StationSide> sides) {
   return sides.first == StationSide.a ? 'A' : 'B';
 }
 
-/// Shown before the first check: the four inputs as steps, then Run Check.
-class ImportGuide extends StatelessWidget {
-  const ImportGuide({super.key, required this.state});
-
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    final steps = [
-      (InputKind.bom, Ic.treeStructure, s.t('btn_bom'), s.t('step_bom'), state.bom?.name, false),
-      (InputKind.stationA, Ic.squaresFour, s.t('btn_station_a'), s.t('step_station_a'), state.stationA?.name, false),
-      (InputKind.stationB, Ic.gridFour, s.t('btn_station_b'), s.t('step_station_b'), state.stationB?.name, true),
-      (InputKind.coords, Ic.crosshair, s.t('btn_coord'), s.t('step_coord'), state.coords?.name, true),
-    ];
-    final ready = state.bom != null && (state.stationA != null || state.stationB != null);
-    return Container(
-      color: c.window,
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  s.t('guide_title'),
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.text),
-                ),
-                const SizedBox(height: 4),
-                Text(s.t('guide_sub'), style: TextStyle(fontSize: 13, color: c.textDim)),
-                const SizedBox(height: 18),
-                for (var i = 0; i < steps.length; i++) ...[
-                  _GuideStep(
-                    number: i + 1,
-                    icon: steps[i].$2,
-                    title: steps[i].$3,
-                    hint: steps[i].$4,
-                    file: steps[i].$5,
-                    optional: steps[i].$6,
-                    onTap: () => importFile(context, state, steps[i].$1),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FlatButton(
-                    icon: Ic.play,
-                    label: s.t('btn_run'),
-                    primary: true,
-                    onTap: ready ? () => runCheck(context, state) : null,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GuideStep extends StatelessWidget {
-  const _GuideStep({
-    required this.number,
-    required this.icon,
-    required this.title,
-    required this.hint,
-    required this.file,
-    required this.optional,
-    required this.onTap,
-  });
-
-  final int number;
-  final IconData icon;
-  final String title;
-  final String hint;
-  final String? file;
-  final bool optional;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final m = Metrics.of(context);
-    final s = Strings.of(context);
-    final done = file != null;
-    return Hoverable(
-      onTap: onTap,
-      builder: (context, hover, _) => Container(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: m.touch ? 14 : 12),
-        decoration: BoxDecoration(
-          color: hover ? c.hover : c.panel,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: done ? c.pass.withValues(alpha: 0.5) : c.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: done ? c.pass : c.panelAlt,
-                border: done ? null : Border.all(color: c.borderStrong),
-              ),
-              child: done
-                  ? const Icon(IcBold.check, size: 15, color: Color(0xFFFFFFFF))
-                  : Text(
-                      '$number',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.textDim),
-                    ),
-            ),
-            const SizedBox(width: 14),
-            Icon(icon, size: 22, color: done ? c.accent : c.textDim),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, color: c.text),
-                      ),
-                      if (optional) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: c.panelAlt,
-                            borderRadius: BorderRadius.circular(3),
-                            border: Border.all(color: c.border),
-                          ),
-                          child: Text(s.t('step_optional'), style: TextStyle(fontSize: 11, color: c.textFaint)),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    file ?? hint,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: done ? c.textDim : c.textFaint),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              done ? s.t('step_replace') : s.t('step_import'),
-              style: TextStyle(fontSize: 12.5, color: c.accent, fontWeight: FontWeight.w600),
-            ),
-            Icon(Ic.caretRight, size: 14, color: c.accent),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.text});
+  const EmptyState({super.key, required this.icon, required this.text, this.action});
 
   final IconData icon;
   final String text;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -661,14 +530,78 @@ class EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 40, color: c.textFaint),
-          const SizedBox(height: 12),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.textDim),
+          Container(
+            width: 72,
+            height: 72,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: c.panel, shape: BoxShape.circle, border: Border.all(color: c.border)),
+            child: Icon(icon, size: 30, color: c.textFaint),
           ),
+          const SizedBox(height: 16),
+          Text(text, textAlign: TextAlign.center, style: TextStyle(color: c.textDim, fontSize: 13)),
+          if (action != null) ...[const SizedBox(height: 16), action!],
         ],
+      ),
+    );
+  }
+}
+
+/// Result-area statistic that doubles as a filter.
+class KpiCard extends StatelessWidget {
+  const KpiCard({super.key, required this.label, required this.value, required this.total, required this.color, required this.active, required this.onTap});
+
+  final String label;
+  final int value;
+  final int total;
+  final Color color;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final m = Metrics.of(context);
+    final share = total == 0 ? 0.0 : value / total;
+    return Hoverable(
+      onTap: onTap,
+      builder: (context, hover, _) => Container(
+        width: m.touch ? 150 : 142,
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: c.dark ? 0.14 : 0.07) : hover ? c.hover : c.panel,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: active ? color.withValues(alpha: 0.8) : c.border, width: active ? 1.5 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(label,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.textDim, fontWeight: FontWeight.w500)),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Text('$value',
+              style: TextStyle(
+                fontSize: 24,
+                height: 1.1,
+                fontWeight: FontWeight.w700,
+                color: c.text,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              )),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: SizedBox(
+              height: 4,
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (share > 0) Expanded(flex: (share * 1000).round().clamp(1, 1000), child: ColoredBox(color: color)),
+                if (share < 1) Expanded(flex: (1000 - share * 1000).round().clamp(1, 1000), child: ColoredBox(color: c.border)),
+              ]),
+            ),
+          ),
+        ]),
       ),
     );
   }

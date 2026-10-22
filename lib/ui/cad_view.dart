@@ -45,7 +45,19 @@ class _CadViewState extends State<CadView> {
     final state = widget.state;
     final cad = state.cad;
     if (cad == null) {
-      return EmptyState(icon: Ic.codeSimple, text: s.t('empty_cad'));
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        PageHeader(title: s.t('mod_cad')),
+        Expanded(
+          child: EmptyState(
+            icon: Ic.codeSimple,
+            text: s.t('empty_cad'),
+            action: FlatButton(
+              label: state.report == null ? s.t('go_files') : s.t('btn_coord'),
+              onTap: () => state.setModule(Module.files),
+            ),
+          ),
+        ),
+      ]);
     }
     final lines = cad.previewLines();
     final t = state.settings.cad;
@@ -55,37 +67,13 @@ class _CadViewState extends State<CadView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: c.panel,
-            border: Border(bottom: BorderSide(color: c.border)),
-          ),
-          child: Row(
-            children: [
-              Icon(Ic.fileText, size: 16, color: c.textDim),
-              const SizedBox(width: 6),
-              Text('${state.exportBaseName}_FAI.${t.fileExtension}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 12),
-              Text(s.t('cad_rows', {'n': cad.rows.length}), style: TextStyle(color: c.textDim, fontSize: 12)),
-              const Spacer(),
-              FlatButton(
-                icon: Ic.textColumns,
-                label: s.t('btn_cad_template'),
-                compact: true,
-                onTap: () => showCadTemplateDialog(context, state),
-              ),
-              const SizedBox(width: 6),
-              FlatButton(
-                icon: Ic.floppyDisk,
-                label: s.t('btn_gen_cad'),
-                compact: true,
-                primary: true,
-                onTap: () => exportCad(context, state),
-              ),
-            ],
-          ),
+        PageHeader(
+          title: '${state.exportBaseName}_FAI.${t.fileExtension}',
+          subtitle: s.t('page_cad_sub', {'n': cad.rows.length}),
+          trailing: [
+            FlatButton(label: s.t('btn_cad_template'), compact: true, onTap: () => showCadTemplateDialog(context, state)),
+            FlatButton(label: s.t('btn_gen_cad'), compact: true, primary: true, onTap: () => exportCad(context, state)),
+          ],
         ),
         Expanded(
           child: Flex(

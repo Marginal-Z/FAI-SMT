@@ -160,7 +160,7 @@ class Metrics {
   double get tabBar => touch ? 46 : 38;
   double get docTabs => touch ? 40 : 32;
   double get menuBar => touch ? 42 : 34;
-  double get ribbon => touch ? 100 : 92;
+  double get ribbon => touch ? 110 : 102;
   double get rowPad => touch ? 11 : 8;
   double get iconButton => touch ? 36 : 26;
   double get statusBar => touch ? 28 : 24;

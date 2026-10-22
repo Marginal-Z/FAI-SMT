@@ -47,7 +47,7 @@ Future<void> importFile(BuildContext context, AppState state, InputKind kind) as
 void runCheck(BuildContext context, AppState state) {
   try {
     state.runCheckNow();
-    state.setWorkspace(Workspace.check);
+    state.setModule(Module.check);
   } catch (e) {
     showError(context, e);
   }

@@ -27,7 +27,14 @@ class UserMessage implements Exception {
   final Map<String, Object?> args;
 }
 
-enum Workspace { check, board, cad }
+/// Function modules. Each ribbon tab opens exactly one module page.
+enum Module { files, check, rules, board, cad }
+
+/// Sections of the rules page.
+enum RulesSection { exclusion, alternates, general }
+
+/// Board view side filter.
+enum BoardSideFilter { both, top, bottom }
 
 class AppState extends ChangeNotifier {
   AppState(this.settings, this.settingsDir);
@@ -45,13 +52,15 @@ class AppState extends ChangeNotifier {
   CadResult? _cad;
 
   // UI state
-  int ribbonTab = 0;
-  Workspace workspace = Workspace.check;
+  Module module = Module.files;
+  RulesSection rulesSection = RulesSection.exclusion;
+  BoardSideFilter boardSide = BoardSideFilter.both;
+
+  /// Incremented to ask the board view to fit the board to the window.
+  int boardFitRequest = 0;
   CheckCategory? filter;
   String search = '';
   CheckRow? selected;
-  bool showProject = true;
-  bool showInspector = true;
   String statusKey = 'status_ready';
   Map<String, Object?> statusArgs = const {};
 
@@ -80,13 +89,24 @@ class AppState extends ChangeNotifier {
   /// Cycles system → light → dark, for the title-bar toggle.
   void cycleTheme() => setTheme(ThemePref.values[(theme.index + 1) % ThemePref.values.length]);
 
-  void setRibbonTab(int i) {
-    ribbonTab = i;
+  void setModule(Module m) {
+    module = m;
     notifyListeners();
   }
 
-  void setWorkspace(Workspace w) {
-    workspace = w;
+  void openRules(RulesSection section) {
+    module = Module.rules;
+    rulesSection = section;
+    notifyListeners();
+  }
+
+  void setBoardSide(BoardSideFilter side) {
+    boardSide = side;
+    notifyListeners();
+  }
+
+  void fitBoard() {
+    boardFitRequest++;
     notifyListeners();
   }
 
@@ -102,12 +122,6 @@ class AppState extends ChangeNotifier {
 
   void select(CheckRow? r) {
     selected = r;
-    notifyListeners();
-  }
-
-  void togglePanel({bool project = false, bool inspector = false}) {
-    if (project) showProject = !showProject;
-    if (inspector) showInspector = !showInspector;
     notifyListeners();
   }
 

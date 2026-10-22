@@ -14,8 +14,6 @@ import 'check_view.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-enum _SideFilter { all, top, bottom }
-
 class BoardView extends StatefulWidget {
   const BoardView({super.key, required this.state});
 
@@ -26,8 +24,8 @@ class BoardView extends StatefulWidget {
 }
 
 class _BoardViewState extends State<BoardView> {
-  _SideFilter _side = _SideFilter.all;
   double _zoom = 1;
+  int _fitSeen = 0;
   Offset _pan = Offset.zero;
   Placement? _hover;
   double _gestureZoom = 1;
@@ -38,13 +36,28 @@ class _BoardViewState extends State<BoardView> {
         _pan = Offset.zero;
       });
 
+
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final coords = widget.state.coords;
     if (coords == null) {
-      return EmptyState(icon: Ic.crosshair, text: s.t('board_empty'));
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        PageHeader(title: s.t('mod_board')),
+        Expanded(
+          child: EmptyState(
+            icon: Ic.crosshair,
+            text: s.t('board_empty'),
+            action: FlatButton(label: s.t('go_files'), onTap: () => widget.state.setModule(Module.files)),
+          ),
+        ),
+      ]);
+    }
+    if (widget.state.boardFitRequest != _fitSeen) {
+      _fitSeen = widget.state.boardFitRequest;
+      _zoom = 1;
+      _pan = Offset.zero;
     }
     final report = widget.state.report;
     final merged = {for (final m in report?.merged ?? const <MergedRef>[]) m.ref: m};
@@ -54,10 +67,10 @@ class _BoardViewState extends State<BoardView> {
     };
     final parts = coords.result.items.where((p) {
       final side = _effectiveSide(p, merged[p.ref]);
-      return switch (_side) {
-        _SideFilter.all => true,
-        _SideFilter.top => side != BoardSide.bottom,
-        _SideFilter.bottom => side != BoardSide.top,
+      return switch (widget.state.boardSide) {
+        BoardSideFilter.both => true,
+        BoardSideFilter.top => side != BoardSide.bottom,
+        BoardSideFilter.bottom => side != BoardSide.top,
       };
     }).toList();
 
@@ -71,43 +84,7 @@ class _BoardViewState extends State<BoardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(color: c.panel, border: Border(bottom: BorderSide(color: c.border))),
-          child: Row(
-            children: [
-              Segmented<_SideFilter>(
-                value: _side,
-                options: [
-                  (_SideFilter.all, s.t('side_both')),
-                  (_SideFilter.top, s.t('side_top')),
-                  (_SideFilter.bottom, s.t('side_bottom')),
-                ],
-                onChanged: (v) => setState(() => _side = v),
-              ),
-              const SizedBox(width: 8),
-              FlatButton(icon: Ic.cornersOut, label: s.t('board_fit'), compact: true, onTap: _fit),
-              const SizedBox(width: 16),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    if (report == null)
-                      _Legend(color: c.textDim, label: s.t('board_unchecked'))
-                    else ...[
-                      _Legend(color: c.pass, label: s.t('cat_pass')),
-                      _Legend(color: c.ng, label: s.t('cat_ng')),
-                      _Legend(color: c.substitute, label: s.t('cat_substitute')),
-                      _Legend(color: c.textFaint, label: s.t('board_not_in_bom')),
-                    ],
-                  ]),
-                ),
-              ),
-              Text(s.t('status_rows', {'n': parts.length}), style: TextStyle(color: c.textDim, fontSize: 12)),
-            ],
-          ),
-        ),
+        PageHeader(title: s.t('mod_board'), subtitle: s.t('page_board_sub', {'n': parts.length})),
         Expanded(
           child: LayoutBuilder(builder: (context, box) {
             final size = Size(box.maxWidth, box.maxHeight);
@@ -172,6 +149,30 @@ class _BoardViewState extends State<BoardView> {
                             ),
                           ),
                         ),
+                        Positioned(
+                          left: 14,
+                          bottom: 14,
+                          child: IgnorePointer(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: c.panel.withValues(alpha: 0.94),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: c.border),
+                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                if (report == null)
+                                  _Legend(color: c.textDim, label: s.t('board_unchecked'))
+                                else ...[
+                                  _Legend(color: c.pass, label: s.t('cat_pass')),
+                                  _Legend(color: c.ng, label: s.t('cat_ng')),
+                                  _Legend(color: c.substitute, label: s.t('cat_substitute')),
+                                  _Legend(color: c.textFaint, label: s.t('board_not_in_bom')),
+                                ],
+                              ]),
+                            ),
+                          ),
+                        ),
                         if (_hover != null)
                           Positioned(
                             left: math.min(_hoverPos.dx + 14, size.width - 230),
@@ -226,7 +227,7 @@ class _Transform {
     final maxY = all.map((p) => p.y).reduce(math.max);
     final w = math.max(maxX - minX, 1.0);
     final h = math.max(maxY - minY, 1.0);
-    const margin = 40.0;
+    const margin = 64.0;
     final base = math.min((size.width - 2 * margin) / w, (size.height - 2 * margin) / h);
     final scale = math.max(base, 0.01) * zoom;
     final contentSize = Size(w * scale, h * scale);

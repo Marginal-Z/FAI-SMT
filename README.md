@@ -6,7 +6,8 @@ SMT 首件核对桌面工具（Windows / Linux，后续可出 Android）：
 2. 结果分为 **PASS / NG / 已排除物料 / 替代料** 四个区，每行后方标注异常原因；
 3. 核对结果与 **原始坐标文件** 合并，生成 **FAI i450 首件测试仪** 用的 CAD 坐标文件；
 4. 界面支持 中文 / English / ไทย 切换；主题可选 浅色 / 深色 / 跟随系统（标题栏右上角一键切换，或「视图 → 主题」）。
-5. 自适应布局：桌面停靠项目面板与属性面板；横屏平板属性面板浮出；竖屏平板项目面板改为抽屉、结果以卡片显示；触屏自动加大点击区域，坐标视图支持双指缩放。
+5. 界面按功能分区：文件导入 / 核对 / 规则 / 坐标视图 / CAD 输出，每个标签对应一个功能页和它自己的功能区按钮；图标为自绘双色线性图标。
+6. 自适应布局：宽屏时核对页右侧停靠属性面板，窄屏时属性面板浮出、结果以卡片显示；触屏自动加大点击区域，坐标视图支持双指缩放。
 
 技术栈：Flutter（Dart），界面全部自绘，不使用 Material 组件；图标为 Phosphor 图标字体（MIT）。
 
@@ -70,8 +71,17 @@ flutter build windows --release   # 输出 build\windows\x64\runner\Release\
 
 ## 持续集成与分支
 
-- GitHub Actions（`.github/workflows/build.yml`）：分析 + 单元测试 → 构建 Linux / Windows / Android，产物在 Actions 的 Artifacts 中下载；打 `v*` 标签时自动发布 Release。
-- 开发提交先推送到 `dev` 分支，Actions 全部通过后再同步到 `main`，`main` 只包含构建成功的代码。
+GitHub Actions（`.github/workflows/build.yml`）先跑分析和单元测试，再构建 Flutter 支持发布的全部架构：
+
+| 平台 | 架构 | 产物 |
+| --- | --- | --- |
+| Windows | x64、arm64 | `SMT-FAI-<版本>-windows-<架构>.zip`（解压即用） |
+| Linux | x64、arm64 | `.tar.gz` 与 `.deb`（安装到 `/opt/smt-fai`，带桌面图标） |
+| Android | armeabi-v7a、arm64-v8a、x86_64 | 各架构 APK、通用 APK、AAB |
+
+- Windows / Linux 的 arm64 版本在 GitHub 的 ARM 构建机上原生编译（Flutter 不支持交叉编译这两个平台）。Flutter 已不再支持 32 位 x86 的 Windows / Linux / Android 发布版；Linux riscv64 仍是实验性支持，GitHub 也没有对应构建机，因此不在列表中。
+- 产物在 Actions 运行页的 Artifacts 中下载；打 `v*` 标签时自动发布到 Releases。
+- 开发提交先推送到 `dev` 分支，全部构建通过后再同步到 `main`，`main` 只包含构建成功的代码。
 - 客户资料（`samples/` 下除 `demo/` 外的文件）和 FAI 程序不进入仓库。
 
 快捷键：`F5` 开始核对，`Ctrl+E` 导出核对报告，`Ctrl+G` 生成 CAD。

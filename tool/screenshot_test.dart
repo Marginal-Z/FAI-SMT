@@ -43,6 +43,7 @@ void main() {
     state.load(InputKind.stationB, 'demo_station_B.xlsx', Uint8List.fromList(read('demo_station_B.xlsx')));
     state.load(InputKind.coords, 'demo_coordinates.csv', Uint8List.fromList(read('demo_coordinates.csv')));
     state.runCheckNow();
+    state.setModule(Module.check);
     return state;
   }
 
@@ -53,6 +54,12 @@ void main() {
     await tester.pumpAndSettle();
     await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens/$name.png'));
   }
+
+  testWidgets('files page dark', (tester) async {
+    final s = demoState();
+    s.setModule(Module.files);
+    await shot(tester, s, 'files_zh_dark');
+  });
 
   testWidgets('check view zh dark', (tester) async {
     final s = demoState();
@@ -67,36 +74,28 @@ void main() {
     await shot(tester, s, 'check_ng_en_light');
   });
 
-  testWidgets('substitute th', (tester) async {
-    final s = demoState(lang: 'th');
-    s.setFilter(CheckCategory.substitute);
-    s.setRibbonTab(3);
-    await shot(tester, s, 'substitute_th_dark');
+  testWidgets('rules th light', (tester) async {
+    final s = demoState(lang: 'th', dark: false);
+    s.openRules(RulesSection.exclusion);
+    await shot(tester, s, 'rules_th_light');
   });
 
   testWidgets('board view', (tester) async {
     final s = demoState();
-    s.setWorkspace(Workspace.board);
-    s.setFilter(CheckCategory.ng);
+    s.setModule(Module.board);
     await shot(tester, s, 'board_zh_dark');
   });
 
   testWidgets('cad view', (tester) async {
     final s = demoState(dark: false);
-    s.setWorkspace(Workspace.cad);
-    s.setRibbonTab(2);
+    s.setModule(Module.cad);
     await shot(tester, s, 'cad_zh_light');
   });
 
-  testWidgets('narrow window', (tester) async {
-    final s = demoState();
-    await shot(tester, s, 'narrow_zh_dark', size: const Size(1000, 640));
-  });
-
-  testWidgets('import guide light', (tester) async {
+  testWidgets('files page light empty', (tester) async {
     final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
     s.load(InputKind.bom, 'demo_T100_BOM.xlsx', File('samples/demo/demo_T100_BOM.xlsx').readAsBytesSync());
-    await shot(tester, s, 'guide_zh_light');
+    await shot(tester, s, 'files_zh_light');
   });
 
   testWidgets('tablet landscape', (tester) async {
@@ -111,9 +110,9 @@ void main() {
     await shot(tester, s, 'tablet_portrait_dark', size: const Size(800, 1280), touch: true);
   });
 
-  testWidgets('tablet portrait cad', (tester) async {
+  testWidgets('tablet portrait files', (tester) async {
     final s = demoState(dark: false);
-    s.setWorkspace(Workspace.cad);
-    await shot(tester, s, 'tablet_portrait_cad_light', size: const Size(800, 1280), touch: true);
+    s.setModule(Module.files);
+    await shot(tester, s, 'tablet_portrait_files_light', size: const Size(800, 1280), touch: true);
   });
 }

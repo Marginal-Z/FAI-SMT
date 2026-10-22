@@ -45,6 +45,7 @@ void main() {
     load(InputKind.stationB, 'station', '-B');
     load(InputKind.coords, 'coordinates');
     state.runCheckNow();
+    state.setModule(Module.check);
     return state;
   }
 
@@ -76,13 +77,13 @@ void main() {
 
   testWidgets('real board', (tester) async {
     final s = demoState();
-    s.setWorkspace(Workspace.board);
+    s.setModule(Module.board);
     await shot(tester, s, 'board');
   });
 
   testWidgets('real cad', (tester) async {
     final s = demoState(dark: false);
-    s.setWorkspace(Workspace.cad);
+    s.setModule(Module.cad);
     await shot(tester, s, 'cad');
   });
 }
