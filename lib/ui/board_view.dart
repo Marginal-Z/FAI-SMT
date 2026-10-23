@@ -13,6 +13,7 @@ import '../app_state.dart';
 import '../core/footprints.dart';
 import '../core/models.dart';
 import '../l10n/strings.dart';
+import 'actions.dart';
 import 'check_view.dart';
 import 'icons.dart';
 import 'theme.dart';
@@ -26,7 +27,7 @@ class PartPalette {
   static const diode = Color(0xFF2B2F35);
   static const led = Color(0xFFEDEFF2);
   static const transistor = Color(0xFF25292E);
-  static const ic = Color(0xFF1C1F23);
+  static const ic = Color(0xFF2F6FD6);
   static const crystal = Color(0xFFB9BFC7);
   static const connector = Color(0xFFD8CFBD);
   static const testPoint = Color(0xFFD4A84A);
@@ -98,7 +99,7 @@ class _BoardViewState extends State<BoardView> {
           child: EmptyState(
             icon: Ic.crosshair,
             text: s.t('board_empty'),
-            action: FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
+            action: FlatButton(label: s.t('btn_coord'), primary: true, onTap: () => importFile(context, state, InputKind.coords)),
           ),
         ),
       ]);

@@ -39,6 +39,8 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
   late CoordUnit _unit;
   late bool _includeUnmatched;
   late bool _sideFromStation;
+  late bool _smdOnly;
+  final _mech = TextEditingController();
   final _ext = TextEditingController();
   final _top = TextEditingController();
   final _bottom = TextEditingController();
@@ -62,6 +64,8 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
     _unit = t.unit == CoordUnit.auto ? CoordUnit.mm : t.unit;
     _includeUnmatched = t.includeUnmatched;
     _sideFromStation = t.sideFromStation;
+    _smdOnly = t.smdOnly;
+    _mech.text = t.mechanicalKeywords.join('、');
     _ext.text = t.extension;
     _top.text = t.topText;
     _bottom.text = t.bottomText;
@@ -72,7 +76,7 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
 
   @override
   void dispose() {
-    for (final c in [..._headers.values, _ext, _top, _bottom]) {
+    for (final c in [..._headers.values, _ext, _top, _bottom, _mech]) {
       c.dispose();
     }
     super.dispose();
@@ -95,6 +99,8 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
         bottomText: _bottom.text.trim(),
         includeUnmatched: _includeUnmatched,
         sideFromStation: _sideFromStation,
+        smdOnly: _smdOnly,
+        mechanicalKeywords: _mech.text.split(RegExp(r'[、,，;；\s]+')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
       );
 
   void _move(int d) {
@@ -205,6 +211,11 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
                     const SizedBox(height: 6),
                     CheckBox(value: _writeHeader, label: s.t('cad_write_header'), onChanged: (v) => setState(() => _writeHeader = v)),
                     CheckBox(value: _sideFromStation, label: s.t('cad_side_from_station'), onChanged: (v) => setState(() => _sideFromStation = v)),
+                    CheckBox(value: _smdOnly, label: s.t('cad_smd_only'), onChanged: (v) => setState(() => _smdOnly = v)),
+                    const SizedBox(height: 6),
+                    Text(s.t('cad_mech_keywords'), style: TextStyle(color: c.textDim, fontSize: 12.5)),
+                    const SizedBox(height: 4),
+                    TextInput(controller: _mech),
                     CheckBox(value: _includeUnmatched, label: s.t('cad_include_unmatched'), onChanged: (v) => setState(() => _includeUnmatched = v)),
                     const SizedBox(height: 10),
                     Text(s.t('cad_preview'), style: TextStyle(color: c.textDim, fontSize: 12.5)),

@@ -170,11 +170,20 @@ ParseResult<Placement> parseCoordinates(List<Grid> sheets,
       side: parseSide(map.get(row, 'layer')),
       value: map.get(row, 'value'),
       footprint: map.get(row, 'footprint'),
+      smd: _parseSmd(map.get(row, 'smd')),
     ));
   }
   return ParseResult(out,
       issues: issues,
       columns: {..._headerNames(map), 'unit': resolved.name});
+}
+
+bool? _parseSmd(String s) {
+  final v = s.trim().toUpperCase();
+  if (v.isEmpty) return null;
+  if (const {'YES', 'Y', '1', 'TRUE', 'SMD', 'SMT', '是'}.contains(v)) return true;
+  if (const {'NO', 'N', '0', 'FALSE', 'DIP', 'THT', 'TH', '否'}.contains(v)) return false;
+  return null;
 }
 
 BoardSide parseSide(String s) {

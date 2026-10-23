@@ -1,5 +1,6 @@
-/// Check result workspace: result-area filters, the result table (or cards on
-/// narrow screens) and the import guide shown before the first check.
+/// Check module page. Results are grouped into their result areas (NG,
+/// alternates, excluded, PASS), each collapsed by default; a row expands in
+/// place to show every designator and the reasons with explanations.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -10,39 +11,85 @@ import '../l10n/strings.dart';
 import 'actions.dart';
 import 'discrepancy_view.dart';
 import 'icons.dart';
-import 'panels.dart';
 import 'theme.dart';
 import 'widgets.dart';
+
+const _areaOrder = [CheckCategory.ng, CheckCategory.substitute, CheckCategory.excluded, CheckCategory.pass];
+
+String _areaLabel(Strings s, CheckCategory c) => s.t(switch (c) {
+      CheckCategory.pass => 'area_pass',
+      CheckCategory.ng => 'area_ng',
+      CheckCategory.excluded => 'area_excluded',
+      CheckCategory.substitute => 'area_substitute',
+    });
 
 class CheckView extends StatefulWidget {
   const CheckView({super.key, required this.state, this.cards = false});
 
   final AppState state;
 
-  /// Card list instead of the wide table (portrait tablets).
+  /// Narrow screens: two-line rows instead of table columns.
   final bool cards;
 
   @override
   State<CheckView> createState() => _CheckViewState();
 }
 
+/// One entry of the flattened list: an area header, a row, or a row's details.
+sealed class _Entry {}
+
+class _Header extends _Entry {
+  _Header(this.category, this.count);
+
+  final CheckCategory category;
+  final int count;
+}
+
+class _Row extends _Entry {
+  _Row(this.row, this.index);
+
+  final CheckRow row;
+  final int index;
+}
+
+class _Details extends _Entry {
+  _Details(this.row);
+
+  final CheckRow row;
+}
+
 class _CheckViewState extends State<CheckView> {
   final _search = TextEditingController();
-  final _vScroll = ScrollController();
+  final _scroll = ScrollController();
   final _hScroll = ScrollController();
+  final Set<CheckCategory> _open = {};
+  CheckRow? _expanded;
 
   @override
   void initState() {
     super.initState();
     _search.text = widget.state.search;
+    // Open the area of a part selected elsewhere (e.g. the assembly drawing),
+    // or the area picked as a filter.
+    final sel = widget.state.selected;
+    if (sel != null) {
+      _expanded = sel;
+      _open.add(sel.category);
+    }
+    if (widget.state.filter != null) _open.add(widget.state.filter!);
   }
 
   @override
   void dispose() {
     _search.dispose();
-    _vScroll.dispose();
+    _scroll.dispose();
     _hScroll.dispose();
     super.dispose();
+  }
+
+  void _toggleRow(CheckRow row) {
+    setState(() => _expanded = identical(_expanded, row) ? null : row);
+    widget.state.select(_expanded);
   }
 
   @override
@@ -52,21 +99,9 @@ class _CheckViewState extends State<CheckView> {
     final s = Strings.of(context);
     final report = state.report;
     final stations = [state.stationA?.name, state.stationB?.name].whereType<String>().length;
-    final discrepancies = state.discrepancies;
     final header = PageHeader(
-      title: s.t('mod_check'),
+      title: state.checkView == CheckPageView.discrepancies ? s.t('view_discrepancies') : s.t('mod_check'),
       subtitle: state.bom == null ? null : s.t('page_check_sub', {'bom': state.bom!.name, 'stations': stations}),
-      trailing: [
-        if (discrepancies != null)
-          Segmented<CheckPageView>(
-            value: state.checkView,
-            options: [
-              (CheckPageView.materials, s.t('view_materials')),
-              (CheckPageView.discrepancies, '${s.t('view_discrepancies')}  ${discrepancies.length}'),
-            ],
-            onChanged: state.setCheckView,
-          ),
-      ],
     );
     if (report == null) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -85,440 +120,466 @@ class _CheckViewState extends State<CheckView> {
     if (state.checkView == CheckPageView.discrepancies) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         header,
-        Expanded(child: DiscrepancyView(state: state, items: discrepancies!)),
+        Expanded(child: DiscrepancyView(state: state, items: state.discrepancies ?? const [])),
       ]);
     }
     if (_search.text != state.search) _search.text = state.search;
 
-    final total = report.rows.length;
-    final kpis = <(CheckCategory?, String, Color)>[
-      (null, s.t('cat_all'), c.textDim),
-      (CheckCategory.pass, s.t('cat_pass'), c.pass),
-      (CheckCategory.ng, s.t('cat_ng'), c.ng),
-      (CheckCategory.excluded, s.t('cat_excluded'), c.excluded),
-      (CheckCategory.substitute, s.t('cat_substitute'), c.substitute),
-    ];
-    final search = TextInput(controller: _search, hint: s.t('search_hint'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch);
-    final rows = state.visibleRows();
+    final searching = state.search.trim().isNotEmpty;
+    final visible = state.visibleRows();
+    final entries = <_Entry>[];
+    for (final cat in _areaOrder) {
+      final rows = visible.where((r) => r.category == cat).toList();
+      final total = searching ? rows.length : report.count(cat);
+      if (searching && rows.isEmpty) continue;
+      entries.add(_Header(cat, total));
+      if (!(searching || _open.contains(cat))) continue;
+      for (var i = 0; i < rows.length; i++) {
+        entries.add(_Row(rows[i], i + 1));
+        if (identical(_expanded, rows[i])) entries.add(_Details(rows[i]));
+      }
+    }
+    final allOpen = _areaOrder.every(_open.contains);
 
-    return LayoutBuilder(builder: (context, box) {
-      final dockInspector = box.maxWidth >= 1240 && !widget.cards;
-      final results = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            decoration: BoxDecoration(color: c.window, border: Border(bottom: BorderSide(color: c.border))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  for (final (cat, label, color) in kpis) ...[
-                    KpiCard(
-                      label: label,
-                      value: cat == null ? total : report.count(cat),
-                      total: total,
-                      color: color,
-                      active: state.filter == cat,
-                      onTap: () => state.setFilter(cat),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                ]),
-              ),
-              const SizedBox(height: 12),
-              if (widget.cards) search else Align(alignment: Alignment.centerLeft, child: SizedBox(width: 320, child: search)),
-            ]),
-          ),
-          Expanded(
-            child: rows.isEmpty
-                ? EmptyState(icon: Ic.funnel, text: s.t('empty_filter'))
-                : widget.cards
-                    ? _cardList(rows)
-                    : _table(context, rows),
-          ),
-        ],
-      );
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        header,
+    final toolbar = Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(color: c.panel, border: Border(bottom: BorderSide(color: c.border))),
+      child: Row(children: [
         Expanded(
-          child: Stack(children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: results),
-              if (dockInspector) ...[const VDivider(), SizedBox(width: 300, child: InspectorPanel(state: state))],
-            ]),
-            if (!dockInspector && state.selected != null)
-              Positioned.fill(
-                child: OverlayPanel(
-                  width: 360,
-                  onClose: () => state.select(null),
-                  child: InspectorPanel(state: state, onClose: () => state.select(null)),
-                ),
-              ),
-          ]),
-        ),
-      ]);
-    });
-  }
-
-  Widget _cardList(List<CheckRow> rows) {
-    final c = AppTheme.of(context);
-    return Container(
-      color: c.window,
-      child: ThinScrollbar(
-        controller: _vScroll,
-        child: ListView.separated(
-          controller: _vScroll,
-          padding: const EdgeInsets.all(12),
-          itemCount: rows.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (context, i) =>
-              _ResultCard(row: rows[i], selected: identical(widget.state.selected, rows[i]), onTap: () => widget.state.select(rows[i])),
-        ),
-      ),
-    );
-  }
-
-  Widget _table(BuildContext context, List<CheckRow> rows) {
-    final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    return LayoutBuilder(
-      builder: (context, box) {
-        final width = box.maxWidth < _minTableWidth ? _minTableWidth : box.maxWidth;
-        return Container(
-          color: c.panel,
-          child: ThinScrollbar(
-            controller: _hScroll,
-            horizontal: true,
-            child: SingleChildScrollView(
-              controller: _hScroll,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: width,
-                child: Column(
-                  children: [
-                    _HeaderRow(
-                      cells: [
-                        s.t('col_no'),
-                        s.t('col_pn'),
-                        s.t('col_desc'),
-                        s.t('col_bom_qty'),
-                        s.t('col_smt_qty'),
-                        s.t('col_bom_refs'),
-                        s.t('col_smt_refs'),
-                        s.t('col_side'),
-                        s.t('col_result'),
-                        s.t('col_reason'),
-                      ],
-                    ),
-                    Expanded(
-                      child: ThinScrollbar(
-                        controller: _vScroll,
-                        child: ListView.builder(
-                          controller: _vScroll,
-                          itemCount: rows.length,
-                          itemBuilder: (context, i) => _ResultRow(
-                            index: i + 1,
-                            row: rows[i],
-                            selected: identical(widget.state.selected, rows[i]),
-                            onTap: () => widget.state.select(rows[i]),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 340,
+              child: TextInput(controller: _search, hint: s.t('search_hint'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch),
             ),
           ),
-        );
+        ),
+        const SizedBox(width: 12),
+        Text(s.t('check_total', {'n': report.rows.length}), style: TextStyle(fontSize: 12, color: c.textDim)),
+        const SizedBox(width: 12),
+        FlatButton(
+          label: allOpen ? s.t('collapse_all') : s.t('expand_all'),
+          compact: true,
+          onTap: () => setState(() {
+            if (allOpen) {
+              _open.clear();
+            } else {
+              _open.addAll(_areaOrder);
+            }
+          }),
+        ),
+      ]),
+    );
+
+    final list = ListView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      itemCount: entries.length,
+      itemBuilder: (context, i) => switch (entries[i]) {
+        _Header(:final category, :final count) => _AreaHeader(
+            category: category,
+            label: _areaLabel(s, category),
+            count: count,
+            open: searching || _open.contains(category),
+            first: i == 0,
+            onTap: () => setState(() => _open.contains(category) ? _open.remove(category) : _open.add(category)),
+            columns: widget.cards ? null : _ColumnHeader(),
+          ),
+        _Row(:final row, :final index) => _ResultRow(
+            row: row,
+            index: index,
+            expanded: identical(_expanded, row),
+            cards: widget.cards,
+            last: i + 1 >= entries.length || entries[i + 1] is _Header,
+            onTap: () => _toggleRow(row),
+          ),
+        _Details(:final row) => _RowDetails(row: row, last: i + 1 >= entries.length || entries[i + 1] is _Header),
       },
     );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      header,
+      toolbar,
+      Expanded(
+        child: Container(
+          color: c.window,
+          child: widget.cards
+              ? ThinScrollbar(controller: _scroll, child: list)
+              : LayoutBuilder(
+                  builder: (context, box) => ThinScrollbar(
+                    controller: _hScroll,
+                    horizontal: true,
+                    child: SingleChildScrollView(
+                      controller: _hScroll,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: box.maxWidth < _minWidth ? _minWidth : box.maxWidth,
+                        child: ThinScrollbar(controller: _scroll, child: list),
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      ),
+    ]);
   }
 }
 
-const _minTableWidth = 1000.0;
+const _minWidth = 980.0;
 
-/// Column layout: fixed widths or flex weights.
+/// Table columns: fixed widths or flex weights.
 const _cols = <(double, int)>[
-  (44, 0), // No.
-  (150, 0), // Part no.
+  (40, 0), // No.
+  (168, 0), // Part no.
   (0, 3), // Description
-  (70, 0), // BOM qty
-  (70, 0), // SMT qty
-  (0, 4), // BOM refs
-  (0, 4), // SMT refs
-  (50, 0), // Side
-  (92, 0), // Result
+  (56, 0), // BOM qty
+  (56, 0), // SMT qty
+  (0, 4), // Designators
+  (52, 0), // Side
+  (84, 0), // Result
   (0, 4), // Reason
+  (30, 0), // Chevron
 ];
 
-Widget _cell(int i, Widget child, double padV, {Alignment align = Alignment.centerLeft}) {
+Widget _cell(int i, Widget child, {Alignment align = Alignment.centerLeft}) {
   final (w, flex) = _cols[i];
-  final padded = Padding(
-    padding: EdgeInsets.symmetric(horizontal: 8, vertical: padV),
-    child: Align(alignment: align, child: child),
-  );
+  final padded = Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Align(alignment: align, child: child));
   return flex > 0 ? Expanded(flex: flex, child: padded) : SizedBox(width: w, child: padded);
 }
 
-class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.cells});
-
-  final List<String> cells;
-
+class _ColumnHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final style = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textFaint, letterSpacing: 0.2);
+    final labels = ['#', s.t('col_pn'), s.t('col_desc'), 'BOM', 'SMT', s.t('col_bom_refs'), s.t('col_side'), s.t('col_result'), s.t('col_reason'), ''];
     return Container(
-      height: Metrics.of(context).touch ? 40 : 36,
-      decoration: BoxDecoration(
-        color: c.panelAlt,
-        border: Border(bottom: BorderSide(color: c.border)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 3),
-          for (var i = 0; i < cells.length; i++)
-            _cell(
-              i,
-              Text(
-                cells[i],
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.textDim, letterSpacing: 0.2),
-              ),
-              0,
-              align: (i == 3 || i == 4) ? Alignment.center : Alignment.centerLeft,
-            ),
-        ],
-      ),
+      height: 30,
+      decoration: BoxDecoration(color: c.panelAlt, border: Border(top: BorderSide(color: c.border), bottom: BorderSide(color: c.border))),
+      child: Row(children: [
+        const SizedBox(width: 3),
+        for (var i = 0; i < labels.length; i++)
+          _cell(i, Text(labels[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+              align: i == 3 || i == 4 ? Alignment.center : Alignment.centerLeft),
+      ]),
     );
   }
 }
 
-class _ResultRow extends StatelessWidget {
-  const _ResultRow({required this.index, required this.row, required this.selected, required this.onTap});
+class _AreaHeader extends StatelessWidget {
+  const _AreaHeader({
+    required this.category,
+    required this.label,
+    required this.count,
+    required this.open,
+    required this.first,
+    required this.onTap,
+    this.columns,
+  });
 
-  final int index;
-  final CheckRow row;
-  final bool selected;
+  final CheckCategory category;
+  final String label;
+  final int count;
+  final bool open;
+  final bool first;
   final VoidCallback onTap;
+  final Widget? columns;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    final pad = Metrics.of(context).rowPad;
-    final catColor = c.category(row.category);
-    final mono = TextStyle(fontSize: 13, color: c.text, fontFeatures: const [FontFeature.tabularFigures()]);
-    return Hoverable(
-      onTap: onTap,
-      cursor: SystemMouseCursors.basic,
-      builder: (context, hover, _) => Container(
+    final m = Metrics.of(context);
+    final color = c.category(category);
+    final empty = count == 0;
+    return Padding(
+      padding: EdgeInsets.only(top: first ? 0 : 10),
+      child: Container(
         decoration: BoxDecoration(
-          color: selected
-              ? c.selected
-              : hover
-              ? c.hover
-              : null,
-          border: Border(
-            bottom: BorderSide(color: c.border),
-            left: BorderSide(color: row.category == CheckCategory.pass ? catColor.withValues(alpha: 0.55) : catColor, width: 3),
+          color: c.panel,
+          borderRadius: open ? const BorderRadius.vertical(top: Radius.circular(8)) : BorderRadius.circular(8),
+          border: Border.all(color: c.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Hoverable(
+            onTap: onTap,
+            builder: (context, hover, _) => Container(
+              height: m.touch ? 52 : 46,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: hover ? c.hover : null,
+                borderRadius: open ? const BorderRadius.vertical(top: Radius.circular(8)) : BorderRadius.circular(8),
+              ),
+              child: Row(children: [
+                CustomPaint(size: const Size(12, 12), painter: _ChevronPainter(c.textDim, open)),
+                const SizedBox(width: 12),
+                Container(width: 4, height: 18, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 10),
+                Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.text)),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: empty ? c.panelAlt : color.withValues(alpha: c.dark ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text('$count',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: empty ? c.textFaint : color,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      )),
+                ),
+              ]),
+            ),
           ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _cell(0, Text('$index', style: TextStyle(color: c.textFaint, fontSize: 12)), pad),
-            _cell(
-              1,
-              Text(
-                row.partNo,
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.text),
-              ),
-              pad,
-            ),
-            _cell(
-              2,
-              Text(
-                row.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: c.text, fontSize: 12.5),
-              ),
-              pad,
-            ),
-            _cell(3, Text(_qty(row.bomQty), style: mono), pad, align: Alignment.center),
-            _cell(4, Text(row.smtQty?.toString() ?? '-', style: mono), pad, align: Alignment.center),
-            _cell(5, RefChips(marks: row.bomRefs), pad),
-            _cell(6, RefChips(marks: row.smtRefs, strikeExtra: true), pad),
-            _cell(7, Text(_sides(row.sides), style: TextStyle(color: c.textDim, fontSize: 12)), pad),
-            _cell(8, CategoryBadge(category: row.category, label: categoryLabel(s, row.category)), pad),
-            _cell(9, ReasonList(row: row), pad),
-          ],
-        ),
+          if (open && count > 0 && columns != null) columns!,
+        ]),
       ),
     );
   }
 }
 
-/// One result as a card (portrait tablets).
-class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.row, required this.selected, required this.onTap});
+class _ChevronPainter extends CustomPainter {
+  _ChevronPainter(this.color, this.open);
+
+  final Color color;
+  final bool open;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final w = size.width, h = size.height;
+    final path = open
+        ? (Path()
+          ..moveTo(w * 0.2, h * 0.35)
+          ..lineTo(w * 0.5, h * 0.68)
+          ..lineTo(w * 0.8, h * 0.35))
+        : (Path()
+          ..moveTo(w * 0.35, h * 0.2)
+          ..lineTo(w * 0.68, h * 0.5)
+          ..lineTo(w * 0.35, h * 0.8));
+    canvas.drawPath(path, p);
+  }
+
+  @override
+  bool shouldRepaint(_ChevronPainter old) => old.open != open || old.color != color;
+}
+
+/// One compact line per part; the full detail opens below it.
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({required this.row, required this.index, required this.expanded, required this.cards, required this.last, required this.onTap});
 
   final CheckRow row;
-  final bool selected;
+  final int index;
+  final bool expanded;
+  final bool cards;
+  final bool last;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
+    final m = Metrics.of(context);
     final catColor = c.category(row.category);
-    final dim = TextStyle(fontSize: 12, color: c.textDim);
-    final extras = row.smtRefs.where((m) => m.state == RefState.extra).toList();
+    final refs = [...row.bomRefs, ...row.smtRefs.where((r) => r.state == RefState.extra)];
+    final firstReason = row.reasons.isEmpty ? null : row.reasons.first;
+    final reasonText = firstReason == null ? '-' : s.t(firstReason.code, firstReason.args);
+    final more = row.reasons.length > 1 ? '  +${row.reasons.length - 1}' : '';
+    final reasonColor = firstReason == null ? c.textFaint : (firstReason.info ? c.textDim : c.ng);
+
+    final decoration = BoxDecoration(
+      color: expanded ? c.selected : null,
+      border: Border(
+        left: BorderSide(color: c.border),
+        right: BorderSide(color: c.border),
+        bottom: BorderSide(color: c.border),
+      ),
+      borderRadius: last && !expanded ? const BorderRadius.vertical(bottom: Radius.circular(8)) : null,
+    );
+
+    if (cards) {
+      return Hoverable(
+        onTap: onTap,
+        cursor: SystemMouseCursors.basic,
+        builder: (context, hover, _) => Container(
+          decoration: decoration.copyWith(color: expanded ? c.selected : hover ? c.hover : c.panel),
+          padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(row.partNo, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: c.text))),
+              _CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
+            ]),
+            const SizedBox(height: 3),
+            Text(row.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: c.textDim)),
+            const SizedBox(height: 6),
+            _RefLine(marks: refs),
+            if (firstReason != null) ...[
+              const SizedBox(height: 6),
+              Text('$reasonText$more', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: reasonColor)),
+            ],
+          ]),
+        ),
+      );
+    }
+
+    final mono = TextStyle(fontSize: 12.5, color: c.text, fontFeatures: const [FontFeature.tabularFigures()]);
     return Hoverable(
       onTap: onTap,
       cursor: SystemMouseCursors.basic,
       builder: (context, hover, _) => Container(
-        decoration: BoxDecoration(
-          color: selected ? c.selected : c.panel,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? c.accent.withValues(alpha: 0.6) : c.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            Positioned(left: 0, top: 0, bottom: 0, width: 4, child: ColoredBox(color: catColor)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          row.partNo,
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: c.text),
-                        ),
-                      ),
-                      CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    row.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: c.text),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${s.t('col_bom_qty')} ${_qty(row.bomQty)}   ·   ${s.t('col_smt_qty')} ${row.smtQty ?? '-'}   ·   ${s.t('col_side')} ${_sides(row.sides)}',
-                    style: dim,
-                  ),
-                  if (row.bomRefs.isNotEmpty || extras.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    RefChips(marks: [...row.bomRefs, ...extras], strikeExtra: true, limit: 40),
-                  ],
-                  if (row.reasons.isNotEmpty) ...[const SizedBox(height: 8), ReasonList(row: row)],
-                ],
-              ),
-            ),
-          ],
-        ),
+        height: m.touch ? 50 : 42,
+        decoration: decoration.copyWith(color: expanded ? c.selected : hover ? c.hover : c.panel),
+        child: Row(children: [
+          Container(width: 3, color: row.category == CheckCategory.pass ? catColor.withValues(alpha: 0.4) : catColor),
+          _cell(0, Text('$index', style: TextStyle(fontSize: 11.5, color: c.textFaint))),
+          _cell(1, Text(row.partNo, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: c.text))),
+          _cell(2, Text(row.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: c.textDim))),
+          _cell(3, Text(_qty(row.bomQty), style: mono), align: Alignment.center),
+          _cell(4, Text(row.smtQty?.toString() ?? '-', style: mono), align: Alignment.center),
+          _cell(5, _RefLine(marks: refs)),
+          _cell(6, Text(_sides(row.sides), style: TextStyle(fontSize: 12, color: c.textDim))),
+          _cell(7, _CategoryBadge(category: row.category, label: categoryLabel(s, row.category))),
+          _cell(8, Text('$reasonText$more', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: reasonColor))),
+          _cell(9, CustomPaint(size: const Size(11, 11), painter: _ChevronPainter(c.textFaint, expanded))),
+        ]),
       ),
     );
   }
 }
 
-/// Designator chips coloured by their check state.
-class RefChips extends StatelessWidget {
-  const RefChips({super.key, required this.marks, this.strikeExtra = false, this.limit = 60});
+/// Single line of designator chips, cut with "+N".
+class _RefLine extends StatelessWidget {
+  const _RefLine({required this.marks});
 
   final List<RefMark> marks;
-  final bool strikeExtra;
-  final int limit;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     if (marks.isEmpty) return Text('-', style: TextStyle(color: c.textFaint));
-    final shown = marks.length > limit ? marks.sublist(0, limit) : marks;
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: [
-        for (final m in shown)
-          RefChip(text: m.ref, color: c.refState(m.state), soft: c.refStateSoft(m.state), strike: strikeExtra && m.state == RefState.extra),
-        if (marks.length > limit) Text('+${marks.length - limit}', style: TextStyle(color: c.textDim, fontSize: 12)),
-      ],
+    return LayoutBuilder(builder: (context, box) {
+      // Roughly 52 px per chip; keep room for the "+N" counter.
+      final fit = ((box.maxWidth - 30) / 54).floor().clamp(1, marks.length);
+      final shown = marks.take(fit).toList();
+      return ClipRect(
+        child: Row(children: [
+          for (final m in shown)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: RefChip(text: m.ref, color: c.refState(m.state), soft: c.refStateSoft(m.state), strike: m.state == RefState.extra),
+            ),
+          if (marks.length > fit) Text('+${marks.length - fit}', style: TextStyle(fontSize: 11.5, color: c.textDim, fontWeight: FontWeight.w600)),
+        ]),
+      );
+    });
+  }
+}
+
+/// Full designator lists, loaded part numbers and reasons with explanations.
+class _RowDetails extends StatelessWidget {
+  const _RowDetails({required this.row, required this.last});
+
+  final CheckRow row;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text(t, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textFaint, letterSpacing: 0.3)),
+        );
+    Widget chips(List<RefMark> marks, {bool strike = false}) => marks.isEmpty
+        ? Text('-', style: TextStyle(color: c.textFaint))
+        : Wrap(spacing: 4, runSpacing: 4, children: [
+            for (final m in marks)
+              RefChip(text: m.ref, color: c.refState(m.state), soft: c.refStateSoft(m.state), strike: strike && m.state == RefState.extra),
+          ]);
+    final facts = [
+      (s.t('col_bom_qty'), _qty(row.bomQty)),
+      (s.t('col_smt_qty'), row.smtQty?.toString() ?? '-'),
+      (s.t('col_smt_pn'), row.smtPartNos.isEmpty ? '-' : row.smtPartNos.join(', ')),
+      (s.t('col_slot'), row.slots.isEmpty ? '-' : row.slots.join(', ')),
+      (s.t('col_side'), _sides(row.sides)),
+    ];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+      decoration: BoxDecoration(
+        color: c.panelAlt,
+        border: Border(left: BorderSide(color: c.border), right: BorderSide(color: c.border), bottom: BorderSide(color: c.border)),
+        borderRadius: last ? const BorderRadius.vertical(bottom: Radius.circular(8)) : null,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(row.description, style: TextStyle(fontSize: 13, color: c.text)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 28, runSpacing: 6, children: [
+          for (final (k, v) in facts)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('$k  ', style: TextStyle(fontSize: 12, color: c.textFaint)),
+              Text(v, style: TextStyle(fontSize: 12.5, color: c.text, fontWeight: FontWeight.w600)),
+            ]),
+        ]),
+        const SizedBox(height: 14),
+        LayoutBuilder(builder: (context, box) {
+          final two = box.maxWidth > 700;
+          final bom = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [label(s.t('col_bom_refs')), chips(row.bomRefs)]);
+          final smt = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [label(s.t('col_smt_refs')), chips(row.smtRefs, strike: true)]);
+          return two
+              ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: bom), const SizedBox(width: 24), Expanded(child: smt)])
+              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [bom, const SizedBox(height: 12), smt]);
+        }),
+        if (row.reasons.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          label(s.t('col_reason')),
+          for (final r in row.reasons)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(6),
+                border: Border(left: BorderSide(color: r.info ? c.substitute : c.ng, width: 3)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.t(r.code, r.args), style: TextStyle(fontSize: 13, color: c.text, fontWeight: FontWeight.w600)),
+                if (Texts.has('why_${r.code}')) ...[
+                  const SizedBox(height: 3),
+                  Text(s.t('why_${r.code}'), style: TextStyle(fontSize: 12.5, color: c.textDim, height: 1.45)),
+                ],
+              ]),
+            ),
+        ],
+      ]),
     );
   }
 }
 
-class CategoryBadge extends StatelessWidget {
-  const CategoryBadge({super.key, required this.category, required this.label});
+class _CategoryBadge extends StatelessWidget {
+  const _CategoryBadge({required this.category, required this.label});
 
   final CheckCategory category;
   final String label;
 
   @override
   Widget build(BuildContext context) => ResultBadge(
-    text: label,
-    color: AppTheme.of(context).category(category),
-    icon: switch (category) {
-      CheckCategory.pass => IcBold.checkCircle,
-      CheckCategory.ng => IcBold.xCircle,
-      CheckCategory.excluded => IcBold.prohibit,
-      CheckCategory.substitute => IcBold.arrowsLeftRight,
-    },
-  );
-}
-
-class ReasonList extends StatelessWidget {
-  const ReasonList({super.key, required this.row});
-
-  final CheckRow row;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    if (row.reasons.isEmpty) return Text('-', style: TextStyle(color: c.textFaint));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final r in row.reasons)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 1.5),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 3, right: 6),
-                  child: Icon(
-                    r.info ? Ic.info : Ic.warning,
-                    size: 13,
-                    color: r.info ? (row.category == CheckCategory.excluded ? c.excluded : c.substitute) : c.ng,
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    s.t(r.code, r.args),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: r.info ? c.textDim : c.text),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
+        text: label,
+        color: AppTheme.of(context).category(category),
+        icon: switch (category) {
+          CheckCategory.pass => IcBold.checkCircle,
+          CheckCategory.ng => IcBold.xCircle,
+          CheckCategory.excluded => IcBold.prohibit,
+          CheckCategory.substitute => IcBold.arrowsLeftRight,
+        },
+      );
 }
 
 String _qty(double? q) {
@@ -560,67 +621,6 @@ class EmptyState extends StatelessWidget {
           Text(text, textAlign: TextAlign.center, style: TextStyle(color: c.textDim, fontSize: 13)),
           if (action != null) ...[const SizedBox(height: 16), action!],
         ],
-      ),
-    );
-  }
-}
-
-/// Result-area statistic that doubles as a filter.
-class KpiCard extends StatelessWidget {
-  const KpiCard({super.key, required this.label, required this.value, required this.total, required this.color, required this.active, required this.onTap});
-
-  final String label;
-  final int value;
-  final int total;
-  final Color color;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final m = Metrics.of(context);
-    final share = total == 0 ? 0.0 : value / total;
-    return Hoverable(
-      onTap: onTap,
-      builder: (context, hover, _) => Container(
-        width: m.touch ? 150 : 142,
-        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-        decoration: BoxDecoration(
-          color: active ? color.withValues(alpha: c.dark ? 0.14 : 0.07) : hover ? c.hover : c.panel,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: active ? color.withValues(alpha: 0.8) : c.border, width: active ? 1.5 : 1),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(label,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.textDim, fontWeight: FontWeight.w500)),
-            ),
-          ]),
-          const SizedBox(height: 6),
-          Text('$value',
-              style: TextStyle(
-                fontSize: 24,
-                height: 1.1,
-                fontWeight: FontWeight.w700,
-                color: c.text,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              )),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: SizedBox(
-              height: 4,
-              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (share > 0) Expanded(flex: (share * 1000).round().clamp(1, 1000), child: ColoredBox(color: color)),
-                if (share < 1) Expanded(flex: (1000 - share * 1000).round().clamp(1, 1000), child: ColoredBox(color: c.border)),
-              ]),
-            ),
-          ),
-        ]),
       ),
     );
   }

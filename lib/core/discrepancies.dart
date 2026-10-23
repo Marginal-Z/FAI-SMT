@@ -48,9 +48,10 @@ List<Discrepancy> findDiscrepancies({
 }) {
   final out = <Discrepancy>[];
 
-  // 1. BOM ↔ station results (everything that is not a plain PASS).
+  // 1. BOM ↔ station results (everything that is not a plain PASS). Reasons
+  // folded in from the checks below are listed by those checks instead.
   for (final row in report.rows) {
-    for (final r in row.reasons) {
+    for (final r in row.reasons.where((r) => !r.code.startsWith('d_') && !r.code.startsWith('row_'))) {
       final excluded = row.category == CheckCategory.excluded;
       out.add(Discrepancy(
         severity: r.info ? Severity.info : Severity.error,
@@ -174,4 +175,64 @@ List<Discrepancy> findDiscrepancies({
     return s != 0 ? s : compareRefs(a.subject, b.subject);
   });
   return out;
+}
+
+/// Moves part-level findings (description mismatch, duplicate station
+/// entries, station quantity errors, missing coordinates, side mismatch)
+/// onto their check rows: those rows become NG with the finding as reason,
+/// so every NG item is in the NG area with its cause.
+CheckReport foldIntoReport(CheckReport report, List<Discrepancy> found) {
+  final byPn = {for (final r in report.rows) r.partNo: r};
+  final byRef = <String, CheckRow>{};
+  for (final r in report.rows) {
+    if (r.category == CheckCategory.excluded) continue;
+    for (final m in [...r.bomRefs, ...r.smtRefs]) {
+      byRef.putIfAbsent(m.ref, () => r);
+    }
+  }
+  final extra = <CheckRow, List<Reason>>{};
+  final grouped = <CheckRow, Map<String, List<String>>>{};
+  final slots = <CheckRow, Set<String>>{};
+  void add(CheckRow? row, Reason reason) {
+    if (row != null) extra.putIfAbsent(row, () => []).add(reason);
+  }
+
+  void group(CheckRow? row, String code, String ref) {
+    if (row != null) grouped.putIfAbsent(row, () => {}).putIfAbsent(code, () => []).add(ref);
+  }
+
+  for (final d in found) {
+    if (d.severity == Severity.info) continue;
+    switch (d.code) {
+      case 'd_desc_mismatch':
+        add(byPn[d.subject], Reason(d.code, d.args));
+      case 'd_parse_station_qty':
+        add(byPn[d.args['detail']?.split(' ').first], Reason('row_station_qty', {'detail': d.args['detail'] ?? ''}));
+      case 'd_station_dup':
+        final row = byPn[d.args['pn']];
+        group(row, 'row_station_dup', d.subject);
+        if (row != null) slots.putIfAbsent(row, () => {}).addAll(d.args['slots']!.split(', '));
+      case 'd_coord_missing':
+        group(byRef[d.subject], 'row_coord_missing', d.subject);
+      case 'd_side_mismatch':
+        group(byRef[d.subject], 'row_side_mismatch', d.subject);
+    }
+  }
+  for (final e in grouped.entries) {
+    for (final g in e.value.entries) {
+      extra.putIfAbsent(e.key, () => []).add(Reason(g.key, {
+        'refs': sortedRefs(g.value).join(', '),
+        if (g.key == 'row_station_dup') 'slots': slots[e.key]!.join(', '),
+      }));
+    }
+  }
+  if (extra.isEmpty) return report;
+
+  final rows = [for (final r in report.rows) extra.containsKey(r) ? r.asNg(extra[r]!) : r];
+  final ngPns = {for (final r in extra.keys) r.partNo};
+  final merged = [
+    for (final m in report.merged)
+      ngPns.contains(m.bomPartNo) || (m.bomPartNo.isEmpty && ngPns.contains(m.smtPartNo)) ? m.withCategory(CheckCategory.ng) : m,
+  ];
+  return CheckReport(rows, merged);
 }

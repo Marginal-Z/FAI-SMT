@@ -263,6 +263,10 @@ class AppState extends ChangeNotifier {
     _cad = null;
     _discrepancies = null;
     _status('status_loaded', {'name': name});
+    if (kind == InputKind.coords && report != null) {
+      runCheckNow();
+      return;
+    }
     notifyListeners();
   }
 
@@ -285,6 +289,10 @@ class AppState extends ChangeNotifier {
     _cad = null;
     _discrepancies = null;
     _status('status_ready');
+    if (kind == InputKind.coords && report != null) {
+      runCheckNow();
+      return;
+    }
     notifyListeners();
   }
 
@@ -309,8 +317,6 @@ class AppState extends ChangeNotifier {
     if (c != null && _coordBytes != null) {
       coords = LoadedFile(c.name, parseCoordinates(readTableBytes(_coordBytes!, c.name), unit: u));
       _cad = null;
-      _discrepancies = null;
-    _discrepancies = null;
     }
     notifyListeners();
   }
@@ -319,9 +325,20 @@ class AppState extends ChangeNotifier {
     if (bom == null) throw UserMessage('msg_need_bom');
     if (stationA == null && stationB == null) throw UserMessage('msg_need_station');
     final stations = [...?stationA?.result.items, ...?stationB?.result.items];
-    report = runCheck(bom!.result.items, stations, settings.rules);
+    final raw = runCheck(bom!.result.items, stations, settings.rules);
+    _discrepancies = findDiscrepancies(
+      bom: bom!.result.items,
+      stations: stations,
+      report: raw,
+      rules: settings.rules,
+      placements: coords?.result.items,
+      bomIssues: bom!.result.issues,
+      stationAIssues: stationA?.result.issues ?? const [],
+      stationBIssues: stationB?.result.issues ?? const [],
+      coordIssues: coords?.result.issues ?? const [],
+    );
+    report = foldIntoReport(raw, _discrepancies!);
     _cad = null;
-    _discrepancies = null;
     selected = null;
     _status('status_checked', {
       'pass': report!.count(CheckCategory.pass),
@@ -346,7 +363,6 @@ class AppState extends ChangeNotifier {
     settings.cad = t;
     persist();
     _cad = null;
-    _discrepancies = null;
     notifyListeners();
   }
 
@@ -358,21 +374,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// All inconsistencies across the loaded files, or null before a check.
-  List<Discrepancy>? get discrepancies {
-    final r = report;
-    if (r == null) return null;
-    return _discrepancies ??= findDiscrepancies(
-      bom: bom!.result.items,
-      stations: [...?stationA?.result.items, ...?stationB?.result.items],
-      report: r,
-      rules: settings.rules,
-      placements: coords?.result.items,
-      bomIssues: bom!.result.issues,
-      stationAIssues: stationA?.result.issues ?? const [],
-      stationBIssues: stationB?.result.issues ?? const [],
-      coordIssues: coords?.result.issues ?? const [],
-    );
-  }
+  List<Discrepancy>? get discrepancies => report == null ? null : _discrepancies;
 
   List<CheckRow> visibleRows() {
     final r = report;

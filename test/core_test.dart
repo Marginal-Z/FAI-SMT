@@ -329,4 +329,48 @@ void main() {
       }
     });
   });
+
+  group('1.2.1', () {
+    test('part-level findings make the row NG with a reason', () {
+      final bom = [BomItem(partNo: 'A', name: '贴片电感 UR0420', qty: 2, refs: ['L1', 'L2'])];
+      final st = [StationItem(partNo: 'A', side: StationSide.a, slot: '9-17', desc: '贴片电感 4040', refs: ['L1', 'L2'])];
+      final raw = runCheck(bom, st, CheckRules());
+      expect(raw.rows.single.category, CheckCategory.pass);
+      final found = findDiscrepancies(
+        bom: bom,
+        stations: st,
+        report: raw,
+        rules: CheckRules(),
+        placements: [Placement(ref: 'L1', x: 0, y: 0, side: BoardSide.top)],
+      );
+      final folded = foldIntoReport(raw, found);
+      final row = folded.rows.single;
+      expect(row.category, CheckCategory.ng);
+      expect(row.reasons.map((r) => r.code), containsAll(['d_desc_mismatch', 'row_coord_missing']));
+      expect(folded.merged.every((m) => m.category == CheckCategory.ng), isTrue);
+      // The list does not repeat folded reasons as BOM↔station findings.
+      final again = findDiscrepancies(bom: bom, stations: st, report: folded, rules: CheckRules());
+      expect(again.where((d) => d.code.startsWith('row_')), isEmpty);
+    });
+
+    test('CAD output skips non-SMD and mechanical parts', () {
+      final rep = runCheck([
+        BomItem(partNo: 'IC', name: '贴片IC', qty: 1, refs: ['U1']),
+        BomItem(partNo: 'SH', name: '主板屏蔽框', qty: 1, refs: ['9R1']),
+        BomItem(partNo: 'ST', name: '贴片螺柱', qty: 1, refs: ['J4']),
+      ], [
+        StationItem(partNo: 'IC', side: StationSide.a, refs: ['U1']),
+        StationItem(partNo: 'SH', side: StationSide.a, refs: ['9R1']),
+        StationItem(partNo: 'ST', side: StationSide.a, refs: ['J4']),
+      ], CheckRules());
+      final cad = buildCad([
+        Placement(ref: 'U1', x: 0, y: 0, smd: true),
+        Placement(ref: '9R1', x: 1, y: 1, smd: true),
+        Placement(ref: 'J4', x: 2, y: 2, smd: false),
+      ], rep, CadTemplate(), CheckRules());
+      expect(cad.cells.map((r) => r.first), ['U1']);
+      expect(cad.skippedNonSmd, ['J4']);
+      expect(cad.skippedMechanical, ['9R1']);
+    });
+  });
 }

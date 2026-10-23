@@ -22,7 +22,7 @@ class FilesPage extends StatelessWidget {
     final s = Strings.of(context);
     final ready = state.bom != null && (state.stationA != null || state.stationB != null);
     final cards = [
-      _FileCard(
+      FileCard(
         state: state,
         kind: InputKind.bom,
         glyph: Glyph.bom,
@@ -36,7 +36,7 @@ class FilesPage extends StatelessWidget {
                 s.t('file_refs', {'n': state.bom!.result.items.fold<int>(0, (n, b) => n + b.refs.length)}),
               ],
       ),
-      _FileCard(
+      FileCard(
         state: state,
         kind: InputKind.stationA,
         glyph: Glyph.stationA,
@@ -45,7 +45,7 @@ class FilesPage extends StatelessWidget {
         file: state.stationA,
         stats: _stationStats(s, state.stationA),
       ),
-      _FileCard(
+      FileCard(
         state: state,
         kind: InputKind.stationB,
         glyph: Glyph.stationB,
@@ -54,21 +54,6 @@ class FilesPage extends StatelessWidget {
         file: state.stationB,
         optional: true,
         stats: _stationStats(s, state.stationB),
-      ),
-      _FileCard(
-        state: state,
-        kind: InputKind.coords,
-        glyph: Glyph.coords,
-        title: s.t('btn_coord'),
-        hint: s.t('step_coord'),
-        file: state.coords,
-        optional: true,
-        stats: state.coords == null
-            ? null
-            : [
-                s.t('file_refs', {'n': state.coords!.result.items.length}),
-                (state.coords!.result.columns['unit'] ?? 'mm'),
-              ],
       ),
     ];
     return Column(
@@ -79,16 +64,28 @@ class FilesPage extends StatelessWidget {
           child: Container(
             color: c.window,
             child: LayoutBuilder(builder: (context, box) {
-              final twoCols = box.maxWidth >= 860;
-              final gap = 14.0;
-              final w = twoCols ? (box.maxWidth.clamp(0, 1180) - 40 - gap) / 2 : box.maxWidth - 32;
+              final row = box.maxWidth >= 900;
+              const gap = 14.0;
+              final inner = box.maxWidth.clamp(0, 1320) - 40;
+              final w = row ? (inner - gap * 2) / 3 : box.maxWidth - 40;
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1140),
+                    constraints: const BoxConstraints(maxWidth: 1280),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Wrap(spacing: gap, runSpacing: gap, children: [for (final card in cards) SizedBox(width: w, child: card)]),
+                      row
+                          ? IntrinsicHeight(
+                              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                for (var i = 0; i < cards.length; i++) ...[
+                                  if (i > 0) const SizedBox(width: gap),
+                                  SizedBox(width: w, child: cards[i]),
+                                ],
+                              ]),
+                            )
+                          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: gap), cards[i]],
+                            ]),
                       const SizedBox(height: 20),
                       SurfaceCard(
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -128,8 +125,8 @@ class FilesPage extends StatelessWidget {
   }
 }
 
-class _FileCard extends StatelessWidget {
-  const _FileCard({
+class FileCard extends StatelessWidget {
+  const FileCard({super.key, 
     required this.state,
     required this.kind,
     required this.glyph,

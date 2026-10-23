@@ -355,23 +355,6 @@ class Ribbon extends StatelessWidget {
               label: s.t('btn_station_b'),
               badge: state.stationB != null ? c.pass : null,
               onTap: () => importFile(context, state, InputKind.stationB)),
-          RibbonButton(
-              glyph: Glyph.coords,
-              label: s.t('btn_coord'),
-              badge: state.coords != null ? c.pass : null,
-              onTap: () => importFile(context, state, InputKind.coords)),
-        ]),
-        RibbonGroup(label: s.t('grp_coord_import'), children: [
-          RibbonButton(
-            glyph: Glyph.unitAuto,
-            label: s.t('unit_auto'),
-            active: state.settings.coordUnit == CoordUnit.auto,
-            onTap: () => _setUnit(context, CoordUnit.auto),
-          ),
-          Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final u in [CoordUnit.mm, CoordUnit.mil, CoordUnit.inch])
-              RibbonOption(label: s.t('unit_${u.name}'), selected: state.settings.coordUnit == u, onTap: () => _setUnit(context, u)),
-          ]),
         ]),
         RibbonGroup(label: s.t('grp_project'), children: [
           RibbonButton(glyph: Glyph.clear, label: s.t('btn_clear'), onTap: state.clearAll),
@@ -470,6 +453,26 @@ class Ribbon extends StatelessWidget {
       ];
 
   List<Widget> _cad(BuildContext context, Strings s) => [
+        RibbonGroup(label: s.t('grp_coords'), children: [
+          RibbonButton(
+            glyph: Glyph.coords,
+            label: s.t('btn_coord'),
+            badge: state.coords != null ? AppTheme.of(context).pass : null,
+            onTap: () => importFile(context, state, InputKind.coords),
+          ),
+        ]),
+        RibbonGroup(label: s.t('grp_coord_import'), children: [
+          RibbonButton(
+            glyph: Glyph.unitAuto,
+            label: s.t('unit_auto'),
+            active: state.settings.coordUnit == CoordUnit.auto,
+            onTap: () => _setUnit(context, CoordUnit.auto),
+          ),
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final u in [CoordUnit.mm, CoordUnit.mil, CoordUnit.inch])
+              RibbonOption(label: s.t('unit_${u.name}'), selected: state.settings.coordUnit == u, onTap: () => _setUnit(context, u)),
+          ]),
+        ]),
         RibbonGroup(label: s.t('grp_cad'), children: [
           RibbonButton(glyph: Glyph.cadFormat, label: s.t('btn_cad_template'), onTap: () => showCadTemplateDialog(context, state)),
         ]),

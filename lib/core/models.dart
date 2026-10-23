@@ -69,9 +69,13 @@ class Placement {
     this.side = BoardSide.unknown,
     this.value = '',
     this.footprint = '',
+    this.smd,
   });
 
   final String ref;
+
+  /// SMD flag from the coordinate file (null when the file has no such column).
+  final bool? smd;
   final double x;
   final double y;
   final double rotation;
@@ -169,6 +173,21 @@ class CheckRow {
   final Set<StationSide> sides;
   final List<String> slots;
   final List<Reason> reasons;
+
+  /// Same row turned NG with extra reasons.
+  CheckRow asNg(List<Reason> extra) => CheckRow(
+        category: CheckCategory.ng,
+        partNo: partNo,
+        description: description,
+        bomQty: bomQty,
+        smtQty: smtQty,
+        bomRefs: bomRefs,
+        smtRefs: smtRefs,
+        smtPartNos: smtPartNos,
+        sides: sides,
+        slots: slots,
+        reasons: [...reasons, ...extra],
+      );
 }
 
 /// Per-designator merged record used to build the CAD file.
@@ -190,6 +209,16 @@ class MergedRef {
   final CheckCategory category;
   final StationSide? side;
   final String slot;
+
+  MergedRef withCategory(CheckCategory c) => MergedRef(
+        ref: ref,
+        bomPartNo: bomPartNo,
+        smtPartNo: smtPartNo,
+        description: description,
+        category: c,
+        side: side,
+        slot: slot,
+      );
 }
 
 class CheckReport {
