@@ -124,6 +124,21 @@ void main() {
     await shot(tester, s, 'tablet_portrait_files_light', size: const Size(800, 1280), touch: true);
   });
 
+  testWidgets('large tablet scaled up', (tester) async {
+    // A 1600 x 1000 dp tablet at 125 %: the 1280 x 800 layout filling the screen.
+    final s = demoState(dark: false);
+    s.settings.uiScale = 1.25;
+    s.setModule(Module.files);
+    await shot(tester, s, 'tablet_scaled_files_light', size: const Size(1600, 1000), touch: true);
+  });
+
+  testWidgets('settings appearance scaled', (tester) async {
+    final s = demoState();
+    s.settings.uiScale = 0.9;
+    s.openSettings(SettingsSection.appearance);
+    await shot(tester, s, 'settings_scaled_dark', size: const Size(1280, 800), touch: true);
+  });
+
   testWidgets('assembly zoomed', (tester) async {
     final s = demoState();
     s.setModule(Module.board);

@@ -96,8 +96,10 @@ class AppState extends ChangeNotifier {
   bool boardFullscreen = false;
   BoardSideFilter boardSide = BoardSideFilter.both;
 
-  /// Incremented to ask the board view to fit the board to the window.
+  /// Incremented to ask the board view to fit the board to the window, and
+  /// to also reset the 3D viewing angle.
   int boardFitRequest = 0;
+  int boardResetRequest = 0;
 
   /// View rotation in quarter turns (counter-clockwise) and mirror flag.
   int boardQuarterTurns = 0;
@@ -130,6 +132,12 @@ class AppState extends ChangeNotifier {
 
   void setLanguage(String lang) {
     settings.language = lang;
+    persist();
+    notifyListeners();
+  }
+
+  void setUiScale(double v) {
+    settings.uiScale = v;
     persist();
     notifyListeners();
   }
@@ -273,6 +281,7 @@ class AppState extends ChangeNotifier {
     boardQuarterTurns = 0;
     boardMirror = false;
     boardFitRequest++;
+    boardResetRequest++;
     notifyListeners();
   }
 

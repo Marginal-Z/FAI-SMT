@@ -11,7 +11,16 @@ library;
 import 'dart:math' as math;
 
 class BodyBox {
-  const BodyBox({required this.x, required this.y, required this.rotation, required this.width, required this.height, required this.side, this.exact = false});
+  const BodyBox({
+    required this.x,
+    required this.y,
+    required this.rotation,
+    required this.width,
+    required this.height,
+    required this.side,
+    this.exact = false,
+    this.solid = true,
+  });
 
   final double x;
   final double y;
@@ -24,12 +33,20 @@ class BodyBox {
   /// Parts only collide with parts of the same side.
   final int side;
   final bool exact;
+
+  /// False for a footprint drawn empty (nothing placed): it makes way for
+  /// placed parts and never pushes them aside.
+  final bool solid;
 }
 
 /// Scale factors (width, height), each in (0, 1], per body; centres and
 /// rotations are unchanged. A collision shrinks the dimension that faces the
 /// neighbour first, so a row of long pads keeps its pads' width.
-List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, double minScale = 0.15}) {
+///
+/// Bodies on a side listed in [yieldingSides] also make way for bodies of the
+/// other side (the all-sides view, where the far side is drawn underneath);
+/// in such a pair only the yielding body shrinks.
+List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, double minScale = 0.15, Set<int> yieldingSides = const {}}) {
   final n = bodies.length;
   final sw = List<double>.filled(n, 1), sh = List<double>.filled(n, 1);
   if (n < 2) return [for (var i = 0; i < n; i++) (1.0, 1.0)];
@@ -41,22 +58,31 @@ List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, doubl
 
   // Sweep along X to collect the candidate pairs once.
   final order = List<int>.generate(n, (i) => i)..sort((a, b) => (bodies[a].x - ex[a]).compareTo(bodies[b].x - ex[b]));
-  final pairs = <(int, int)>[];
+  final pairs = <(int, int, bool)>[];
+  bool yields(int i) => yieldingSides.contains(bodies[i].side);
   for (var k = 0; k < n; k++) {
     final a = order[k];
     final right = bodies[a].x + ex[a];
     for (var l = k + 1; l < n; l++) {
       final b = order[l];
       if (bodies[b].x - ex[b] > right) break;
-      if (bodies[a].side != bodies[b].side) continue;
+      final cross = bodies[a].side != bodies[b].side;
+      if (cross && !yields(a) && !yields(b)) continue;
+      // An empty footprint on the near side does not push the far side away.
+      if (cross && (!bodies[yields(a) ? b : a].solid)) continue;
       if ((bodies[a].y - bodies[b].y).abs() >= ey[a] + ey[b]) continue;
       // Alternate footprints sharing one spot: nothing to separate. Estimated
       // sizes say little, so they count as at most 0.5 mm wide here.
       double short(BodyBox e) => math.min(math.min(e.width, e.height), e.exact ? double.infinity : 0.5);
       final dist = math.sqrt(math.pow(bodies[a].x - bodies[b].x, 2) + math.pow(bodies[a].y - bodies[b].y, 2));
       final long = math.max(math.max(bodies[a].width, bodies[a].height), math.max(bodies[b].width, bodies[b].height));
-      if (dist < 0.6 * math.min(short(bodies[a]), short(bodies[b])) || dist < 0.12 * long) continue;
-      pairs.add((a, b));
+      if (cross) {
+        // Only a part right on top of another stays as it is.
+        if (dist < 0.25 * math.min(math.min(bodies[a].width, bodies[a].height), math.min(bodies[b].width, bodies[b].height))) continue;
+      } else if (dist < 0.6 * math.min(short(bodies[a]), short(bodies[b])) || dist < 0.12 * long) {
+        continue;
+      }
+      pairs.add((a, b, cross));
     }
   }
 
@@ -89,7 +115,7 @@ List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, doubl
 
   for (var pass = 0; pass < 4; pass++) {
     var changed = false;
-    for (final (a, b) in pairs) {
+    for (final (a, b, cross) in pairs) {
       // Separating axis needing the least shrinking.
       final dx = bodies[b].x - bodies[a].x, dy = bodies[b].y - bodies[a].y;
       var best = (0.0, 0.0, 0.0);
@@ -110,6 +136,14 @@ List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, doubl
       final (aw, ah) = terms(a, ux, uy);
       final (bw, bh) = terms(b, ux, uy);
       final over = aw + ah + bw + bh - math.max(d, 0);
+      if (cross) {
+        shrink(yields(a) ? a : b, ux, uy, over);
+        continue;
+      }
+      if (bodies[a].solid != bodies[b].solid) {
+        shrink(bodies[a].solid ? b : a, ux, uy, over);
+        continue;
+      }
       final (big, small) = weight(a) >= weight(b) ? (a, b) : (b, a);
       // A clearly bigger or estimated body gives way alone; similar ones share.
       final alone = weight(big) > 2 * weight(small);

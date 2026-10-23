@@ -347,6 +347,25 @@ void main() {
       expect(f[4], (1.0, 1.0));
     });
 
+    test('all-sides view: the far side gives way, empty footprints never push', () {
+      const top = BodyBox(x: 0, y: 0, rotation: 0, width: 2, height: 2, side: 1);
+      const bottom = BodyBox(x: 1.2, y: 0, rotation: 0, width: 2, height: 2, side: 2);
+      // Separate views: different sides never collide.
+      expect(fitBodies(const [top, bottom]), [(1.0, 1.0), (1.0, 1.0)]);
+      // All sides: only the bottom body shrinks.
+      final f = fitBodies(const [top, bottom], yieldingSides: {2});
+      expect(f[0], (1.0, 1.0));
+      expect(f[1].$1, lessThan(1));
+      // An empty top footprint does not make a placed bottom part shrink.
+      const emptyTop = BodyBox(x: 0, y: 0, rotation: 0, width: 2, height: 2, side: 1, solid: false);
+      expect(fitBodies(const [emptyTop, bottom], yieldingSides: {2})[1], (1.0, 1.0));
+      // Same side: the empty footprint is the one that gives way.
+      const placed = BodyBox(x: 1.2, y: 0, rotation: 0, width: 2, height: 2, side: 1);
+      final g = fitBodies(const [emptyTop, placed]);
+      expect(g[1], (1.0, 1.0));
+      expect(g[0].$1, lessThan(1));
+    });
+
     test('an estimated body gives way to a package-code body', () {
       final f = fitBodies(const [
         BodyBox(x: 0, y: 0, rotation: 0, width: 4, height: 4, side: 1),

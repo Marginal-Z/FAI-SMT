@@ -269,6 +269,7 @@ class AppSettings {
     this.theme = ThemePref.system,
     this.autoUpdate = true,
     this.coordUnit = CoordUnit.auto,
+    this.uiScale = 0,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate(),
        board = board ?? BoardStyle();
@@ -283,6 +284,9 @@ class AppSettings {
   bool autoUpdate;
   CoordUnit coordUnit;
 
+  /// Interface zoom factor; 0 follows the display (see [autoUiScale]).
+  double uiScale;
+
   Map<String, dynamic> toJson() => {
     'rules': rules.toJson(),
     'board': board.toJson(),
@@ -291,6 +295,7 @@ class AppSettings {
     'theme': theme.name,
     'autoUpdate': autoUpdate,
     'coordUnit': coordUnit.name,
+    'uiScale': uiScale,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -309,6 +314,7 @@ class AppSettings {
     ),
     autoUpdate: j['autoUpdate'] as bool? ?? true,
     coordUnit: CoordUnit.values.firstWhere((u) => u.name == j['coordUnit'], orElse: () => CoordUnit.auto),
+    uiScale: (j['uiScale'] as num?)?.toDouble() ?? 0,
   );
 
   static Future<AppSettings> load(String dir) async {

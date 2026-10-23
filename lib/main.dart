@@ -10,6 +10,7 @@ import 'core/settings.dart';
 import 'l10n/strings.dart';
 import 'ui/home.dart';
 import 'ui/theme.dart';
+import 'ui/ui_scale.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,7 +67,10 @@ class SmtFaiApp extends StatelessWidget {
                   strings: strings,
                   child: DefaultTextStyle(
                     style: baseTextStyle(colors),
-                    child: ColoredBox(color: colors.chrome, child: SafeArea(child: child!)),
+                    child: ColoredBox(
+                      color: colors.chrome,
+                      child: SafeArea(child: UiScale(setting: state.settings.uiScale, child: child!)),
+                    ),
                   ),
                 ),
               ),

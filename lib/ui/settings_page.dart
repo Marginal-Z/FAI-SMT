@@ -15,6 +15,7 @@ import 'board_view.dart';
 import 'glyphs.dart';
 import 'rules_page.dart';
 import 'theme.dart';
+import 'ui_scale.dart';
 import 'widgets.dart';
 
 /// Full-screen settings, opened from the title bar gear and closed with Back.
@@ -265,6 +266,18 @@ class _Appearance extends StatelessWidget {
             value: state.theme,
             options: [(ThemePref.light, s.t('btn_light')), (ThemePref.dark, s.t('btn_dark')), (ThemePref.system, s.t('btn_system'))],
             onChanged: state.setTheme,
+          ),
+        ),
+        row(
+          s.t('set_ui_scale'),
+          DropdownSelect<double>(
+            value: state.settings.uiScale,
+            width: 180,
+            options: [
+              (0, s.t('ui_scale_auto')),
+              for (final v in uiScaleSteps) (v, '${(v * 100).round()}%'),
+            ],
+            onChanged: state.setUiScale,
           ),
         ),
         row(

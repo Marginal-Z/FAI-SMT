@@ -136,4 +136,28 @@ void main() {
     s.select(ng.first);
     await shot(tester, s, 'ng_confirmed');
   });
+
+  testWidgets('real board green zoom', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    s.setBoardBackground(BoardBackground.green);
+    await shot(tester, s, 'board_green_zoom', zoomSteps: 9, zoomAt: const Offset(780, 640));
+  });
+
+  testWidgets('real board green 3d zoom', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    s.setBoardBackground(BoardBackground.green);
+    s.settings.board.depth = true;
+    await shot(tester, s, 'board_green_3d_zoom', zoomSteps: 9, zoomAt: const Offset(780, 640));
+  });
+
+  testWidgets('real board 3d bottom mirrored', (tester) async {
+    final s = demoState();
+    s.setModule(Module.board);
+    s.settings.board.depth = true;
+    s.setBoardSide(BoardSideFilter.bottom);
+    s.toggleBoardMirror();
+    await shot(tester, s, 'board_3d_bottom', zoomSteps: 6, zoomAt: const Offset(800, 560));
+  });
 }
