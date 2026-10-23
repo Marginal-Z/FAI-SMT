@@ -10,7 +10,6 @@ import '../core/exporters.dart';
 import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
-import 'dialogs.dart';
 import 'check_view.dart';
 import 'theme.dart';
 import 'widgets.dart';
