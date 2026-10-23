@@ -6,6 +6,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
@@ -19,38 +20,115 @@ class TourTargets {
 
   GlobalKey module(Module m) => _modules[m]!;
 
+  final tabs = GlobalKey(debugLabel: 'tour-tabs');
   final bomCard = GlobalKey(debugLabel: 'tour-bom');
   final stationCard = GlobalKey(debugLabel: 'tour-station');
+  final fileChecks = GlobalKey(debugLabel: 'tour-file-checks');
   final runButton = GlobalKey(debugLabel: 'tour-run');
-  final settings = GlobalKey(debugLabel: 'tour-settings');
+  final checkCards = GlobalKey(debugLabel: 'tour-check-cards');
+  final checkFilters = GlobalKey(debugLabel: 'tour-check-filters');
+  final checkTable = GlobalKey(debugLabel: 'tour-check-table');
+  final checkExport = GlobalKey(debugLabel: 'tour-check-export');
+  final cadFile = GlobalKey(debugLabel: 'tour-cad-file');
+  final cadFormat = GlobalKey(debugLabel: 'tour-cad-format');
+  final cadBuild = GlobalKey(debugLabel: 'tour-cad-build');
+  final cadPreview = GlobalKey(debugLabel: 'tour-cad-preview');
+  final boardCanvas = GlobalKey(debugLabel: 'tour-board-canvas');
+  final boardView = GlobalKey(debugLabel: 'tour-board-view');
+  final boardRender = GlobalKey(debugLabel: 'tour-board-render');
+  final boardColoring = GlobalKey(debugLabel: 'tour-board-coloring');
+  final library = GlobalKey(debugLabel: 'tour-library');
+  final guide = GlobalKey(debugLabel: 'tour-guide');
   final help = GlobalKey(debugLabel: 'tour-help');
 }
 
 final tourTargets = TourTargets();
 
+/// Where a step happens: a module page, or a Settings section.
+class _Place {
+  const _Place.module(this.module) : section = null;
+  const _Place.settings(this.section) : module = null;
+
+  final Module? module;
+  final SettingsSection? section;
+}
+
 class _Step {
-  const _Step(this.key, this.target, {this.module});
+  const _Step(this.key, this.place, this.target);
 
   /// Text keys `tour_<key>_title` / `tour_<key>_body`.
   final String key;
+  final _Place place;
   final GlobalKey? Function() target;
-
-  /// Module to show while this step is open.
-  final Module? module;
 }
 
+const _files = _Place.module(Module.files);
+const _check = _Place.module(Module.check);
+const _cad = _Place.module(Module.cad);
+const _board = _Place.module(Module.board);
+
 final _steps = <_Step>[
-  _Step('welcome', () => null, module: Module.files),
-  _Step('modules', () => tourTargets.module(Module.files), module: Module.files),
-  _Step('bom', () => tourTargets.bomCard, module: Module.files),
-  _Step('station', () => tourTargets.stationCard, module: Module.files),
-  _Step('run', () => tourTargets.runButton, module: Module.files),
-  _Step('check', () => tourTargets.module(Module.check), module: Module.files),
-  _Step('cad', () => tourTargets.module(Module.cad), module: Module.files),
-  _Step('board', () => tourTargets.module(Module.board), module: Module.files),
-  _Step('help', () => tourTargets.help, module: Module.files),
-  _Step('done', () => null, module: Module.files),
+  _Step('welcome', _files, () => null),
+  _Step('modules', _files, () => tourTargets.tabs),
+  _Step('bom', _files, () => tourTargets.bomCard),
+  _Step('station', _files, () => tourTargets.stationCard),
+  _Step('file_checks', _files, () => tourTargets.fileChecks),
+  _Step('run', _files, () => tourTargets.runButton),
+  _Step('check_cards', _check, () => tourTargets.checkCards),
+  _Step('check_filters', _check, () => tourTargets.checkFilters),
+  _Step('check_table', _check, () => tourTargets.checkTable),
+  _Step('check_export', _check, () => tourTargets.checkExport),
+  _Step('cad_file', _cad, () => tourTargets.cadFile),
+  _Step('cad_format', _cad, () => tourTargets.cadFormat),
+  _Step('cad_preview', _cad, () => tourTargets.cadPreview),
+  _Step('cad_build', _cad, () => tourTargets.cadBuild),
+  _Step('board_canvas', _board, () => tourTargets.boardCanvas),
+  _Step('board_view', _board, () => tourTargets.boardView),
+  _Step('board_render', _board, () => tourTargets.boardRender),
+  _Step('board_coloring', _board, () => tourTargets.boardColoring),
+  _Step('library', _Place.settings(SettingsSection.library), () => tourTargets.library),
+  _Step('guide', _Place.settings(SettingsSection.guide), () => tourTargets.guide),
+  _Step('help', _files, () => tourTargets.help),
+  _Step('done', _files, () => null),
 ];
+
+/// The sample files the tour uses when nothing is loaded.
+const _demo = [
+  (InputKind.bom, 'demo_T100_BOM.xlsx'),
+  (InputKind.stationA, 'demo_station_A.xlsx'),
+  (InputKind.stationB, 'demo_station_B.xlsx'),
+  (InputKind.coords, 'demo_coordinates.csv'),
+];
+
+/// Loads the bundled sample files so every page has something to show.
+Future<void> loadTourDemo(AppState state) async {
+  if (state.bom != null || state.stationA != null || state.stationB != null || state.coords != null) return;
+  for (final (kind, name) in _demo) {
+    final data = await rootBundle.load('samples/demo/$name');
+    state.load(kind, name, data.buffer.asUint8List());
+  }
+  state.tourDemo = true;
+}
+
+/// Opens the page of [step] and prepares what it shows.
+Future<void> _enter(AppState state, int step) async {
+  final s = _steps[step];
+  if (step == 0) await loadTourDemo(state);
+  if (s.place.module == Module.check || s.place.module == Module.cad || s.place.module == Module.board) {
+    if (state.report == null && state.bom != null && (state.stationA != null || state.stationB != null)) {
+      try {
+        state.runCheckNow();
+      } catch (_) {}
+    }
+  }
+  if (s.place.section != null) {
+    if (!state.settingsOpen || state.settingsSection != s.place.section) state.openSettings(s.place.section!);
+  } else {
+    if (state.settingsOpen) state.closeSettings();
+    if (state.boardFullscreen) state.setBoardFullscreen(false);
+    if (state.module != s.place.module) state.setModule(s.place.module!);
+  }
+}
 
 int get tourLength => _steps.length;
 
@@ -66,6 +144,7 @@ class TourOverlay extends StatefulWidget {
 class _TourOverlayState extends State<TourOverlay> {
   Rect? _target;
   int _measured = -1;
+  int _entered = -1;
 
   void _measure() {
     final step = widget.state.tourStep;
@@ -91,9 +170,9 @@ class _TourOverlayState extends State<TourOverlay> {
     final state = widget.state;
     final step = state.tourStep;
     if (step == null) return const SizedBox.shrink();
-    final want = _steps[step].module;
-    if (want != null && state.module != want && !state.settingsOpen) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => state.setModule(want));
+    if (_entered != step) {
+      _entered = step;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _enter(state, step));
     }
     // Measure after layout: targets move with the window and the page.
     WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
@@ -105,13 +184,26 @@ class _TourOverlayState extends State<TourOverlay> {
         const cardW = 360.0;
         final size = box.biggest;
         final hole = target?.inflate(6);
-        // Callout below the target when it fits, otherwise above, else centred.
+        // Callout below the target when it fits, else above, else beside it,
+        // else inside its lower right corner (targets as large as the page).
+        const cardH = 250.0;
         Offset pos;
         if (hole == null) {
-          pos = Offset((size.width - cardW) / 2, size.height / 2 - 110);
+          pos = Offset((size.width - cardW) / 2, size.height / 2 - cardH / 2);
         } else {
-          final x = (hole.center.dx - cardW / 2).clamp(16.0, math.max(16.0, size.width - cardW - 16)).toDouble();
-          pos = hole.bottom + 230 < size.height ? Offset(x, hole.bottom + 14) : Offset(x, math.max(16.0, hole.top - 14 - 220));
+          double clampX(double x) => x.clamp(16.0, math.max(16.0, size.width - cardW - 16)).toDouble();
+          double clampY(double y) => y.clamp(16.0, math.max(16.0, size.height - cardH - 16)).toDouble();
+          if (hole.bottom + 14 + cardH < size.height) {
+            pos = Offset(clampX(hole.center.dx - cardW / 2), hole.bottom + 14);
+          } else if (hole.top - 14 - cardH > 0) {
+            pos = Offset(clampX(hole.center.dx - cardW / 2), hole.top - 14 - cardH);
+          } else if (hole.right + 14 + cardW < size.width) {
+            pos = Offset(hole.right + 14, clampY(hole.center.dy - cardH / 2));
+          } else if (hole.left - 14 - cardW > 0) {
+            pos = Offset(hole.left - 14 - cardW, clampY(hole.center.dy - cardH / 2));
+          } else {
+            pos = Offset(clampX(hole.right - cardW - 24), clampY(hole.bottom - cardH - 24));
+          }
         }
         final last = step == _steps.length - 1;
         return Stack(
@@ -139,6 +231,25 @@ class _TourOverlayState extends State<TourOverlay> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Progress through the tour.
+                    Row(
+                      children: [
+                        for (var i = 0; i < _steps.length; i++)
+                          Expanded(
+                            child: Container(
+                              height: 3,
+                              margin: const EdgeInsets.only(right: 2),
+                              decoration: BoxDecoration(color: i <= step ? c.accent : c.border, borderRadius: BorderRadius.circular(2)),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _placeLabel(s, _steps[step].place),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.accent, letterSpacing: 0.3),
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         GlyphIcon(Glyph.tip, size: 18, filled: true, color: c.accent),
@@ -184,6 +295,19 @@ class _TourOverlayState extends State<TourOverlay> {
       },
     );
   }
+}
+
+String _placeLabel(Strings s, _Place place) {
+  final section = place.section;
+  if (section != null) {
+    return '${s.t('mod_settings')} · ${s.t(section == SettingsSection.library ? 'set_library' : 'set_guide')}';
+  }
+  return s.t(switch (place.module!) {
+    Module.files => 'mod_files',
+    Module.check => 'mod_check',
+    Module.cad => 'mod_cad',
+    Module.board => 'mod_board',
+  });
 }
 
 class _Backdrop extends CustomPainter {

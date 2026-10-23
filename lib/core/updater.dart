@@ -43,7 +43,8 @@ class ReleaseInfo {
 class UpdateException implements Exception {
   UpdateException(this.code, [this.detail = '']);
 
-  /// Localisation key suffix: `network`, `no_release`, `no_asset`, `download`, `install`.
+  /// Localisation key suffix: `network`, `no_release`, `no_asset`, `download`,
+  /// `install`, `signature`.
   final String code;
   final String detail;
 
@@ -74,9 +75,18 @@ String? packageSuffix(Abi abi) => switch (abi) {
       _ => null,
     };
 
-ReleaseAsset? pickAsset(ReleaseInfo release, Abi abi) {
+/// Package for [abi]. [installer]: the app was installed with the Windows
+/// setup program, so the update runs the new setup (it upgrades in place and
+/// keeps the shortcuts and uninstall entry current).
+ReleaseAsset? pickAsset(ReleaseInfo release, Abi abi, {bool installer = false}) {
   final suffix = packageSuffix(abi);
   if (suffix == null) return null;
+  if (installer && suffix.endsWith('.zip')) {
+    final setup = suffix.replaceAll('.zip', '-setup.exe');
+    for (final a in release.assets) {
+      if (a.name.endsWith(setup)) return a;
+    }
+  }
   for (final a in release.assets) {
     if (a.name.endsWith(suffix)) return a;
   }

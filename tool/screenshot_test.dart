@@ -86,6 +86,26 @@ void main() {
     await shot(tester, s, 'guide_light', size: const Size(1600, 1000));
   });
 
+  testWidgets('tour on the check page', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.files);
+    s.tourStep = 8;
+    await shot(tester, s, 'tour_check_light', size: const Size(1600, 1000));
+  });
+
+  testWidgets('tour on the CAD page', (tester) async {
+    final s = demoState();
+    s.setModule(Module.files);
+    s.tourStep = 13;
+    await shot(tester, s, 'tour_cad_dark', size: const Size(1600, 1000));
+  });
+
+  testWidgets('tour on the navigator', (tester) async {
+    final s = demoState(dark: false);
+    s.tourStep = 16;
+    await shot(tester, s, 'tour_board_light', size: const Size(1600, 1000));
+  });
+
   testWidgets('tour step', (tester) async {
     final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
     s.tourStep = 2;

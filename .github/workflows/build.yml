@@ -1,9 +1,9 @@
 name: build
 
 # Builds every architecture Flutter can release for:
-#   Windows  x64, arm64          (native runners; Flutter cannot cross-build Windows)
+#   Windows  x64, arm64          (native runners; zip + setup.exe that upgrades in place)
 #   Linux    x64, arm64          (native runners; tar.gz + .deb)
-#   Android  armeabi-v7a, arm64-v8a, x86_64 (+ universal APK and AAB)
+#   Android  armeabi-v7a, arm64-v8a, x86_64 (+ universal APK and AAB), release-signed
 # Flutter is cloned at a fixed tag so x64 and arm64 hosts use the same SDK.
 
 on:
@@ -143,6 +143,20 @@ jobs:
           $out = "build/windows/${{ matrix.arch }}/runner/Release"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path "$out/*" -DestinationPath "dist/SMT-FAI-$version-windows-${{ matrix.arch }}.zip"
+      # Setup program with a fixed AppId: new versions upgrade the existing
+      # install in place.
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            Invoke-WebRequest -Uri 'https://jrsoftware.org/download.php/is.exe' -OutFile "$env:RUNNER_TEMP\is.exe"
+            Start-Process -FilePath "$env:RUNNER_TEMP\is.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-' -Wait
+          }
+          $src = (Resolve-Path "build/windows/${{ matrix.arch }}/runner/Release").Path
+          & $iscc "/DAppVersion=$version" "/DAppArch=${{ matrix.arch }}" "/DSourceDir=$src" installer/windows/smt-fai.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem dist
       - uses: actions/upload-artifact@v7
         with:
@@ -164,12 +178,34 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      # Every release is signed with the same key (repository secrets), so
+      # each version installs over the previous one.
+      - name: Release signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "::error::Android signing secrets are missing"; exit 1; fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.p12"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$RUNNER_TEMP/release.p12" "$PASSWORD" "$ALIAS" "$PASSWORD" > android/key.properties
+      # One version code for every APK (no per-ABI offset), so moving between
+      # the universal and per-ABI packages is never a downgrade.
       - name: Per-ABI APKs (armeabi-v7a, arm64-v8a, x86_64)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true
       - name: Universal APK
         run: flutter build apk --release
       - name: App bundle
         run: flutter build appbundle --release
+      - name: Check signing certificate
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          EXPECTED=$(cat docs/signing/android-cert-sha256.txt)
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
+            DIGEST=$("$APKSIGNER" verify --print-certs "$apk" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')
+            echo "$apk $DIGEST"
+            if [ "$DIGEST" != "$EXPECTED" ]; then echo "::error::$apk is not signed with the release key"; exit 1; fi
+          done
       - name: Collect
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed -E 's/version: *([0-9.]+).*/\1/')

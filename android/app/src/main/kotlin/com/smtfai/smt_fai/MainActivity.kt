@@ -1,6 +1,8 @@
 package com.smtfai.smt_fai
 
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.FileProvider
@@ -8,6 +10,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,8 +59,58 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                 }
+                // "match", "mismatch" or "unknown": whether a downloaded APK is
+                // signed with the same key as this installed app.
+                "apkSignature" -> {
+                    val path = call.argument<String>("path")
+                    result.success(if (path == null) "unknown" else apkSignature(path))
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun signingDigests(info: PackageInfo?): Set<String> {
+        if (info == null) return emptySet()
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signing = info.signingInfo ?: return emptySet()
+            if (signing.hasMultipleSigners()) signing.apkContentsSigners else signing.signingCertificateHistory
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures
+        } ?: return emptySet()
+        val sha = MessageDigest.getInstance("SHA-256")
+        return signatures.map { sig -> sha.digest(sig.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
+    }
+
+    private fun apkSignature(path: String): String {
+        return try {
+            val own: PackageInfo
+            val apk: PackageInfo?
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+                own = packageManager.getPackageInfo(packageName, flags)
+                apk = packageManager.getPackageArchiveInfo(path, flags)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                @Suppress("DEPRECATION")
+                own = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                @Suppress("DEPRECATION")
+                apk = packageManager.getPackageArchiveInfo(path, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                own = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                apk = packageManager.getPackageArchiveInfo(path, PackageManager.GET_SIGNATURES)
+            }
+            val a = signingDigests(own)
+            val b = signingDigests(apk)
+            when {
+                a.isEmpty() || b.isEmpty() -> "unknown"
+                a.intersect(b).isNotEmpty() -> "match"
+                else -> "mismatch"
+            }
+        } catch (e: Exception) {
+            "unknown"
         }
     }
 }

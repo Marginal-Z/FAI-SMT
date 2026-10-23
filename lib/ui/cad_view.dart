@@ -15,6 +15,7 @@ import 'check_view.dart';
 import 'glyphs.dart';
 import 'icons.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 class CadView extends StatefulWidget {
@@ -71,6 +72,7 @@ class _CadViewState extends State<CadView> {
     ];
 
     final preview = Container(
+      key: tourTargets.cadPreview,
       decoration: BoxDecoration(
         color: c.panel,
         borderRadius: BorderRadius.circular(12),

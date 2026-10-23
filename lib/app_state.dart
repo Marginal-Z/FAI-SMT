@@ -156,8 +156,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The tour loaded the sample files; they are cleared when it ends.
+  bool tourDemo = false;
+
   void endTour() {
     tourStep = null;
+    if (tourDemo) {
+      tourDemo = false;
+      clearAll();
+    }
     settings.tourDone = true;
     persist();
     notifyListeners();
@@ -207,7 +214,7 @@ class AppState extends ChangeNotifier {
   Future<void> downloadAndInstall() async {
     final release = latestRelease;
     if (release == null) return;
-    final asset = pickAsset(release, Abi.current());
+    final asset = pickAsset(release, Abi.current(), installer: installedWithSetup);
     if (asset == null) {
       updateStatus = UpdateStatus.failed;
       updateError = 'upd_err_no_asset';

@@ -14,6 +14,7 @@ import 'discrepancy_view.dart';
 import 'glyphs.dart';
 import 'icons.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 const _areaOrder = [CheckCategory.pass, CheckCategory.ng, CheckCategory.excluded, CheckCategory.substitute];
@@ -181,6 +182,7 @@ class _CheckViewState extends State<CheckView> {
             ),
           ),
           Hoverable(
+            key: tourTargets.checkExport,
             onTap: () => exportReport(context, state),
             builder: (context, hover, _) => Container(
               height: 40,
@@ -234,6 +236,7 @@ class _CheckViewState extends State<CheckView> {
       ),
     ];
     final cards = LayoutBuilder(
+      key: tourTargets.checkCards,
       builder: (context, box) {
         final perRow = box.maxWidth >= 900 ? 5 : 3;
         return Column(
@@ -287,7 +290,10 @@ class _CheckViewState extends State<CheckView> {
       }
     }
     final showReason = _area != CheckCategory.pass;
-    final listed = [for (final e in entries) if (e is _Row) e.row];
+    final listed = [
+      for (final e in entries)
+        if (e is _Row) e.row,
+    ];
     final allConfirmed = listed.isNotEmpty && listed.every((r) => state.confirmationOf(r) != null);
 
     final search = TextInput(controller: _search, hint: s.t('search_hint_fuzzy'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch);
@@ -305,12 +311,7 @@ class _CheckViewState extends State<CheckView> {
         DropdownSelect<_SideFilter>(
           value: _side,
           width: 130,
-          options: [
-            (_SideFilter.all, s.t('opt_all')),
-            (_SideFilter.a, s.t('side_a')),
-            (_SideFilter.b, s.t('side_b')),
-            (_SideFilter.both, 'A+B'),
-          ],
+          options: [(_SideFilter.all, s.t('opt_all')), (_SideFilter.a, s.t('side_a')), (_SideFilter.b, s.t('side_b')), (_SideFilter.both, 'A+B')],
           onChanged: (v) => setState(() => _side = v),
         ),
       ),
@@ -328,11 +329,7 @@ class _CheckViewState extends State<CheckView> {
         DropdownSelect<_ConfirmFilter>(
           value: _confirm,
           width: 120,
-          options: [
-            (_ConfirmFilter.all, s.t('opt_all')),
-            (_ConfirmFilter.yes, s.t('confirm_yes')),
-            (_ConfirmFilter.no, s.t('confirm_no')),
-          ],
+          options: [(_ConfirmFilter.all, s.t('opt_all')), (_ConfirmFilter.yes, s.t('confirm_yes')), (_ConfirmFilter.no, s.t('confirm_no'))],
           onChanged: (v) => setState(() => _confirm = v),
         ),
       ),
@@ -340,6 +337,7 @@ class _CheckViewState extends State<CheckView> {
     final count = Text(s.t('check_total', {'n': shown}), style: TextStyle(fontSize: 12.5, color: c.textDim));
     // Narrow screens: search on its own line above the filters.
     final filters = Padding(
+      key: tourTargets.checkFilters,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: widget.cards
           ? Column(
@@ -349,9 +347,7 @@ class _CheckViewState extends State<CheckView> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(
-                      child: Wrap(spacing: 16, runSpacing: 8, children: dropdowns),
-                    ),
+                    Expanded(child: Wrap(spacing: 16, runSpacing: 8, children: dropdowns)),
                     count,
                   ],
                 ),
@@ -433,7 +429,9 @@ class _CheckViewState extends State<CheckView> {
         children: [
           top,
           filters,
-          Expanded(child: body),
+          Expanded(
+            child: KeyedSubtree(key: tourTargets.checkTable, child: body),
+          ),
         ],
       ),
     );
@@ -672,15 +670,15 @@ class _ColumnHeader extends StatelessWidget {
                       builder: (context, hover, _) => Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          GlyphIcon(
-                            Glyph.okCircle,
-                            size: 15,
-                            filled: allConfirmed,
-                            color: allConfirmed || hover ? c.accent : c.textFaint,
-                          ),
+                          GlyphIcon(Glyph.okCircle, size: 15, filled: allConfirmed, color: allConfirmed || hover ? c.accent : c.textFaint),
                           const SizedBox(width: 5),
                           Flexible(
-                            child: Text(labels[col]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style.copyWith(color: hover ? c.accent : null)),
+                            child: Text(
+                              labels[col]!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: style.copyWith(color: hover ? c.accent : null),
+                            ),
                           ),
                         ],
                       ),
@@ -988,12 +986,7 @@ class _RowDetailsState extends State<_RowDetails> {
             runSpacing: 4,
             children: [
               for (final m in marks)
-                RefChip(
-                  text: m.ref,
-                  color: c.refState(m.state),
-                  soft: c.refStateSoft(m.state),
-                  strike: strike && m.state == RefState.extra,
-                ),
+                RefChip(text: m.ref, color: c.refState(m.state), soft: c.refStateSoft(m.state), strike: strike && m.state == RefState.extra),
             ],
           );
     final facts = [
@@ -1041,10 +1034,7 @@ class _RowDetailsState extends State<_RowDetails> {
             builder: (context, box) {
               final two = box.maxWidth > 700;
               final bom = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [label(s.t('col_bom_refs')), chips(row.bomRefs)]);
-              final smt = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [label(s.t('col_smt_refs')), chips(row.smtRefs, strike: true)],
-              );
+              final smt = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [label(s.t('col_smt_refs')), chips(row.smtRefs, strike: true)]);
               return two
                   ? Row(
                       crossAxisAlignment: CrossAxisAlignment.start,

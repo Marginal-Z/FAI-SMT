@@ -14,6 +14,7 @@ import 'glyphs.dart';
 import 'icons.dart';
 import 'part_render.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 /// Families shown as filters, in legend order.
@@ -290,6 +291,7 @@ class PartLibraryPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           SurfaceCard(
+            key: tourTargets.library,
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
             child: _ModelGrid(state: state),
           ),

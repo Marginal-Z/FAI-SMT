@@ -52,6 +52,7 @@ class TitleBar extends StatelessWidget {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
+                key: tourTargets.tabs,
                 children: [
                   for (final mod in Module.values)
                     _ModuleTab(
@@ -288,11 +289,7 @@ class _LanguageMenuState extends State<LanguageMenu> {
                                     Expanded(
                                       child: Text(
                                         languageNames[lang]!,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: c.text,
-                                          fontWeight: state.language == lang ? FontWeight.w700 : FontWeight.w400,
-                                        ),
+                                        style: TextStyle(fontSize: 13, color: c.text, fontWeight: state.language == lang ? FontWeight.w700 : FontWeight.w400),
                                       ),
                                     ),
                                     if (state.language == lang) CustomPaint(size: const Size(14, 14), painter: _TickPainter(c.accent)),
@@ -471,13 +468,7 @@ class Ribbon extends StatelessWidget {
     ),
     RibbonGroup(
       label: s.t('grp_export'),
-      children: [
-        RibbonButton(
-          glyph: Glyph.report,
-          label: s.t('btn_export_report'),
-          onTap: state.report == null ? null : () => exportReport(context, state),
-        ),
-      ],
+      children: [RibbonButton(glyph: Glyph.report, label: s.t('btn_export_report'), onTap: state.report == null ? null : () => exportReport(context, state))],
     ),
   ];
 
@@ -521,11 +512,7 @@ class Ribbon extends StatelessWidget {
           primary: true,
           onTap: state.report == null || state.coords == null ? null : () => exportCad(context, state),
         ),
-        RibbonButton(
-          glyph: Glyph.report,
-          label: s.t('btn_export_report'),
-          onTap: state.report == null ? null : () => exportReport(context, state),
-        ),
+        RibbonButton(glyph: Glyph.report, label: s.t('btn_export_report'), onTap: state.report == null ? null : () => exportReport(context, state)),
       ],
     ),
   ];
@@ -574,6 +561,7 @@ class Ribbon extends StatelessWidget {
       ],
     ),
     RibbonGroup(
+      key: tourTargets.boardView,
       label: s.t('grp_view'),
       children: [
         RibbonButton(glyph: Glyph.mirror, label: s.t('board_mirror'), active: state.boardMirror, onTap: state.toggleBoardMirror),
@@ -585,6 +573,7 @@ class Ribbon extends StatelessWidget {
       ],
     ),
     RibbonGroup(
+      key: tourTargets.boardColoring,
       label: s.t('grp_coloring'),
       children: [
         Column(
@@ -611,6 +600,7 @@ class Ribbon extends StatelessWidget {
       ],
     ),
     RibbonGroup(
+      key: tourTargets.boardRender,
       label: s.t('grp_render'),
       children: [
         Column(
@@ -779,11 +769,7 @@ class _CadToolbar extends StatelessWidget {
                   for (final u in pair)
                     SizedBox(
                       width: 76,
-                      child: RibbonOption(
-                        label: s.t('unit_${u.name}'),
-                        selected: state.settings.coordUnit == u,
-                        onTap: () => _setUnit(context, u),
-                      ),
+                      child: RibbonOption(label: s.t('unit_${u.name}'), selected: state.settings.coordUnit == u, onTap: () => _setUnit(context, u)),
                     ),
                 ],
               ),
@@ -822,54 +808,53 @@ class _CadToolbar extends StatelessWidget {
       ],
     );
 
-    Widget bigButton({required Glyph glyph, required String text, required String caption, required bool primary, VoidCallback? onTap}) =>
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Hoverable(
-              onTap: onTap,
-              builder: (context, hover, pressed) {
-                final enabled = onTap != null;
-                final bg = !enabled
-                    ? c.border
-                    : primary
-                    ? (pressed
-                          ? c.accent.withValues(alpha: 0.85)
-                          : hover
-                          ? c.accent.withValues(alpha: 0.92)
-                          : c.accent)
-                    : (hover ? c.hover : c.panel);
-                final fg = !enabled
-                    ? c.textFaint
-                    : primary
-                    ? const Color(0xFFFFFFFF)
-                    : c.text;
-                return Container(
-                  height: m.touch ? 52 : 46,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(10),
-                    border: primary ? null : Border.all(color: c.borderStrong),
+    Widget bigButton({required Glyph glyph, required String text, required String caption, required bool primary, VoidCallback? onTap}) => Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Hoverable(
+          onTap: onTap,
+          builder: (context, hover, pressed) {
+            final enabled = onTap != null;
+            final bg = !enabled
+                ? c.border
+                : primary
+                ? (pressed
+                      ? c.accent.withValues(alpha: 0.85)
+                      : hover
+                      ? c.accent.withValues(alpha: 0.92)
+                      : c.accent)
+                : (hover ? c.hover : c.panel);
+            final fg = !enabled
+                ? c.textFaint
+                : primary
+                ? const Color(0xFFFFFFFF)
+                : c.text;
+            return Container(
+              height: m.touch ? 52 : 46,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(10),
+                border: primary ? null : Border.all(color: c.borderStrong),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GlyphIcon(glyph, size: 22, filled: primary, color: fg),
+                  const SizedBox(width: 10),
+                  Text(
+                    text,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: fg),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GlyphIcon(glyph, size: 22, filled: primary, color: fg),
-                      const SizedBox(width: 10),
-                      Text(
-                        text,
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: fg),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 6),
-            Text(caption, style: TextStyle(fontSize: 12, color: c.textFaint)),
-          ],
-        );
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(caption, style: TextStyle(fontSize: 12, color: c.textFaint)),
+      ],
+    );
 
     return Container(
       height: m.ribbon,
@@ -883,18 +868,19 @@ class _CadToolbar extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            coordBlock,
+            KeyedSubtree(key: tourTargets.cadFile, child: coordBlock),
             divider(),
-            units,
+            Row(key: tourTargets.cadFormat, children: [units, divider(), format]),
             divider(),
-            format,
-            divider(),
-            bigButton(
-              glyph: Glyph.cad,
-              text: s.t('btn_gen_cad'),
-              caption: s.t('cap_gen_cad'),
-              primary: true,
-              onTap: canBuild ? () => exportCad(context, state) : null,
+            KeyedSubtree(
+              key: tourTargets.cadBuild,
+              child: bigButton(
+                glyph: Glyph.cad,
+                text: s.t('btn_gen_cad'),
+                caption: s.t('cap_gen_cad'),
+                primary: true,
+                onTap: canBuild ? () => exportCad(context, state) : null,
+              ),
             ),
             const SizedBox(width: 16),
             bigButton(
@@ -945,15 +931,7 @@ class RibbonGroup extends StatelessWidget {
 
 /// Large ribbon button: glyph above label, like CAD / image-editor ribbons.
 class RibbonButton extends StatelessWidget {
-  const RibbonButton({
-    super.key,
-    required this.glyph,
-    required this.label,
-    this.onTap,
-    this.active = false,
-    this.primary = false,
-    this.badge,
-  });
+  const RibbonButton({super.key, required this.glyph, required this.label, this.onTap, this.active = false, this.primary = false, this.badge});
 
   final Glyph glyph;
   final String label;

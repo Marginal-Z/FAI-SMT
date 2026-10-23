@@ -75,6 +75,7 @@ class FilesPage extends StatelessWidget {
               ),
           ]);
           final checks = SurfaceCard(
+            key: tourTargets.fileChecks,
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -104,7 +105,7 @@ class FilesPage extends StatelessWidget {
             ),
           );
           final children = <Widget>[
-            _Hero(title: s.t('mod_files'), subtitle: s.t('files_banner_sub')),
+            _Hero(state: state, title: s.t('mod_files'), subtitle: s.t('files_banner_sub')),
             const SizedBox(height: 16),
             if (fill) Expanded(flex: 5, child: cards) else cards,
             const SizedBox(height: 16),
@@ -172,20 +173,32 @@ class _Tile extends StatelessWidget {
 
 /// Page banner with a flat drawing of stacked spreadsheets.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.title, required this.subtitle});
+  const _Hero({required this.state, required this.title, required this.subtitle});
 
+  final AppState state;
   final String title;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final imported = state.bom != null && (state.stationA != null || state.stationB != null);
+    final checked = state.report != null;
+    final built = checked && state.coords != null;
+    // Import → check → build, each done, current or still ahead.
+    final steps = [
+      (s.t('step1_title'), imported, !imported, null),
+      (s.t('step2_title'), checked, imported && !checked, () => state.setModule(Module.check)),
+      (s.t('step3_title'), built, checked && !built, () => state.setModule(Module.cad)),
+    ];
     return Container(
-      height: 132,
+      height: 148,
       decoration: BoxDecoration(
-        color: c.panel,
+        color: Color.alphaBlend(c.accent.withValues(alpha: c.dark ? 0.06 : 0.035), c.panel),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: c.border),
+        boxShadow: c.dark ? null : const [BoxShadow(color: Color(0x0D101828), blurRadius: 18, offset: Offset(0, 4))],
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -201,8 +214,65 @@ class _Hero extends StatelessWidget {
                   title,
                   style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: c.text, letterSpacing: 0.5),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(subtitle, style: TextStyle(fontSize: 14, color: c.textDim)),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < steps.length; i++) ...[
+                      if (i > 0)
+                        Container(width: 28, height: 1.5, margin: const EdgeInsets.symmetric(horizontal: 8), color: steps[i - 1].$2 ? c.pass : c.borderStrong),
+                      Hoverable(
+                        onTap: steps[i].$4,
+                        builder: (context, hover, _) {
+                          final (label, done, current, _) = steps[i];
+                          final color = done
+                              ? c.pass
+                              : current
+                              ? c.accent
+                              : c.textFaint;
+                          final lit = done || current;
+                          return Container(
+                            padding: const EdgeInsets.fromLTRB(4, 3, 12, 3),
+                            decoration: BoxDecoration(
+                              color: lit ? color.withValues(alpha: c.dark ? 0.18 : 0.1) : c.panel,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: lit ? color.withValues(alpha: 0.4) : c.border),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(shape: BoxShape.circle, color: lit ? color : c.border),
+                                  child: done
+                                      ? const GlyphIcon(Glyph.okCircle, size: 14, filled: true, color: Color(0xFFFFFFFF))
+                                      : Text(
+                                          '${i + 1}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            height: 1,
+                                            color: current ? const Color(0xFFFFFFFF) : c.textDim,
+                                          ),
+                                        ),
+                                ),
+                                const SizedBox(width: 7),
+                                Text(
+                                  label,
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: lit ? color : (hover ? c.text : c.textDim)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -382,6 +452,17 @@ class _InputCardState extends State<_InputCard> {
                 ],
               ),
             ),
+            if (widget.highlight && !loaded) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: c.accent, borderRadius: BorderRadius.circular(10)),
+                child: Text(
+                  s.t('in_next'),
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFFFFFFF)),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             if (loaded) ...[GlyphIcon(Glyph.okCircle, size: 22, filled: true, color: c.pass), const SizedBox(width: 6)],
             Hoverable(
               tooltip: input.help,
@@ -487,15 +568,27 @@ class _InputCardState extends State<_InputCard> {
       content = Hoverable(
         onTap: () => importFile(context, state, input.kind),
         builder: (context, hover, _) => CustomPaint(
-          painter: _DashedBorder(hover || _dragging ? c.accent : c.borderStrong),
+          painter: _DashedBorder(hover || _dragging ? c.accent : input.tint.withValues(alpha: 0.45)),
           child: Container(
             constraints: const BoxConstraints(minHeight: 120),
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: hover || _dragging ? c.accent.withValues(alpha: 0.05) : null, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: (hover || _dragging ? c.accent : input.tint).withValues(alpha: hover || _dragging ? 0.07 : (c.dark ? 0.06 : 0.035)),
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _DocIcon(color: input.tint, size: 44),
+                Container(
+                  width: 72,
+                  height: 72,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: input.tint.withValues(alpha: c.dark ? 0.16 : 0.1),
+                  ),
+                  child: _DocIcon(color: input.tint, size: 42),
+                ),
                 const SizedBox(height: 10),
                 Text.rich(
                   TextSpan(
@@ -529,7 +622,16 @@ class _InputCardState extends State<_InputCard> {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       decoration: BoxDecoration(
         color: c.panel,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: c.dark
+            ? null
+            : [
+                BoxShadow(
+                  color: (accent ? c.accent : const Color(0xFF101828)).withValues(alpha: accent ? 0.12 : 0.05),
+                  blurRadius: 18,
+                  offset: const Offset(0, 4),
+                ),
+              ],
         border: Border.all(
           color: accent
               ? c.accent.withValues(alpha: 0.8)
@@ -728,13 +830,14 @@ class _CheckTable extends StatelessWidget {
               ],
             ),
           ),
-          for (final (label, value) in rows)
+          for (final (i, (label, value)) in rows.indexed)
             _flex(
               fill,
               Container(
                 constraints: const BoxConstraints(minHeight: 32),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
+                  color: i.isOdd ? c.panel.withValues(alpha: 0.6) : null,
                   border: Border(top: BorderSide(color: c.border.withValues(alpha: 0.7))),
                 ),
                 child: Row(
@@ -776,8 +879,9 @@ class _ReadyBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
       decoration: BoxDecoration(
         color: ready ? c.accent.withValues(alpha: c.dark ? 0.1 : 0.05) : c.panel,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: ready ? c.accent.withValues(alpha: 0.35) : c.border),
+        boxShadow: c.dark ? null : const [BoxShadow(color: Color(0x0D101828), blurRadius: 18, offset: Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -798,7 +902,26 @@ class _ReadyBar extends StatelessWidget {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: ready ? c.accent : c.text),
                 ),
                 const SizedBox(height: 2),
-                Text(s.t(ready ? 'ready_sub' : 'files_not_ready'), style: TextStyle(fontSize: 12.5, color: c.textDim)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 4,
+                  children: [
+                    for (final (name, done, optional) in [
+                      (s.t('in_bom_title'), state.bom != null, false),
+                      (s.t('btn_station_a'), state.stationA != null, false),
+                      (s.t('btn_station_b'), state.stationB != null, true),
+                    ])
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GlyphIcon(done ? Glyph.okCircle : Glyph.circle, size: 15, filled: done, color: done ? c.pass : c.textFaint),
+                          const SizedBox(width: 5),
+                          Text(optional && !done ? '$name ${s.t('in_optional')}' : name, style: TextStyle(fontSize: 12.5, color: done ? c.text : c.textDim)),
+                        ],
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

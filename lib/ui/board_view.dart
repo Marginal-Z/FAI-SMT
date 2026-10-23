@@ -27,6 +27,7 @@ import 'icons.dart';
 import 'library_page.dart';
 import 'part_render.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 /// Part colours for the navigator: refined flat defaults (no gradients),
@@ -392,6 +393,7 @@ class _BoardViewState extends State<BoardView> {
                         children: [
                           Positioned.fill(
                             child: RepaintBoundary(
+                              key: tourTargets.boardCanvas,
                               child: CustomPaint(
                                 isComplex: true,
                                 painter: _AssemblyPainter(

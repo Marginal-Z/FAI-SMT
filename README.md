@@ -14,6 +14,14 @@ SMT 首件核对桌面工具（Windows / Linux，后续可出 Android）：
 6. 界面缩放：安卓端自动按屏幕尺寸缩放（平板按 1280×800 布局铺满屏幕），也可在「设置 → 外观」手动选择 80%–150%。
    自适应布局：宽屏时核对页右侧停靠属性面板，窄屏时属性面板浮出、结果以卡片显示；触屏自动加大点击区域，坐标视图支持双指缩放。
 
+## 安装与升级
+
+- **Windows**：推荐使用 `SMT-FAI-<版本>-windows-x64-setup.exe`（ARM 设备用 `-arm64-setup.exe`），按当前用户安装，无需管理员权限；新版本直接运行安装程序即可覆盖升级，应用内更新也会自动完成。也可以使用 zip 绿色版。
+- **Linux**：`sudo apt install ./SMT-FAI-<版本>-linux-x64.deb`（ARM 用 `-arm64.deb`），新版本同样方式覆盖升级；或解压 tar.gz 运行。
+- **Android**：安装与设备架构对应的 APK（不确定时用 `-universal.apk`）。自 1.4.0 起所有 APK 使用同一正式签名，后续版本可直接覆盖升级；从 1.3.0 及更早版本升级需先卸载一次。
+
+签名证书 SHA-256 指纹见 `docs/signing/android-cert-sha256.txt`，CI 会校验每个 APK 都由该证书签名。
+
 技术栈：Flutter（Dart），界面全部自绘，不使用 Material 组件；图标为 Phosphor 图标字体（MIT）。
 
 ## 核对规则

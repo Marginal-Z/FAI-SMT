@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../l10n/strings.dart';
 import 'glyphs.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 const _sections = [
@@ -55,7 +56,10 @@ class GuidePage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  FlatButton(label: s.t('guide_tour'), primary: true, onTap: state.startTour),
+                  KeyedSubtree(
+                    key: tourTargets.guide,
+                    child: FlatButton(label: s.t('guide_tour'), primary: true, onTap: state.startTour),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),

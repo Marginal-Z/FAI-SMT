@@ -5,7 +5,11 @@
 ///   files over the install folder and restarts the app.
 /// * Linux installed read-only (e.g. the .deb in /opt): opens the .deb with
 ///   the system package installer instead.
-/// * Android (.apk): hands the file to the system package installer.
+/// * Windows installed with the setup program: runs the new setup silently;
+///   it closes this app, upgrades in place and starts the new version.
+/// * Android (.apk): checks that the package is signed with the same key as
+///   the installed app (otherwise Android refuses the update), then hands it
+///   to the system package installer.
 library;
 
 import 'dart:io';
@@ -17,13 +21,23 @@ import 'core/updater.dart';
 
 const _channel = MethodChannel('smt_fai/update');
 
+/// Windows: the app lives in a folder made by the setup program.
+bool get installedWithSetup =>
+    Platform.isWindows && File('${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}unins000.exe').existsSync();
+
 /// Returns normally only when the caller should keep running (Android, or
 /// the .deb fallback); otherwise the process exits for the copy to happen.
 Future<void> installUpdate(File package, ReleaseInfo release) async {
   try {
     if (Platform.isAndroid) {
+      final signature = await _channel.invokeMethod<String>('apkSignature', {'path': package.path});
+      if (signature == 'mismatch') throw UpdateException('signature');
       await _channel.invokeMethod('installApk', {'path': package.path});
       return;
+    }
+    if (package.path.endsWith('.exe')) {
+      await Process.start(package.path, ['/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS'], mode: ProcessStartMode.detached);
+      exit(0);
     }
     final installDir = File(Platform.resolvedExecutable).parent;
     if (Platform.isLinux && !await _writable(installDir)) {
