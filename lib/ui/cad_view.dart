@@ -11,8 +11,7 @@ import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'dialogs.dart';
-import 'files_page.dart';
-import 'glyphs.dart';
+import 'check_view.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -46,39 +45,20 @@ class _CadViewState extends State<CadView> {
     final state = widget.state;
     final cad = state.cad;
     if (cad == null) {
-      final coords = state.coords;
+      final noCoords = state.coords == null;
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        PageHeader(title: s.t('mod_cad'), subtitle: s.t(coords == null ? 'cad_need_coords' : 'cad_need_check')),
+        PageHeader(title: s.t('mod_cad')),
         Expanded(
-          child: Container(
-            color: c.window,
-            alignment: Alignment.topCenter,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  FileCard(
-                    state: state,
-                    kind: InputKind.coords,
-                    glyph: Glyph.coords,
-                    title: s.t('btn_coord'),
-                    hint: s.t('step_coord'),
-                    file: coords,
-                    stats: coords == null
-                        ? null
-                        : [s.t('file_refs', {'n': coords.result.items.length}), coords.result.columns['unit'] ?? 'mm'],
+          child: EmptyState(
+            icon: Ic.codeSimple,
+            text: s.t(noCoords ? 'cad_need_coords_ribbon' : 'cad_need_check'),
+            action: noCoords
+                ? null
+                : FlatButton(
+                    label: state.bom != null ? s.t('btn_run') : s.t('go_files'),
+                    primary: state.bom != null,
+                    onTap: () => state.bom != null ? runCheck(context, state) : state.setModule(Module.files),
                   ),
-                  if (coords != null && state.report == null) ...[
-                    const SizedBox(height: 14),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
-                    ),
-                  ],
-                ]),
-              ),
-            ),
           ),
         ),
       ]);
@@ -94,10 +74,6 @@ class _CadViewState extends State<CadView> {
         PageHeader(
           title: '${state.exportBaseName}_FAI.${t.fileExtension}',
           subtitle: '${state.coords!.name}  ·  ${s.t('page_cad_sub', {'n': cad.rows.length})}',
-          trailing: [
-            FlatButton(label: s.t('btn_cad_template'), compact: true, onTap: () => showCadTemplateDialog(context, state)),
-            FlatButton(label: s.t('btn_gen_cad'), compact: true, primary: true, onTap: () => exportCad(context, state)),
-          ],
         ),
         Expanded(
           child: Flex(
@@ -303,10 +279,8 @@ class _Checks extends StatelessWidget {
       (s.t('cad_not_in_bom', {'n': cad.notInBomRefs.length}), cad.notInBomRefs, c.substitute),
       (s.t('cad_unknown_side', {'n': cad.unknownSide.length}), cad.unknownSide, c.substitute),
       (s.t('cad_side_mismatch', {'n': cad.sideMismatch.length}), cad.sideMismatch, c.ng),
-      (s.t('cad_skipped_non_smd', {'n': cad.skippedNonSmd.length}), cad.skippedNonSmd, c.textDim),
-      (s.t('cad_skipped_mech', {'n': cad.skippedMechanical.length}), cad.skippedMechanical, c.textDim),
     ];
-    final allGood = groups.take(4).every((g) => g.$2.isEmpty);
+    final allGood = groups.every((g) => g.$2.isEmpty);
     return DockPanel(
       title: s.t('cad_checks'),
       child: ListView(

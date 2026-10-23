@@ -140,9 +140,7 @@ class CadResult {
       {required this.noCoordRefs,
       required this.notInBomRefs,
       required this.unknownSide,
-      this.sideMismatch = const [],
-      this.skippedNonSmd = const [],
-      this.skippedMechanical = const []});
+      this.sideMismatch = const []});
 
   final List<CadRow> rows;
 
@@ -164,12 +162,6 @@ class CadResult {
 
   /// Coordinate layer disagrees with the station side (A = top, B = bottom).
   final List<String> sideMismatch;
-
-  /// Left out because the coordinate file marks them as not SMD.
-  final List<String> skippedNonSmd;
-
-  /// Left out as mechanical parts (shield frames, standoffs ...).
-  final List<String> skippedMechanical;
 
   String _fmt(Object v) => v is double ? v.toStringAsFixed(template.decimals) : '$v';
 
@@ -244,8 +236,6 @@ CadResult buildCad(List<Placement> placements, CheckReport report, CadTemplate t
   final notInBom = <String>[];
   final unknownSide = <String>[];
   final sideMismatch = <String>[];
-  final skippedNonSmd = <String>[];
-  final skippedMechanical = <String>[];
 
   final ordered = [...placements]..sort((a, b) => compareRefs(a.ref, b.ref));
   for (final p in ordered) {
@@ -254,15 +244,6 @@ CadResult buildCad(List<Placement> placements, CheckReport report, CadTemplate t
     if (m == null) {
       notInBom.add(p.ref);
       if (!t.includeUnmatched) continue;
-    }
-    if (t.smdOnly && p.smd == false) {
-      skippedNonSmd.add(p.ref);
-      continue;
-    }
-    final desc = (m?.description ?? '').toUpperCase();
-    if (t.mechanicalKeywords.any((k) => k.trim().isNotEmpty && desc.contains(k.trim().toUpperCase()))) {
-      skippedMechanical.add(p.ref);
-      continue;
     }
     if (p.side != BoardSide.unknown && m?.side != null &&
         (p.side == BoardSide.top) != (m!.side == StationSide.a)) {
@@ -315,9 +296,7 @@ CadResult buildCad(List<Placement> placements, CheckReport report, CadTemplate t
       noCoordRefs: noCoord,
       notInBomRefs: notInBom,
       unknownSide: unknownSide,
-      sideMismatch: sideMismatch,
-      skippedNonSmd: skippedNonSmd,
-      skippedMechanical: skippedMechanical);
+      sideMismatch: sideMismatch);
 }
 
 /// Angle normalised to [0, 360); whole degrees stay integers.

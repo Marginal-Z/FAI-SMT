@@ -4,9 +4,11 @@
 /// to read.
 library;
 
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
@@ -15,6 +17,7 @@ import '../core/models.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'check_view.dart';
+import 'glyphs.dart';
 import 'icons.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -37,19 +40,19 @@ class PartPalette {
   static const copper = Color(0xFFC0844A);
 
   static Color body(PartKind k) => switch (k) {
-        PartKind.resistor => resistor,
-        PartKind.capacitor => capacitor,
-        PartKind.inductor => inductor,
-        PartKind.diode => diode,
-        PartKind.led => led,
-        PartKind.transistor => transistor,
-        PartKind.ic => ic,
-        PartKind.crystal => crystal,
-        PartKind.connector => connector,
-        PartKind.testPoint => testPoint,
-        PartKind.fiducial => fiducial,
-        PartKind.other => other,
-      };
+    PartKind.resistor => resistor,
+    PartKind.capacitor => capacitor,
+    PartKind.inductor => inductor,
+    PartKind.diode => diode,
+    PartKind.led => led,
+    PartKind.transistor => transistor,
+    PartKind.ic => ic,
+    PartKind.crystal => crystal,
+    PartKind.connector => connector,
+    PartKind.testPoint => testPoint,
+    PartKind.fiducial => fiducial,
+    PartKind.other => other,
+  };
 
   /// Text colour readable on the body colour.
   static Color label(Color body) => body.computeLuminance() > 0.45 ? const Color(0xFF15181C) : const Color(0xFFFFFFFF);
@@ -65,9 +68,12 @@ class _Part {
 }
 
 class BoardView extends StatefulWidget {
-  const BoardView({super.key, required this.state});
+  const BoardView({super.key, required this.state, this.immersive = false});
 
   final AppState state;
+
+  /// Full-screen mode: no page header, floating controls instead.
+  final bool immersive;
 
   @override
   State<BoardView> createState() => _BoardViewState();
@@ -81,143 +87,176 @@ class _BoardViewState extends State<BoardView> {
   _Part? _hover;
   Offset _hoverPos = Offset.zero;
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.immersive && Platform.isAndroid) SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    if (widget.immersive && Platform.isAndroid) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
   void _fit() => setState(() {
-        _zoom = 1;
-        _pan = Offset.zero;
-      });
+    _zoom = 1;
+    _pan = Offset.zero;
+  });
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final state = widget.state;
-    final coords = state.coords;
+    final fromFile = state.boardSource == BoardSource.file && state.boardFile != null;
+    final coords = fromFile ? state.boardFile : state.coords;
     if (coords == null) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        PageHeader(title: s.t('mod_board')),
-        Expanded(
-          child: EmptyState(
-            icon: Ic.crosshair,
-            text: s.t('board_empty'),
-            action: FlatButton(label: s.t('btn_coord'), primary: true, onTap: () => importFile(context, state, InputKind.coords)),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PageHeader(title: s.t('mod_board')),
+          Expanded(
+            child: EmptyState(
+              icon: Ic.crosshair,
+              text: s.t('board_empty_any'),
+              action: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FlatButton(label: s.t('btn_coord'), primary: true, onTap: () => importFile(context, state, InputKind.coords)),
+                  const SizedBox(width: 10),
+                  FlatButton(label: s.t('btn_open_cad'), onTap: () => importFile(context, state, InputKind.boardCad)),
+                ],
+              ),
+            ),
           ),
-        ),
-      ]);
+        ],
+      );
     }
     if (state.boardFitRequest != _fitSeen) {
       _fitSeen = state.boardFitRequest;
       _zoom = 1;
       _pan = Offset.zero;
     }
-    final report = state.report;
+    final report = fromFile ? null : state.report;
     final merged = {for (final m in report?.merged ?? const <MergedRef>[]) m.ref: m};
-    final highlight = <String>{
-      ...?state.selected?.bomRefs.map((m) => m.ref),
-      ...?state.selected?.smtRefs.map((m) => m.ref),
-    };
+    final highlight = <String>{...?state.selected?.bomRefs.map((m) => m.ref), ...?state.selected?.smtRefs.map((m) => m.ref)};
     final all = [
       for (final p in coords.result.items)
         _Part(
           p,
           merged[p.ref],
-          shapeOf(p.ref, footprint: p.footprint, description: '${merged[p.ref]?.description ?? ''} ${p.value}'),
+          shapeOf(p.ref, footprint: p.footprint, description: '${merged[p.ref]?.description ?? p.description} ${p.value}'),
           _sideOf(p, merged[p.ref]),
         ),
     ];
     final parts = all
-        .where((e) => switch (state.boardSide) {
-              BoardSideFilter.both => true,
-              BoardSideFilter.top => e.side != BoardSide.bottom,
-              BoardSideFilter.bottom => e.side != BoardSide.top,
-            })
+        .where(
+          (e) => switch (state.boardSide) {
+            BoardSideFilter.both => true,
+            BoardSideFilter.top => e.side != BoardSide.bottom,
+            BoardSideFilter.bottom => e.side != BoardSide.top,
+          },
+        )
         .toList();
     final deg = state.boardQuarterTurns * 90;
 
+    final source = fromFile ? s.t('board_source_file', {'name': coords.name}) : s.t('board_source_check');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PageHeader(
-          title: s.t('mod_board'),
-          subtitle: s.t('page_board_sub', {'n': parts.length}),
-          trailing: [
-            Text(
-              s.t('board_view_state', {'deg': deg, 'mirror': state.boardMirror ? s.t('board_mirrored') : ''}),
-              style: TextStyle(fontSize: 12, color: c.textDim, fontFeatures: const [FontFeature.tabularFigures()]),
-            ),
-          ],
-        ),
+        if (!widget.immersive)
+          PageHeader(
+            title: s.t('mod_board'),
+            subtitle: '$source  ·  ${s.t('page_board_sub', {'n': parts.length})}',
+            trailing: [
+              Text(
+                s.t('board_view_state', {'deg': deg, 'mirror': state.boardMirror ? s.t('board_mirrored') : ''}),
+                style: TextStyle(fontSize: 12, color: c.textDim, fontFeatures: const [FontFeature.tabularFigures()]),
+              ),
+            ],
+          ),
         Expanded(
-          child: LayoutBuilder(builder: (context, box) {
-            final size = Size(box.maxWidth, box.maxHeight);
-            final view = _View.fit(all, size, state.boardQuarterTurns, state.boardMirror, _zoom, _pan);
-            return Listener(
-              onPointerSignal: (e) {
-                if (e is PointerScrollEvent) {
-                  setState(() => _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size));
-                }
-              },
-              child: MouseRegion(
-                cursor: SystemMouseCursors.grab,
-                onHover: (e) {
-                  _Part? best;
-                  var bestD = double.infinity;
-                  for (final part in parts) {
-                    final d = (view.toScreen(part.p.x, part.p.y) - e.localPosition).distance;
-                    final reach = math.max(8.0, math.max(part.shape.width, part.shape.height) * view.scale / 2);
-                    if (d < reach && d < bestD) {
-                      bestD = d;
-                      best = part;
-                    }
-                  }
-                  if (best != _hover || best != null) {
-                    setState(() {
-                      _hover = best;
-                      _hoverPos = e.localPosition;
-                    });
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final size = Size(box.maxWidth, box.maxHeight);
+              final view = _View.fit(all, size, state.boardQuarterTurns, state.boardMirror, _zoom, _pan);
+              return Listener(
+                onPointerSignal: (e) {
+                  if (e is PointerScrollEvent) {
+                    setState(() => _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size));
                   }
                 },
-                onExit: (_) => setState(() => _hover = null),
-                child: GestureDetector(
-                  onScaleStart: (_) => _gestureZoom = _zoom,
-                  onScaleUpdate: (d) => setState(() {
-                    final center = Offset(size.width / 2, size.height / 2);
-                    final newZoom = (_gestureZoom * d.scale).clamp(0.2, 200.0);
-                    final f = newZoom / _zoom;
-                    _pan = (d.localFocalPoint - center) * (1 - f) + _pan * f + d.focalPointDelta;
-                    _zoom = newZoom;
-                  }),
-                  onDoubleTap: _fit,
-                  child: ClipRect(
-                    child: Stack(children: [
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _AssemblyPainter(
-                            all: all,
-                            parts: parts,
-                            view: view,
-                            colors: c,
-                            coloring: state.boardColoring,
-                            checked: report != null,
-                            highlight: highlight,
-                            hover: _hover,
-                            dimBottom: state.boardSide == BoardSideFilter.both,
-                            showLabels: _zoom > 1.05,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  onHover: (e) {
+                    _Part? best;
+                    var bestD = double.infinity;
+                    for (final part in parts) {
+                      final d = (view.toScreen(part.p.x, part.p.y) - e.localPosition).distance;
+                      final reach = math.max(8.0, math.max(part.shape.width, part.shape.height) * view.scale / 2);
+                      if (d < reach && d < bestD) {
+                        bestD = d;
+                        best = part;
+                      }
+                    }
+                    if (best != _hover || best != null) {
+                      setState(() {
+                        _hover = best;
+                        _hoverPos = e.localPosition;
+                      });
+                    }
+                  },
+                  onExit: (_) => setState(() => _hover = null),
+                  child: GestureDetector(
+                    onScaleStart: (_) => _gestureZoom = _zoom,
+                    onScaleUpdate: (d) => setState(() {
+                      final center = Offset(size.width / 2, size.height / 2);
+                      final newZoom = (_gestureZoom * d.scale).clamp(0.2, 200.0);
+                      final f = newZoom / _zoom;
+                      _pan = (d.localFocalPoint - center) * (1 - f) + _pan * f + d.focalPointDelta;
+                      _zoom = newZoom;
+                    }),
+                    onDoubleTap: _fit,
+                    child: ClipRect(
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _AssemblyPainter(
+                                all: all,
+                                parts: parts,
+                                view: view,
+                                colors: c,
+                                coloring: state.boardColoring,
+                                checked: report != null,
+                                highlight: highlight,
+                                hover: _hover,
+                                dimBottom: state.boardSide == BoardSideFilter.both,
+                                showLabels: _zoom > 1.05,
+                              ),
+                            ),
                           ),
-                        ),
+                          Positioned(
+                            left: 14,
+                            bottom: 14,
+                            child: _LegendCard(coloring: state.boardColoring, checked: report != null),
+                          ),
+                          if (widget.immersive) Positioned(top: 14, right: 14, child: _FloatingControls(state: state)),
+                          if (_hover != null)
+                            Positioned(
+                              left: math.min(_hoverPos.dx + 16, size.width - 250),
+                              top: math.min(_hoverPos.dy + 16, size.height - 120),
+                              child: _HoverCard(part: _hover!),
+                            ),
+                        ],
                       ),
-                      Positioned(left: 14, bottom: 14, child: _LegendCard(coloring: state.boardColoring, checked: report != null)),
-                      if (_hover != null)
-                        Positioned(
-                          left: math.min(_hoverPos.dx + 16, size.width - 250),
-                          top: math.min(_hoverPos.dy + 16, size.height - 120),
-                          child: _HoverCard(part: _hover!),
-                        ),
-                    ]),
+                    ),
                   ),
                 ),
-              ),
-            );
-          }),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -366,11 +405,12 @@ class _AssemblyPainter extends CustomPainter {
     final rr = RRect.fromRectAndRadius(board, Radius.circular(math.min(12, view.scale * 1.5)));
     canvas.drawRRect(rr, Paint()..color = _boardFill);
     canvas.drawRRect(
-        rr,
-        Paint()
-          ..color = _boardEdge
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5);
+      rr,
+      Paint()
+        ..color = _boardEdge
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
 
     final px = 1 / view.scale; // one screen pixel in mm
     for (final part in parts) {
@@ -457,11 +497,17 @@ class _AssemblyPainter extends CustomPainter {
         }
         final small = math.min(w, h);
         canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.04)), Paint()..color = fill);
-        canvas.drawCircle(Offset(-w / 2 + small * 0.14, h / 2 - small * 0.14), small * 0.06,
-            Paint()..color = PartPalette.label(fill).withValues(alpha: 0.6));
+        canvas.drawCircle(
+          Offset(-w / 2 + small * 0.14, h / 2 - small * 0.14),
+          small * 0.06,
+          Paint()..color = PartPalette.label(fill).withValues(alpha: 0.6),
+        );
       case PartKind.crystal:
         canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(h * 0.18)), Paint()..color = fill);
-        canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(h * 0.12), Radius.circular(h * 0.12)), stroke..color = const Color(0xFF8E959E));
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(body.deflate(h * 0.12), Radius.circular(h * 0.12)),
+          stroke..color = const Color(0xFF8E959E),
+        );
       case PartKind.connector:
         canvas.drawRect(body, Paint()..color = fill);
         final n = (w / 0.8).floor().clamp(2, 40);
@@ -509,7 +555,10 @@ class _AssemblyPainter extends CustomPainter {
       final color = fill == null ? colors.textDim : PartPalette.label(fill);
       // Measure at 10 px, then scale to fit inside the body.
       final probe = TextPainter(
-        text: TextSpan(text: part.p.ref, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, fontFamily: uiFontFamily)),
+        text: TextSpan(
+          text: part.p.ref,
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, fontFamily: uiFontFamily),
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       final font = math.min(short * 0.62, 10 * (long * 0.84) / probe.width);
@@ -578,28 +627,42 @@ class _LegendCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: c.border),
         ),
-        child: Wrap(spacing: 14, runSpacing: 6, children: [
-          for (final (color, label) in items)
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                width: 14,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: color,
-                  border: Border.all(color: color == null ? c.textFaint : c.border),
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
+        child: Wrap(
+          spacing: 14,
+          runSpacing: 6,
+          children: [
+            for (final (color, label) in items)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 14,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: color,
+                      border: Border.all(color: color == null ? c.textFaint : c.border),
+                      borderRadius: BorderRadius.circular(1.5),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(label, style: TextStyle(fontSize: 11.5, color: c.textDim)),
+                ],
               ),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(fontSize: 11.5, color: c.textDim)),
-            ]),
-          if (coloring == BoardColoring.type && checked)
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 14, height: 8, decoration: BoxDecoration(border: Border.all(color: c.ng, width: 1.5))),
-              const SizedBox(width: 6),
-              Text(s.t('cat_ng'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
-            ]),
-        ]),
+            if (coloring == BoardColoring.type && checked)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 14,
+                    height: 8,
+                    decoration: BoxDecoration(border: Border.all(color: c.ng, width: 1.5)),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(s.t('cat_ng'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -627,18 +690,99 @@ class _HoverCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 4))],
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(p.ref, style: TextStyle(fontWeight: FontWeight.w700, color: c.text)),
-            const SizedBox(width: 8),
-            Text(part.side == BoardSide.bottom ? s.t('side_bottom') : s.t('side_top'), style: style),
-          ]),
-          const SizedBox(height: 3),
-          Text('X ${p.x.toStringAsFixed(3)}  Y ${p.y.toStringAsFixed(3)}  ${p.rotation.toStringAsFixed(0)}°', style: style),
-          if (m != null) Text('${s.t('col_pn')}: ${m.smtPartNo.isEmpty ? m.bomPartNo : m.smtPartNo}', style: style),
-          if (m != null) Text(m.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: style),
-          if (m == null && p.footprint.isNotEmpty) Text(p.footprint, style: style),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  p.ref,
+                  style: TextStyle(fontWeight: FontWeight.w700, color: c.text),
+                ),
+                const SizedBox(width: 8),
+                Text(part.side == BoardSide.bottom ? s.t('side_bottom') : s.t('side_top'), style: style),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text('X ${p.x.toStringAsFixed(3)}  Y ${p.y.toStringAsFixed(3)}  ${p.rotation.toStringAsFixed(0)}°', style: style),
+            if (m != null) Text('${s.t('col_pn')}: ${m.smtPartNo.isEmpty ? m.bomPartNo : m.smtPartNo}', style: style),
+            if (m != null) Text(m.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: style),
+            if (m == null && p.partNo.isNotEmpty) Text('${s.t('col_pn')}: ${p.partNo}', style: style),
+            if (m == null && p.description.isNotEmpty) Text(p.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: style),
+            if (m == null && p.footprint.isNotEmpty) Text(p.footprint, style: style),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Controls floating over the full-screen view.
+class _FloatingControls extends StatelessWidget {
+  const _FloatingControls({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    Widget button(Glyph g, String tip, VoidCallback onTap, {bool active = false}) => Hoverable(
+      onTap: onTap,
+      tooltip: tip,
+      builder: (context, hover, _) => Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active
+              ? c.accent.withValues(alpha: 0.16)
+              : hover
+              ? c.hover
+              : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: GlyphIcon(g, size: 20, color: active ? c.accent : c.text),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: c.panel.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.border),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 16, offset: Offset(0, 4))],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button(
+            Glyph.layersBoth,
+            s.t('side_both'),
+            () => state.setBoardSide(BoardSideFilter.both),
+            active: state.boardSide == BoardSideFilter.both,
+          ),
+          button(
+            Glyph.layerTop,
+            s.t('side_top'),
+            () => state.setBoardSide(BoardSideFilter.top),
+            active: state.boardSide == BoardSideFilter.top,
+          ),
+          button(
+            Glyph.layerBottom,
+            s.t('side_bottom'),
+            () => state.setBoardSide(BoardSideFilter.bottom),
+            active: state.boardSide == BoardSideFilter.bottom,
+          ),
+          Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
+          button(Glyph.mirror, s.t('board_mirror'), state.toggleBoardMirror, active: state.boardMirror),
+          button(Glyph.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
+          button(Glyph.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
+          button(Glyph.fit, s.t('board_fit'), state.fitBoard),
+          button(Glyph.reset, s.t('btn_reset_view'), state.resetBoardView),
+          Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
+          button(Glyph.exitFullscreen, s.t('btn_exit_fullscreen'), () => state.setBoardFullscreen(false)),
+        ],
       ),
     );
   }

@@ -171,6 +171,8 @@ ParseResult<Placement> parseCoordinates(List<Grid> sheets,
       value: map.get(row, 'value'),
       footprint: map.get(row, 'footprint'),
       smd: _parseSmd(map.get(row, 'smd')),
+      partNo: map.get(row, 'partNo'),
+      description: map.get(row, 'spec'),
     ));
   }
   return ParseResult(out,

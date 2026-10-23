@@ -353,24 +353,11 @@ void main() {
       expect(again.where((d) => d.code.startsWith('row_')), isEmpty);
     });
 
-    test('CAD output skips non-SMD and mechanical parts', () {
-      final rep = runCheck([
-        BomItem(partNo: 'IC', name: '贴片IC', qty: 1, refs: ['U1']),
-        BomItem(partNo: 'SH', name: '主板屏蔽框', qty: 1, refs: ['9R1']),
-        BomItem(partNo: 'ST', name: '贴片螺柱', qty: 1, refs: ['J4']),
-      ], [
-        StationItem(partNo: 'IC', side: StationSide.a, refs: ['U1']),
-        StationItem(partNo: 'SH', side: StationSide.a, refs: ['9R1']),
-        StationItem(partNo: 'ST', side: StationSide.a, refs: ['J4']),
-      ], CheckRules());
-      final cad = buildCad([
-        Placement(ref: 'U1', x: 0, y: 0, smd: true),
-        Placement(ref: '9R1', x: 1, y: 1, smd: true),
-        Placement(ref: 'J4', x: 2, y: 2, smd: false),
-      ], rep, CadTemplate(), CheckRules());
-      expect(cad.cells.map((r) => r.first), ['U1']);
-      expect(cad.skippedNonSmd, ['J4']);
-      expect(cad.skippedMechanical, ['9R1']);
+    test('CAD output keeps every placed part, SMD flag or not', () {
+      final rep = runCheck([BomItem(partNo: 'ST', name: '贴片螺柱', qty: 1, refs: ['J4'])],
+          [StationItem(partNo: 'ST', side: StationSide.a, refs: ['J4'])], CheckRules());
+      final cad = buildCad([Placement(ref: 'J4', x: 2, y: 2, smd: false)], rep, CadTemplate(), CheckRules());
+      expect(cad.cells.map((r) => r.first), ['J4']);
     });
   });
 }

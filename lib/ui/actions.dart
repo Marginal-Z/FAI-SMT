@@ -30,12 +30,13 @@ Future<void> importFile(BuildContext context, AppState state, InputKind kind) as
     InputKind.stationA => s.t('btn_station_a'),
     InputKind.stationB => s.t('btn_station_b'),
     InputKind.coords => s.t('btn_coord'),
+    InputKind.boardCad => s.t('btn_open_cad'),
   };
   try {
     final file = await FilePicker.pickFile(
       dialogTitle: title,
       type: FileType.custom,
-      allowedExtensions: kind == InputKind.coords ? _coordExts : _tableExts,
+      allowedExtensions: kind == InputKind.coords || kind == InputKind.boardCad ? _coordExts : _tableExts,
     );
     if (file == null) return;
     final bytes = await file.xFile.readAsBytes();

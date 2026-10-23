@@ -126,12 +126,14 @@ class Fields {
   ];
 
   static const coords = [
-    FieldSpec('ref', ['Designator', '位号', 'RefDes', 'Ref', 'Reference', 'Part Designator', 'Name', '元件位号'], required: true),
+    FieldSpec('ref', ['Designator', '位号', 'RefDes', 'Ref', 'Reference', 'Part Designator', 'Name', '元件位号', 'Location'], required: true),
     FieldSpec('x', ['Center-X', 'Mid X', 'MidX', 'Center X', 'CenterX', 'X', 'X坐标', 'PosX', 'Pos X', 'LocationX', 'Ref X', 'Ref-X'], required: true),
     FieldSpec('y', ['Center-Y', 'Mid Y', 'MidY', 'Center Y', 'CenterY', 'Y', 'Y坐标', 'PosY', 'Pos Y', 'LocationY', 'Ref Y', 'Ref-Y'], required: true),
     FieldSpec('rot', ['Rotation', 'Rot', 'Angle', '角度', '旋转', '旋转角度', 'Orientation', 'Orient', 'R', 'Theta']),
     FieldSpec('layer', ['Layer', 'Side', '面', '面别', 'TB', 'T/B', 'Mirror', '层']),
-    FieldSpec('value', ['Comment', 'Value', 'Val', '值', '规格']),
+    FieldSpec('value', ['Comment', 'Value', 'Val', '值']),
+    FieldSpec('spec', ['Specification', '规格', '物料描述', 'Description']),
+    FieldSpec('partNo', ['PartNo', 'Part No', '料号', 'LoadedPartNo']),
     FieldSpec('footprint', ['Footprint', 'Pattern', 'Package', '封装', 'PCB Footprint', 'Part Type']),
     FieldSpec('smd', ['SMD', 'Mount', 'Type']),
   ];

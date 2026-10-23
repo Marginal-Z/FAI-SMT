@@ -65,14 +65,13 @@ class FilesPage extends StatelessWidget {
             color: c.window,
             child: LayoutBuilder(builder: (context, box) {
               final row = box.maxWidth >= 900;
-              const gap = 14.0;
-              final inner = box.maxWidth.clamp(0, 1320) - 40;
-              final w = row ? (inner - gap * 2) / 3 : box.maxWidth - 40;
+              const gap = 16.0;
+              final w = row ? (box.maxWidth - 48 - gap * 2) / 3 : box.maxWidth - 48;
               return SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1280),
+                    constraints: const BoxConstraints(maxWidth: double.infinity),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       row
                           ? IntrinsicHeight(
@@ -99,7 +98,7 @@ class FilesPage extends StatelessWidget {
                           Expanded(
                             child: Text(s.t(ready ? 'files_ready' : 'files_not_ready'), style: TextStyle(fontSize: 13, color: c.textDim)),
                           ),
-                          FlatButton(icon: null, label: s.t('btn_run'), primary: true, onTap: ready ? () => runCheck(context, state) : null),
+                          FlatButton(label: s.t('btn_run'), primary: true, onTap: ready ? () => runCheck(context, state) : null),
                         ]),
                       ),
                     ]),

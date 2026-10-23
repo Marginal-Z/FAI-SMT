@@ -18,7 +18,7 @@ import 'core/updater.dart';
 import 'update_installer.dart';
 import 'version.dart';
 
-enum InputKind { bom, stationA, stationB, coords }
+enum InputKind { bom, stationA, stationB, coords, boardCad }
 
 class LoadedFile<T> {
   LoadedFile(this.name, this.result);
@@ -36,10 +36,16 @@ class UserMessage implements Exception {
 }
 
 /// Function modules. Each ribbon tab opens exactly one module page.
-enum Module { files, check, rules, board, cad, settings }
+enum Module { files, check, cad, board }
 
-/// Sections of the rules page.
+/// Sections of the full-screen settings page.
+enum SettingsSection { appearance, rules, update, about }
+
+/// Sections of the rules editor inside settings.
 enum RulesSection { exclusion, alternates, general }
+
+/// What the PCB view shows: the checked data, or a CAD coordinate file.
+enum BoardSource { check, file }
 
 enum UpdateStatus { idle, checking, upToDate, available, downloading, installing, failed }
 
@@ -70,7 +76,14 @@ class AppState extends ChangeNotifier {
 
   // UI state
   Module module = Module.files;
+  bool settingsOpen = false;
+  SettingsSection settingsSection = SettingsSection.appearance;
   RulesSection rulesSection = RulesSection.exclusion;
+
+  /// PCB view: data source, an opened CAD coordinate file, full screen.
+  BoardSource boardSource = BoardSource.check;
+  LoadedFile<Placement>? boardFile;
+  bool boardFullscreen = false;
   BoardSideFilter boardSide = BoardSideFilter.both;
 
   /// Incremented to ask the board view to fit the board to the window.
@@ -180,9 +193,45 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void openSettings([SettingsSection section = SettingsSection.appearance]) {
+    settingsOpen = true;
+    settingsSection = section;
+    notifyListeners();
+  }
+
+  void closeSettings() {
+    settingsOpen = false;
+    notifyListeners();
+  }
+
+  void setSettingsSection(SettingsSection s) {
+    settingsSection = s;
+    notifyListeners();
+  }
+
   void openRules(RulesSection section) {
-    module = Module.rules;
+    settingsOpen = true;
+    settingsSection = SettingsSection.rules;
     rulesSection = section;
+    notifyListeners();
+  }
+
+  void setBoardSource(BoardSource s) {
+    boardSource = s;
+    boardFitRequest++;
+    notifyListeners();
+  }
+
+  void setBoardFullscreen(bool v) {
+    boardFullscreen = v;
+    notifyListeners();
+  }
+
+  /// Back to the default view: no rotation, not mirrored, fitted.
+  void resetBoardView() {
+    boardQuarterTurns = 0;
+    boardMirror = false;
+    boardFitRequest++;
     notifyListeners();
   }
 
@@ -252,6 +301,13 @@ class AppState extends ChangeNotifier {
         case InputKind.coords:
           _coordBytes = bytes;
           coords = LoadedFile(name, parseCoordinates(grids, unit: settings.coordUnit));
+        case InputKind.boardCad:
+          boardFile = LoadedFile(name, parseCoordinates(grids));
+          boardSource = BoardSource.file;
+          boardFitRequest++;
+          _status('status_loaded', {'name': name});
+          notifyListeners();
+          return;
       }
     } on ParseException catch (e) {
       throw UserMessage('err_${e.code}', {'detail': e.detail});
@@ -281,6 +337,11 @@ class AppState extends ChangeNotifier {
       case InputKind.coords:
         coords = null;
         _coordBytes = null;
+      case InputKind.boardCad:
+        boardFile = null;
+        boardSource = BoardSource.check;
+        notifyListeners();
+        return;
     }
     if (kind != InputKind.coords) {
       report = null;

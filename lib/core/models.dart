@@ -70,9 +70,15 @@ class Placement {
     this.value = '',
     this.footprint = '',
     this.smd,
+    this.partNo = '',
+    this.description = '',
   });
 
   final String ref;
+
+  /// Part number / description when the file carries them (e.g. an FAI CAD file).
+  final String partNo;
+  final String description;
 
   /// SMD flag from the coordinate file (null when the file has no such column).
   final bool? smd;

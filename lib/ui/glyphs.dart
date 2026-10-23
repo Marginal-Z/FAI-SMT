@@ -40,6 +40,18 @@ enum Glyph {
   download,
   materials,
   discrepancies,
+  modFiles,
+  modCheck,
+  modCad,
+  modBoard,
+  back,
+  fullscreen,
+  exitFullscreen,
+  reset,
+  appearance,
+  rules,
+  openFile,
+  checkData,
 }
 
 const _regular = 'FluentSystemIcons-Regular';
@@ -78,6 +90,18 @@ const Map<Glyph, (IconData, IconData)> _glyphs = {
   Glyph.download: (IconData(61777, fontFamily: _regular), IconData(61777, fontFamily: _filled)), // arrow_download
   Glyph.materials: (IconData(62702, fontFamily: _regular), IconData(62712, fontFamily: _filled)), // list
   Glyph.discrepancies: (IconData(63594, fontFamily: _regular), IconData(63618, fontFamily: _filled)), // warning
+  Glyph.modFiles: (IconData(62511, fontFamily: _regular), IconData(62515, fontFamily: _filled)), // folder_open
+  Glyph.modCheck: (IconData(58210, fontFamily: _regular), IconData(58231, fontFamily: _filled)), // clipboard_task_list_ltr
+  Glyph.modCad: (IconData(58700, fontFamily: _regular), IconData(58712, fontFamily: _filled)), // document_table
+  Glyph.modBoard: (IconData(61923, fontFamily: _regular), IconData(61923, fontFamily: _filled)), // board
+  Glyph.back: (IconData(61788, fontFamily: _regular), IconData(61788, fontFamily: _filled)), // arrow_left
+  Glyph.fullscreen: (IconData(59013, fontFamily: _regular), IconData(59026, fontFamily: _filled)), // full_screen_maximize
+  Glyph.exitFullscreen: (IconData(59016, fontFamily: _regular), IconData(59029, fontFamily: _filled)), // full_screen_minimize
+  Glyph.reset: (IconData(61856, fontFamily: _regular), IconData(61856, fontFamily: _filled)), // arrow_reset
+  Glyph.appearance: (IconData(62867, fontFamily: _regular), IconData(62877, fontFamily: _filled)), // paint_brush
+  Glyph.rules: (IconData(60120, fontFamily: _regular), IconData(60129, fontFamily: _filled)), // shield_task
+  Glyph.openFile: (IconData(62511, fontFamily: _regular), IconData(62515, fontFamily: _filled)), // folder_open
+  Glyph.checkData: (IconData(58218, fontFamily: _regular), IconData(58239, fontFamily: _filled)), // clipboard_text_ltr
 };
 
 class GlyphIcon extends StatelessWidget {

@@ -18,10 +18,15 @@ import 'widgets.dart';
 const moduleLabels = {
   Module.files: 'mod_files',
   Module.check: 'mod_check',
-  Module.rules: 'mod_rules',
-  Module.board: 'mod_board',
   Module.cad: 'mod_cad',
-  Module.settings: 'mod_settings',
+  Module.board: 'mod_board',
+};
+
+const moduleGlyphs = {
+  Module.files: Glyph.modFiles,
+  Module.check: Glyph.modCheck,
+  Module.cad: Glyph.modCad,
+  Module.board: Glyph.modBoard,
 };
 
 class TitleBar extends StatelessWidget {
@@ -36,7 +41,7 @@ class TitleBar extends StatelessWidget {
     final s = Strings.of(context);
     final width = MediaQuery.sizeOf(context).width;
     return Container(
-      height: m.menuBar + 4,
+      height: m.menuBar + 10,
       decoration: BoxDecoration(color: c.chrome, border: Border(bottom: BorderSide(color: c.border))),
       child: Row(
         children: [
@@ -50,7 +55,12 @@ class TitleBar extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Row(children: [
                 for (final mod in Module.values)
-                  _ModuleTab(label: s.t(moduleLabels[mod]!), active: state.module == mod, onTap: () => state.setModule(mod)),
+                  _ModuleTab(
+                    glyph: moduleGlyphs[mod]!,
+                    label: s.t(moduleLabels[mod]!),
+                    active: state.module == mod,
+                    onTap: () => state.setModule(mod),
+                  ),
               ]),
             ),
           ),
@@ -60,7 +70,7 @@ class TitleBar extends StatelessWidget {
           ],
           if (state.updateAvailable) ...[
             Hoverable(
-              onTap: () => state.setModule(Module.settings),
+              onTap: () => state.openSettings(SettingsSection.update),
               builder: (context, hover, _) => Container(
                 height: m.iconButton,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -90,7 +100,7 @@ class TitleBar extends StatelessWidget {
             tooltip: s.t('theme_now_${state.theme.name}'),
             onTap: state.cycleTheme,
           ),
-          _TitleIcon(glyph: Glyph.settings, tooltip: s.t('mod_settings'), onTap: () => state.setModule(Module.settings)),
+          _TitleIcon(glyph: Glyph.settings, tooltip: s.t('mod_settings'), onTap: state.openSettings),
           const SizedBox(width: 8),
         ],
       ),
@@ -98,9 +108,11 @@ class TitleBar extends StatelessWidget {
   }
 }
 
+/// Module tab: icon only; the active tab opens into icon + name.
 class _ModuleTab extends StatelessWidget {
-  const _ModuleTab({required this.label, required this.active, required this.onTap});
+  const _ModuleTab({required this.glyph, required this.label, required this.active, required this.onTap});
 
+  final Glyph glyph;
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -109,23 +121,32 @@ class _ModuleTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
-    return Hoverable(
-      onTap: onTap,
-      builder: (context, hover, _) => Container(
-        height: m.menuBar + 4,
-        padding: EdgeInsets.symmetric(horizontal: m.touch ? 18 : 15),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: hover && !active ? c.hover : null,
-          border: Border(bottom: BorderSide(color: active ? c.accent : const Color(0x00000000), width: 2)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Hoverable(
+        onTap: onTap,
+        tooltip: label,
+        builder: (context, hover, _) => AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          height: m.iconButton + 6,
+          padding: EdgeInsets.symmetric(horizontal: active ? 14 : 10),
+          decoration: BoxDecoration(
+            color: active
+                ? c.accent.withValues(alpha: c.dark ? 0.18 : 0.1)
+                : hover
+                    ? c.hover
+                    : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            GlyphIcon(glyph, size: 20, filled: active, color: active ? c.accent : (hover ? c.text : c.textDim)),
+            if (active) ...[
+              const SizedBox(width: 8),
+              Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.accent, letterSpacing: 0.2)),
+            ],
+          ]),
         ),
-        child: Text(label,
-            style: TextStyle(
-              fontSize: 13,
-              color: active ? c.text : c.textDim,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              letterSpacing: 0.2,
-            )),
       ),
     );
   }
@@ -320,55 +341,37 @@ class Ribbon extends StatelessWidget {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
     final s = Strings.of(context);
+    final trailing = state.module == Module.cad ? _CoordinateBlock(state: state) : null;
     return Container(
       height: m.ribbon,
       decoration: BoxDecoration(color: c.ribbon, border: Border(bottom: BorderSide(color: c.border))),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: switch (state.module) {
-            Module.files => _files(context, s, c),
-            Module.check => _check(context, s),
-            Module.rules => _rules(context, s),
-            Module.board => _board(context, s),
-            Module.cad => _cad(context, s),
-            Module.settings => _settings(context, s),
-          },
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: switch (state.module) {
+                Module.files => _files(context, s),
+                Module.check => _check(context, s),
+                Module.cad => _cad(context, s),
+                Module.board => _board(context, s),
+              },
+            ),
+          ),
         ),
-      ),
+        ?trailing,
+      ]),
     );
   }
 
-  List<Widget> _files(BuildContext context, Strings s, AppColors c) => [
-        RibbonGroup(label: s.t('grp_import'), children: [
-          RibbonButton(
-              glyph: Glyph.bom, label: s.t('btn_bom'), badge: state.bom != null ? c.pass : null, onTap: () => importFile(context, state, InputKind.bom)),
-          RibbonButton(
-              glyph: Glyph.stationA,
-              label: s.t('btn_station_a'),
-              badge: state.stationA != null ? c.pass : null,
-              onTap: () => importFile(context, state, InputKind.stationA)),
-          RibbonButton(
-              glyph: Glyph.stationB,
-              label: s.t('btn_station_b'),
-              badge: state.stationB != null ? c.pass : null,
-              onTap: () => importFile(context, state, InputKind.stationB)),
-        ]),
+  List<Widget> _files(BuildContext context, Strings s) => [
         RibbonGroup(label: s.t('grp_project'), children: [
-          RibbonButton(glyph: Glyph.clear, label: s.t('btn_clear'), onTap: state.clearAll),
           RibbonButton(glyph: Glyph.runCheck, label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state)),
+          RibbonButton(glyph: Glyph.clear, label: s.t('btn_clear'), onTap: state.clearAll),
         ]),
       ];
-
-  void _setUnit(BuildContext context, CoordUnit u) {
-    try {
-      state.setCoordUnit(u);
-    } catch (e) {
-      showError(context, e);
-    }
-  }
 
   List<Widget> _check(BuildContext context, Strings s) => [
         RibbonGroup(label: s.t('grp_check'), children: [
@@ -394,73 +397,15 @@ class Ribbon extends StatelessWidget {
         ]),
       ];
 
-  List<Widget> _rules(BuildContext context, Strings s) => [
-        RibbonGroup(label: s.t('grp_rules'), children: [
-          RibbonButton(
-              glyph: Glyph.exclusion,
-              label: s.t('btn_exclusion'),
-              active: state.rulesSection == RulesSection.exclusion,
-              onTap: () => state.openRules(RulesSection.exclusion)),
-          RibbonButton(
-              glyph: Glyph.alternates,
-              label: s.t('btn_substitutes'),
-              active: state.rulesSection == RulesSection.alternates,
-              onTap: () => state.openRules(RulesSection.alternates)),
-          RibbonButton(
-              glyph: Glyph.general,
-              label: s.t('btn_general'),
-              active: state.rulesSection == RulesSection.general,
-              onTap: () => state.openRules(RulesSection.general)),
-        ]),
-      ];
-
-  List<Widget> _board(BuildContext context, Strings s) => [
-        RibbonGroup(label: s.t('grp_side'), children: [
-          RibbonButton(
-              glyph: Glyph.layersBoth,
-              label: s.t('side_both'),
-              active: state.boardSide == BoardSideFilter.both,
-              onTap: () => state.setBoardSide(BoardSideFilter.both)),
-          RibbonButton(
-              glyph: Glyph.layerTop,
-              label: s.t('side_top'),
-              active: state.boardSide == BoardSideFilter.top,
-              onTap: () => state.setBoardSide(BoardSideFilter.top)),
-          RibbonButton(
-              glyph: Glyph.layerBottom,
-              label: s.t('side_bottom'),
-              active: state.boardSide == BoardSideFilter.bottom,
-              onTap: () => state.setBoardSide(BoardSideFilter.bottom)),
-        ]),
-        RibbonGroup(label: s.t('grp_view'), children: [
-          RibbonButton(glyph: Glyph.mirror, label: s.t('board_mirror'), active: state.boardMirror, onTap: state.toggleBoardMirror),
-          RibbonButton(glyph: Glyph.rotateLeft, label: s.t('board_rotate_left'), onTap: () => state.rotateBoard(1)),
-          RibbonButton(glyph: Glyph.rotateRight, label: s.t('board_rotate_right'), onTap: () => state.rotateBoard(3)),
-          RibbonButton(glyph: Glyph.fit, label: s.t('board_fit'), onTap: state.fitBoard),
-        ]),
-        RibbonGroup(label: s.t('grp_coloring'), children: [
-          Column(mainAxisSize: MainAxisSize.min, children: [
-            RibbonOption(
-                label: s.t('color_type'),
-                selected: state.boardColoring == BoardColoring.type,
-                onTap: () => state.setBoardColoring(BoardColoring.type)),
-            RibbonOption(
-                label: s.t('color_status'),
-                selected: state.boardColoring == BoardColoring.status,
-                onTap: () => state.setBoardColoring(BoardColoring.status)),
-          ]),
-        ]),
-      ];
+  void _setUnit(BuildContext context, CoordUnit u) {
+    try {
+      state.setCoordUnit(u);
+    } catch (e) {
+      showError(context, e);
+    }
+  }
 
   List<Widget> _cad(BuildContext context, Strings s) => [
-        RibbonGroup(label: s.t('grp_coords'), children: [
-          RibbonButton(
-            glyph: Glyph.coords,
-            label: s.t('btn_coord'),
-            badge: state.coords != null ? AppTheme.of(context).pass : null,
-            onTap: () => importFile(context, state, InputKind.coords),
-          ),
-        ]),
         RibbonGroup(label: s.t('grp_coord_import'), children: [
           RibbonButton(
             glyph: Glyph.unitAuto,
@@ -486,36 +431,123 @@ class Ribbon extends StatelessWidget {
           RibbonButton(glyph: Glyph.report, label: s.t('btn_export_report'), onTap: state.report == null ? null : () => exportReport(context, state)),
         ]),
       ];
-}
 
-extension on Ribbon {
-  List<Widget> _settings(BuildContext context, Strings s) => [
-        RibbonGroup(label: s.t('grp_update'), children: [
+  List<Widget> _board(BuildContext context, Strings s) => [
+        RibbonGroup(label: s.t('grp_source'), children: [
           RibbonButton(
-            glyph: Glyph.update,
-            label: s.t('btn_check_update'),
-            onTap: state.updateStatus == UpdateStatus.checking ? null : () => state.checkForUpdates(),
+            glyph: Glyph.checkData,
+            label: s.t('btn_check_data'),
+            active: state.boardSource == BoardSource.check,
+            onTap: () => state.setBoardSource(BoardSource.check),
           ),
           RibbonButton(
-            glyph: Glyph.download,
-            label: s.t('btn_install_update'),
-            primary: state.updateAvailable,
-            onTap: state.updateAvailable && state.updateStatus != UpdateStatus.downloading ? state.downloadAndInstall : null,
+            glyph: Glyph.openFile,
+            label: s.t('btn_open_cad'),
+            active: state.boardSource == BoardSource.file,
+            onTap: () => state.boardFile != null && state.boardSource != BoardSource.file
+                ? state.setBoardSource(BoardSource.file)
+                : importFile(context, state, InputKind.boardCad),
           ),
         ]),
-        RibbonGroup(label: s.t('grp_appearance'), children: [
-          Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final (t, key) in [(ThemePref.light, 'btn_light'), (ThemePref.dark, 'btn_dark'), (ThemePref.system, 'btn_system')])
-              RibbonOption(label: s.t(key), selected: state.theme == t, onTap: () => state.setTheme(t)),
-          ]),
+        RibbonGroup(label: s.t('grp_side'), children: [
+          RibbonButton(
+              glyph: Glyph.layersBoth,
+              label: s.t('side_both'),
+              active: state.boardSide == BoardSideFilter.both,
+              onTap: () => state.setBoardSide(BoardSideFilter.both)),
+          RibbonButton(
+              glyph: Glyph.layerTop,
+              label: s.t('side_top'),
+              active: state.boardSide == BoardSideFilter.top,
+              onTap: () => state.setBoardSide(BoardSideFilter.top)),
+          RibbonButton(
+              glyph: Glyph.layerBottom,
+              label: s.t('side_bottom'),
+              active: state.boardSide == BoardSideFilter.bottom,
+              onTap: () => state.setBoardSide(BoardSideFilter.bottom)),
         ]),
-        RibbonGroup(label: s.t('grp_language'), children: [
+        RibbonGroup(label: s.t('grp_view'), children: [
+          RibbonButton(glyph: Glyph.mirror, label: s.t('board_mirror'), active: state.boardMirror, onTap: state.toggleBoardMirror),
+          RibbonButton(glyph: Glyph.rotateLeft, label: s.t('board_rotate_left'), onTap: () => state.rotateBoard(1)),
+          RibbonButton(glyph: Glyph.rotateRight, label: s.t('board_rotate_right'), onTap: () => state.rotateBoard(3)),
+          RibbonButton(glyph: Glyph.fit, label: s.t('board_fit'), onTap: state.fitBoard),
+          RibbonButton(glyph: Glyph.reset, label: s.t('btn_reset_view'), onTap: state.resetBoardView),
+          RibbonButton(glyph: Glyph.fullscreen, label: s.t('btn_fullscreen'), onTap: () => state.setBoardFullscreen(true)),
+        ]),
+        RibbonGroup(label: s.t('grp_coloring'), children: [
           Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final l in supportedLanguages)
-              RibbonOption(label: languageNames[l]!, selected: state.language == l, onTap: () => state.setLanguage(l)),
+            RibbonOption(
+                label: s.t('color_type'),
+                selected: state.boardColoring == BoardColoring.type,
+                onTap: () => state.setBoardColoring(BoardColoring.type)),
+            RibbonOption(
+                label: s.t('color_status'),
+                selected: state.boardColoring == BoardColoring.status,
+                onTap: () => state.setBoardColoring(BoardColoring.status)),
           ]),
         ]),
       ];
+}
+
+/// Coordinate file status and import, docked on the right of the CAD ribbon.
+class _CoordinateBlock extends StatelessWidget {
+  const _CoordinateBlock({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final f = state.coords;
+    return Container(
+      width: 400,
+      margin: const EdgeInsets.fromLTRB(8, 10, 12, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: c.panel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: f != null ? c.pass.withValues(alpha: 0.45) : c.border),
+      ),
+      child: Row(children: [
+        Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: f != null ? c.accent.withValues(alpha: c.dark ? 0.14 : 0.08) : c.panelAlt,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: GlyphIcon(Glyph.coords, size: 22, color: f != null ? c.accent : c.textDim),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(s.t('btn_coord'), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: c.text)),
+            const SizedBox(height: 2),
+            Text(f?.name ?? s.t('step_coord'),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: f != null ? c.textDim : c.textFaint)),
+            if (f != null)
+              Text('${s.t('file_refs', {'n': f.result.items.length})} · ${f.result.columns['unit'] ?? 'mm'}',
+                  style: TextStyle(fontSize: 12, color: c.text, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+          FlatButton(
+            label: f == null ? s.t('step_import') : s.t('step_replace'),
+            primary: f == null,
+            compact: true,
+            onTap: () => importFile(context, state, InputKind.coords),
+          ),
+          if (f != null) ...[
+            const SizedBox(height: 6),
+            FlatButton(label: s.t('file_remove'), compact: true, onTap: () => state.unload(InputKind.coords)),
+          ],
+        ]),
+      ]),
+    );
+  }
 }
 
 class RibbonGroup extends StatelessWidget {

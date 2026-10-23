@@ -147,7 +147,34 @@ void main() {
 
   testWidgets('settings', (tester) async {
     final s = demoState(dark: false);
-    s.setModule(Module.settings);
+    s.openSettings(SettingsSection.update);
     await shot(tester, s, 'settings_zh_light');
+  });
+
+  testWidgets('settings appearance', (tester) async {
+    final s = demoState();
+    s.openSettings();
+    await shot(tester, s, 'settings_appearance_dark');
+  });
+
+  testWidgets('board full screen', (tester) async {
+    final s = demoState();
+    s.setModule(Module.board);
+    s.setBoardFullscreen(true);
+    await shot(tester, s, 'board_fullscreen_dark');
+  });
+
+  testWidgets('board from generated CAD file', (tester) async {
+    final s = demoState(dark: false);
+    final bytes = s.cad!.encode();
+    s.load(InputKind.boardCad, 'demo_FAI.xlsx', bytes);
+    s.setModule(Module.board);
+    await shot(tester, s, 'board_cadfile_light', zoomSteps: 6, zoomAt: const Offset(700, 520));
+  });
+
+  testWidgets('cad page', (tester) async {
+    final s = demoState();
+    s.setModule(Module.cad);
+    await shot(tester, s, 'cad_zh_dark');
   });
 }

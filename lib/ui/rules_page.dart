@@ -123,9 +123,19 @@ class _RulesPageState extends State<RulesPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: s.t('mod_rules'),
+          title: s.t('set_rules'),
           subtitle: _saved ? s.t('rules_saved') : s.t('page_rules_sub'),
           trailing: [
+            Segmented<RulesSection>(
+              value: section,
+              options: [
+                (RulesSection.exclusion, s.t('btn_exclusion')),
+                (RulesSection.alternates, s.t('btn_substitutes')),
+                (RulesSection.general, s.t('btn_general')),
+              ],
+              onChanged: widget.state.openRules,
+            ),
+            const SizedBox(width: 8),
             FlatButton(label: s.t('rules_reset'), compact: true, onTap: () => setState(() => _fill(CheckRules()))),
             FlatButton(label: s.t('dlg_save'), compact: true, primary: true, onTap: _save),
           ],

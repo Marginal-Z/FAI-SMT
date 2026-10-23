@@ -124,8 +124,6 @@ class CadTemplate {
     this.bottomText = 'BOTTOM',
     this.includeUnmatched = false,
     this.sideFromStation = true,
-    this.smdOnly = true,
-    List<String>? mechanicalKeywords,
   }) : fields =
            fields ??
            [
@@ -138,8 +136,7 @@ class CadTemplate {
              CadField.side,
              CadField.qty,
            ],
-       headers = headers ?? {},
-       mechanicalKeywords = mechanicalKeywords ?? List.of(defaultMechanical);
+       headers = headers ?? {};
 
   List<CadField> fields;
 
@@ -169,15 +166,6 @@ class CadTemplate {
   /// When the coordinate file has no layer column, take the side from the
   /// station list (A = top, B = bottom).
   bool sideFromStation;
-
-  /// Leave out placements the coordinate file marks as not SMD.
-  bool smdOnly;
-
-  /// Parts whose BOM description contains one of these are mechanical
-  /// (shield frames, standoffs ...) and are left out of the CAD file.
-  List<String> mechanicalKeywords;
-
-  static const defaultMechanical = ['屏蔽框', '屏蔽夹', '屏蔽罩', '螺柱', '螺丝', '螺母', '支架', '散热片', '泡棉', '胶纸'];
 
   static const defaultHeaders = {
     CadField.ref: 'Location',
@@ -214,8 +202,6 @@ class CadTemplate {
     'bottomText': bottomText,
     'includeUnmatched': includeUnmatched,
     'sideFromStation': sideFromStation,
-    'smdOnly': smdOnly,
-    'mechanicalKeywords': mechanicalKeywords,
   };
 
   factory CadTemplate.fromJson(Map<String, dynamic> j) => j['schema'] != schema
@@ -237,8 +223,6 @@ class CadTemplate {
           bottomText: j['bottomText'] as String? ?? 'BOTTOM',
           includeUnmatched: j['includeUnmatched'] as bool? ?? false,
           sideFromStation: j['sideFromStation'] as bool? ?? true,
-          smdOnly: j['smdOnly'] as bool? ?? true,
-          mechanicalKeywords: (j['mechanicalKeywords'] as List?)?.cast<String>(),
         );
 }
 
