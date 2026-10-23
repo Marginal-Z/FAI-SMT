@@ -21,10 +21,15 @@ import 'version.dart';
 enum InputKind { bom, stationA, stationB, coords, boardCad }
 
 class LoadedFile<T> {
-  LoadedFile(this.name, this.result);
+  LoadedFile(this.name, this.result, {this.size = 0, this.sheets = 1, DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
 
   final String name;
   final ParseResult<T> result;
+
+  /// File size in bytes and number of non-empty sheets read.
+  final int size;
+  final int sheets;
+  final DateTime loadedAt;
 }
 
 /// An error whose text is a localisation key plus arguments.
@@ -71,6 +76,7 @@ class AppState extends ChangeNotifier {
   Uint8List? _coordBytes;
 
   CheckReport? report;
+  DateTime? checkedAt;
   CadResult? _cad;
   List<Discrepancy>? _discrepancies;
 
@@ -317,16 +323,16 @@ class AppState extends ChangeNotifier {
     try {
       switch (kind) {
         case InputKind.bom:
-          bom = LoadedFile(name, parseBom(grids));
+          bom = LoadedFile(name, parseBom(grids), size: bytes.length, sheets: grids.length);
         case InputKind.stationA:
-          stationA = LoadedFile(name, parseStation(grids, StationSide.a));
+          stationA = LoadedFile(name, parseStation(grids, StationSide.a), size: bytes.length, sheets: grids.length);
         case InputKind.stationB:
-          stationB = LoadedFile(name, parseStation(grids, StationSide.b));
+          stationB = LoadedFile(name, parseStation(grids, StationSide.b), size: bytes.length, sheets: grids.length);
         case InputKind.coords:
           _coordBytes = bytes;
-          coords = LoadedFile(name, parseCoordinates(grids, unit: settings.coordUnit));
+          coords = LoadedFile(name, parseCoordinates(grids, unit: settings.coordUnit), size: bytes.length, sheets: grids.length);
         case InputKind.boardCad:
-          boardFile = LoadedFile(name, parseCoordinates(grids));
+          boardFile = LoadedFile(name, parseCoordinates(grids), size: bytes.length, sheets: grids.length);
           boardSource = BoardSource.file;
           boardFitRequest++;
           _status('status_loaded', {'name': name});
@@ -400,7 +406,8 @@ class AppState extends ChangeNotifier {
     persist();
     final c = coords;
     if (c != null && _coordBytes != null) {
-      coords = LoadedFile(c.name, parseCoordinates(readTableBytes(_coordBytes!, c.name), unit: u));
+      coords = LoadedFile(c.name, parseCoordinates(readTableBytes(_coordBytes!, c.name), unit: u),
+          size: c.size, sheets: c.sheets, loadedAt: c.loadedAt);
       _cad = null;
     }
     notifyListeners();
@@ -423,6 +430,7 @@ class AppState extends ChangeNotifier {
       coordIssues: coords?.result.issues ?? const [],
     );
     report = foldIntoReport(raw, _discrepancies!);
+    checkedAt = DateTime.now();
     _cad = null;
     selected = null;
     _status('status_checked', {

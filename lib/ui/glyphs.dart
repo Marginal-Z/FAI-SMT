@@ -53,6 +53,16 @@ enum Glyph {
   openFile,
   checkData,
   palette,
+  okCircle,
+  errorCircle,
+  trash,
+  dismiss,
+  play,
+  cube,
+  search,
+  chevronDown,
+  chevronRight,
+  fileCheck,
 }
 
 const _regular = 'FluentSystemIcons-Regular';
@@ -104,6 +114,16 @@ const Map<Glyph, (IconData, IconData)> _glyphs = {
   Glyph.openFile: (IconData(62511, fontFamily: _regular), IconData(62515, fontFamily: _filled)), // folder_open
   Glyph.checkData: (IconData(58218, fontFamily: _regular), IconData(58239, fontFamily: _filled)), // clipboard_text_ltr
   Glyph.palette: (IconData(62198, fontFamily: _regular), IconData(62198, fontFamily: _filled)), // color
+  Glyph.okCircle: (IconData(62105, fontFamily: _regular), IconData(62105, fontFamily: _filled)), // checkmark_circle
+  Glyph.errorCircle: (IconData(62318, fontFamily: _regular), IconData(62318, fontFamily: _filled)), // dismiss_circle
+  Glyph.trash: (IconData(62285, fontFamily: _regular), IconData(62285, fontFamily: _filled)), // delete
+  Glyph.dismiss: (IconData(62314, fontFamily: _regular), IconData(62314, fontFamily: _filled)), // dismiss
+  Glyph.play: (IconData(62982, fontFamily: _regular), IconData(62992, fontFamily: _filled)), // play
+  Glyph.cube: (IconData(62262, fontFamily: _regular), IconData(62262, fontFamily: _filled)), // cube
+  Glyph.search: (IconData(63120, fontFamily: _regular), IconData(63130, fontFamily: _filled)), // search
+  Glyph.chevronDown: (IconData(62116, fontFamily: _regular), IconData(62116, fontFamily: _filled)), // chevron_down
+  Glyph.chevronRight: (IconData(62129, fontFamily: _regular), IconData(62129, fontFamily: _filled)), // chevron_right
+  Glyph.fileCheck: (IconData(58610, fontFamily: _regular), IconData(58622, fontFamily: _filled)), // document_checkmark
 };
 
 class GlyphIcon extends StatelessWidget {

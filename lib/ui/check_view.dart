@@ -56,11 +56,16 @@ class _Details extends _Entry {
   final CheckRow row;
 }
 
+enum _SideFilter { all, a, b, both }
+
 class _CheckViewState extends State<CheckView> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   final _hScroll = ScrollController();
-  CheckCategory _area = CheckCategory.pass;
+
+  /// Result-area filter; null shows every area.
+  CheckCategory? _area = CheckCategory.pass;
+  _SideFilter _side = _SideFilter.all;
   CheckRow? _expanded;
 
   @override
@@ -76,6 +81,8 @@ class _CheckViewState extends State<CheckView> {
     } else if (widget.state.filter != null) {
       _area = widget.state.filter!;
     }
+    // The page filters by area itself; a leftover global filter would hide rows.
+    widget.state.filter = null;
   }
 
   @override
@@ -91,12 +98,17 @@ class _CheckViewState extends State<CheckView> {
     widget.state.select(_expanded);
   }
 
-  void _openArea(CheckCategory cat) {
+  void _setArea(CheckCategory? cat) {
     setState(() => _area = cat);
-    final state = widget.state;
-    if (state.search.isNotEmpty) state.setSearch('');
-    state.setCheckView(CheckPageView.materials);
+    widget.state.setCheckView(CheckPageView.materials);
   }
+
+  bool _sideMatches(CheckRow r) => switch (_side) {
+    _SideFilter.all => true,
+    _SideFilter.a => r.sides.length == 1 && r.sides.contains(StationSide.a),
+    _SideFilter.b => r.sides.length == 1 && r.sides.contains(StationSide.b),
+    _SideFilter.both => r.sides.length == 2,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -105,132 +117,212 @@ class _CheckViewState extends State<CheckView> {
     final s = Strings.of(context);
     final report = state.report;
     final stations = [state.stationA?.name, state.stationB?.name].whereType<String>().length;
-    final header = PageHeader(
-      title: s.t('mod_check'),
-      subtitle: state.bom == null ? null : s.t('page_check_sub', {'bom': state.bom!.name, 'stations': stations}),
-    );
     if (report == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          header,
-          Expanded(
-            child: EmptyState(
-              icon: Ic.listChecks,
-              text: s.t('empty_check'),
-              action: state.bom != null && stations > 0
-                  ? FlatButton(label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state))
-                  : FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
-            ),
-          ),
-        ],
+      return EmptyState(
+        icon: Ic.listChecks,
+        text: s.t('empty_check'),
+        action: state.bom != null && stations > 0
+            ? FlatButton(label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state))
+            : FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
       );
     }
     if (_search.text != state.search) _search.text = state.search;
 
     final discrepancies = state.discrepancies ?? const [];
     final showDiscrepancies = state.checkView == CheckPageView.discrepancies;
-    final searching = !showDiscrepancies && state.search.trim().isNotEmpty;
     final total = report.rows.length;
 
-    final cards = Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      color: c.window,
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final items = <Widget>[
-            for (final cat in _areaOrder)
-              _AreaCard(
-                label: _areaLabel(s, cat),
-                count: report.count(cat),
-                total: total,
-                color: c.category(cat),
-                active: !showDiscrepancies && !searching && _area == cat,
-                onTap: () => _openArea(cat),
-              ),
-            _AreaCard(
-              label: s.t('view_discrepancies'),
-              count: discrepancies.length,
-              color: discrepancies.any((d) => d.severity == Severity.error) ? c.ng : c.accent,
-              glyph: Glyph.discrepancies,
-              active: showDiscrepancies,
-              onTap: () => state.setCheckView(CheckPageView.discrepancies),
-            ),
-            _AreaCard(
-              label: s.t('btn_export_report'),
-              caption: s.t('report_card_caption'),
-              color: c.accent,
-              glyph: Glyph.report,
-              onTap: () => exportReport(context, state),
-            ),
-          ];
-          // One row of six on wide screens, two rows of three on narrow ones.
-          final perRow = box.maxWidth >= 960 ? 6 : 3;
-          return Column(
-            children: [
-              for (var r = 0; r < items.length; r += perRow) ...[
-                if (r > 0) const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = r; i < r + perRow && i < items.length; i++) ...[
-                      if (i > r) const SizedBox(width: 12),
-                      Expanded(child: items[i]),
-                    ],
-                  ],
+    final header = Container(
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: c.panel,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: c.pass, borderRadius: BorderRadius.circular(10)),
+            child: const GlyphIcon(Glyph.modCad, size: 24, filled: true, color: Color(0xFFFFFFFF)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  state.bom?.name ?? '-',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.text),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    s.t('hdr_stations', {'n': stations}),
+                    if (state.checkedAt != null) formatTime(state.checkedAt!),
+                    s.t('hdr_total', {'n': total}),
+                  ].join('   |   '),
+                  style: TextStyle(fontSize: 12.5, color: c.textDim),
                 ),
               ],
-            ],
-          );
-        },
+            ),
+          ),
+          Hoverable(
+            onTap: () => exportReport(context, state),
+            builder: (context, hover, _) => Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: hover ? c.accent.withValues(alpha: 0.08) : c.panel,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: c.accent.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  GlyphIcon(Glyph.report, size: 18, color: c.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    s.t('btn_export_excel'),
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.accent),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
 
+    final cardItems = <Widget>[
+      for (final (cat, glyph) in [
+        (CheckCategory.pass, Glyph.okCircle),
+        (CheckCategory.ng, Glyph.errorCircle),
+        (CheckCategory.excluded, Glyph.cube),
+        (CheckCategory.substitute, Glyph.alternates),
+      ])
+        _AreaCard(
+          label: _areaLabel(s, cat),
+          glyph: glyph,
+          count: report.count(cat),
+          total: total,
+          color: c.category(cat),
+          active: !showDiscrepancies && _area == cat,
+          onTap: () => _setArea(_area == cat ? null : cat),
+        ),
+      _AreaCard(
+        label: s.t('view_discrepancies'),
+        glyph: Glyph.discrepancies,
+        count: discrepancies.length,
+        color: discrepancies.any((d) => d.severity == Severity.error) ? c.ng : c.accent,
+        active: showDiscrepancies,
+        chevron: true,
+        onTap: () => state.setCheckView(showDiscrepancies ? CheckPageView.materials : CheckPageView.discrepancies),
+      ),
+    ];
+    final cards = LayoutBuilder(
+      builder: (context, box) {
+        final perRow = box.maxWidth >= 900 ? 5 : 3;
+        return Column(
+          children: [
+            for (var r = 0; r < cardItems.length; r += perRow) ...[
+              if (r > 0) const SizedBox(height: 12),
+              Row(
+                children: [
+                  for (var i = r; i < r + perRow; i++) ...[
+                    if (i > r) const SizedBox(width: 12),
+                    Expanded(child: i < cardItems.length ? cardItems[i] : const SizedBox.shrink()),
+                  ],
+                ],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+
+    final top = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 12), cards]),
+    );
+
     if (showDiscrepancies) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          header,
-          cards,
-          Expanded(
-            child: DiscrepancyView(state: state, items: discrepancies),
-          ),
-        ],
+      return Container(
+        color: c.window,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            top,
+            Expanded(
+              child: DiscrepancyView(state: state, items: discrepancies),
+            ),
+          ],
+        ),
       );
     }
 
-    final visible = state.visibleRows();
+    final visible = state.visibleRows().where(_sideMatches).toList();
     final entries = <_Entry>[];
+    var shown = 0;
     for (final cat in _areaOrder) {
-      if (!searching && cat != _area) continue;
+      if (_area != null && cat != _area) continue;
       final rows = visible.where((r) => r.category == cat).toList();
       for (var i = 0; i < rows.length; i++) {
-        entries.add(_Row(rows[i], i + 1, i == 0));
+        shown++;
+        entries.add(_Row(rows[i], shown, entries.isEmpty));
         if (identical(_expanded, rows[i])) entries.add(_Details(rows[i]));
       }
     }
-    final showReason = searching || _area != CheckCategory.pass;
+    final showReason = _area != CheckCategory.pass;
 
-    final toolbar = Container(
+    final filters = Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      color: c.window,
       child: Row(
         children: [
-          SizedBox(
-            width: 340,
-            child: TextInput(controller: _search, hint: s.t('search_hint'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch),
+          Expanded(
+            flex: 3,
+            child: TextInput(controller: _search, hint: s.t('search_hint_fuzzy'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch),
           ),
-          const Spacer(),
-          Text(s.t('check_total', {'n': total}), style: TextStyle(fontSize: 12, color: c.textDim)),
+          const SizedBox(width: 20),
+          Text(s.t('col_side'), style: TextStyle(fontSize: 13, color: c.textDim)),
+          const SizedBox(width: 8),
+          DropdownSelect<_SideFilter>(
+            value: _side,
+            width: 130,
+            options: [
+              (_SideFilter.all, s.t('opt_all')),
+              (_SideFilter.a, s.t('side_a')),
+              (_SideFilter.b, s.t('side_b')),
+              (_SideFilter.both, 'A+B'),
+            ],
+            onChanged: (v) => setState(() => _side = v),
+          ),
+          const SizedBox(width: 20),
+          Text(s.t('col_result'), style: TextStyle(fontSize: 13, color: c.textDim)),
+          const SizedBox(width: 8),
+          DropdownSelect<CheckCategory?>(
+            value: _area,
+            width: 140,
+            options: [(null, s.t('opt_all')), for (final cat in _areaOrder) (cat, _areaLabel(s, cat))],
+            onChanged: _setArea,
+          ),
+          const Spacer(flex: 2),
+          Text(s.t('check_total', {'n': shown}), style: TextStyle(fontSize: 12.5, color: c.textDim)),
         ],
       ),
     );
 
     Widget body;
     if (entries.isEmpty) {
-      body = EmptyState(icon: Ic.funnel, text: s.t(searching ? 'empty_filter' : 'area_empty'));
+      body = EmptyState(
+        icon: Ic.funnel,
+        text: s.t(state.search.trim().isNotEmpty || _side != _SideFilter.all ? 'empty_filter' : 'area_empty'),
+      );
     } else {
-      bool lastAt(int i) => i + 1 >= entries.length || (entries[i + 1] is _Row && (entries[i + 1] as _Row).first);
+      bool lastAt(int i) => i + 1 >= entries.length;
       final list = ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -239,10 +331,7 @@ class _CheckViewState extends State<CheckView> {
           _Row(:final row, :final index, :final first) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (first) ...[
-                if (i > 0) const SizedBox(height: 14),
-                if (!widget.cards) _ColumnHeader(reason: showReason) else Container(height: 1, color: c.border),
-              ],
+              if (first) (!widget.cards ? _ColumnHeader(reason: showReason) : Container(height: 1, color: c.border)),
               _ResultRow(
                 row: row,
                 index: index,
@@ -275,144 +364,145 @@ class _CheckViewState extends State<CheckView> {
             );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        header,
-        cards,
-        toolbar,
-        Expanded(
-          child: Container(color: c.window, child: body),
-        ),
-      ],
+    return Container(
+      color: c.window,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          top,
+          filters,
+          Expanded(child: body),
+        ],
+      ),
     );
   }
 }
 
-/// Card in the result row: an area with count and share, the discrepancy
-/// list, or an action (export report).
+/// Statistic card with an icon tile; doubles as a filter.
 class _AreaCard extends StatelessWidget {
   const _AreaCard({
     required this.label,
+    required this.glyph,
     required this.color,
     required this.onTap,
-    this.count,
+    required this.count,
     this.total,
-    this.glyph,
-    this.caption,
     this.active = false,
+    this.chevron = false,
   });
 
   final String label;
+  final Glyph glyph;
   final Color color;
   final VoidCallback onTap;
-  final int? count;
+  final int count;
 
-  /// When set, a share bar is drawn.
+  /// When set, a share bar and percentage are drawn.
   final int? total;
-  final Glyph? glyph;
-  final String? caption;
   final bool active;
+  final bool chevron;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
-    final share = total == null || total == 0 || count == null ? null : count! / total!;
+    final share = total == null || total == 0 ? null : count / total!;
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => Container(
         height: m.touch ? 112 : 104,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
           color: active
               ? color.withValues(alpha: c.dark ? 0.14 : 0.07)
               : hover
               ? c.hover
               : c.panel,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: active ? color.withValues(alpha: 0.85) : c.border, width: active ? 1.5 : 1),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (glyph != null)
-                  GlyphIcon(glyph!, size: 16, color: color)
-                else
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: color.withValues(alpha: c.dark ? 0.2 : 0.13),
                   ),
-                const SizedBox(width: 8),
+                  child: GlyphIcon(glyph, size: 20, filled: true, color: color),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textDim),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$count',
+                            style: TextStyle(
+                              fontSize: 26,
+                              height: 1,
+                              fontWeight: FontWeight.w800,
+                              color: count == 0 ? c.textFaint : c.text,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                          if (share != null) ...[
+                            const SizedBox(width: 8),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '${(share * 100).toStringAsFixed(share > 0 && share < 0.01 ? 1 : 0)}%',
+                                style: TextStyle(fontSize: 12.5, color: c.textFaint),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                   ),
                 ),
+                if (chevron) GlyphIcon(Glyph.chevronRight, size: 16, color: c.textFaint),
               ],
             ),
             const Spacer(),
-            if (count != null)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$count',
-                    style: TextStyle(
-                      fontSize: 26,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: count == 0 ? c.textFaint : c.text,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+            if (share != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 5,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (share > 0)
+                        Expanded(
+                          flex: (share * 1000).round().clamp(1, 1000),
+                          child: ColoredBox(color: color),
+                        ),
+                      if (share < 1)
+                        Expanded(
+                          flex: (1000 - share * 1000).round().clamp(1, 1000),
+                          child: ColoredBox(color: c.border),
+                        ),
+                    ],
                   ),
-                  if (share != null) ...[
-                    const SizedBox(width: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(
-                        '${(share * 100).toStringAsFixed(share > 0 && share < 0.01 ? 1 : 0)}%',
-                        style: TextStyle(fontSize: 12, color: c.textFaint),
-                      ),
-                    ),
-                  ],
-                ],
-              )
-            else
-              Text(
-                caption ?? '',
-                style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600),
+                ),
               ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: SizedBox(
-                height: 4,
-                child: share == null
-                    ? ColoredBox(color: active ? color : c.border)
-                    : Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (share > 0)
-                            Expanded(
-                              flex: (share * 1000).round().clamp(1, 1000),
-                              child: ColoredBox(color: color),
-                            ),
-                          if (share < 1)
-                            Expanded(
-                              flex: (1000 - share * 1000).round().clamp(1, 1000),
-                              child: ColoredBox(color: c.border),
-                            ),
-                        ],
-                      ),
-              ),
-            ),
           ],
         ),
       ),

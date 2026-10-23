@@ -875,3 +875,237 @@ class SurfaceCard extends StatelessWidget {
     );
   }
 }
+
+String formatSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+}
+
+String formatTime(DateTime t) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+}
+
+/// Compact select box that opens a list below it.
+class DropdownSelect<T> extends StatefulWidget {
+  const DropdownSelect({super.key, required this.value, required this.options, required this.onChanged, this.width = 150});
+
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T> onChanged;
+  final double width;
+
+  @override
+  State<DropdownSelect<T>> createState() => _DropdownSelectState<T>();
+}
+
+class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
+  final _portal = OverlayPortalController();
+  final _link = LayerLink();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final m = Metrics.of(context);
+    final current = widget.options.firstWhere((o) => o.$1 == widget.value, orElse: () => widget.options.first);
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: (_) => Stack(children: [
+          Positioned.fill(child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _portal.hide)),
+          CompositedTransformFollower(
+            link: _link,
+            targetAnchor: Alignment.bottomLeft,
+            offset: const Offset(0, 4),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: AppTheme(
+                colors: c,
+                child: DefaultTextStyle(
+                  style: baseTextStyle(c),
+                  child: Container(
+                    width: widget.width,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: c.panel,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: c.borderStrong),
+                      boxShadow: const [BoxShadow(color: Color(0x2E000000), blurRadius: 16, offset: Offset(0, 6))],
+                    ),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      for (final (v, label) in widget.options)
+                        Hoverable(
+                          onTap: () {
+                            _portal.hide();
+                            widget.onChanged(v);
+                          },
+                          builder: (context, hover, _) => Container(
+                            height: m.touch ? 40 : 32,
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            alignment: Alignment.centerLeft,
+                            decoration: BoxDecoration(
+                              color: v == widget.value
+                                  ? c.accent.withValues(alpha: 0.1)
+                                  : hover
+                                      ? c.hover
+                                      : null,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: v == widget.value ? c.accent : c.text,
+                                  fontWeight: v == widget.value ? FontWeight.w600 : FontWeight.w400,
+                                )),
+                          ),
+                        ),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
+        child: Hoverable(
+          onTap: _portal.toggle,
+          builder: (context, hover, _) => Container(
+            width: widget.width,
+            height: m.compactControl + 4,
+            padding: const EdgeInsets.only(left: 12, right: 8),
+            decoration: BoxDecoration(
+              color: c.input,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: hover ? c.textFaint : c.borderStrong),
+            ),
+            child: Row(children: [
+              Expanded(child: Text(current.$2, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: c.text))),
+              CustomPaint(size: const Size(10, 10), painter: _DownCaret(c.textDim)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownCaret extends CustomPainter {
+  _DownCaret(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * 0.15, size.height * 0.35)
+        ..lineTo(size.width * 0.5, size.height * 0.7)
+        ..lineTo(size.width * 0.85, size.height * 0.35),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DownCaret old) => old.color != color;
+}
+
+/// Page banner: large title, description and a flat circuit illustration.
+class PageBanner extends StatelessWidget {
+  const PageBanner({super.key, required this.title, required this.subtitle, this.leading, this.trailing});
+
+  final String title;
+  final String subtitle;
+  final Widget? leading;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    return Container(
+      height: 104,
+      decoration: BoxDecoration(
+        color: c.panel,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        Positioned(right: 0, top: 0, bottom: 0, width: 420, child: CustomPaint(painter: _CircuitArt(c.accent, c.dark))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Row(children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 18)],
+            Expanded(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: c.text, letterSpacing: 0.3)),
+                const SizedBox(height: 6),
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: c.textDim)),
+              ]),
+            ),
+            ?trailing,
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Faint chip and traces drawn with flat strokes, fading by opacity steps.
+class _CircuitArt extends CustomPainter {
+  _CircuitArt(this.accent, this.dark);
+
+  final Color accent;
+  final bool dark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final base = dark ? 0.16 : 0.12;
+    Paint line(double a, [double w = 1.4]) => Paint()
+      ..color = accent.withValues(alpha: a)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w
+      ..strokeCap = StrokeCap.round;
+    final cx = size.width * 0.62, cy = size.height * 0.52;
+    final chip = RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, cy), width: 70, height: 70), const Radius.circular(8));
+    canvas.drawRRect(chip, Paint()..color = accent.withValues(alpha: base * 0.6));
+    canvas.drawRRect(chip, line(base * 2));
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, cy), width: 40, height: 40), const Radius.circular(4)), line(base * 1.6));
+    for (var i = -3; i <= 3; i++) {
+      final d = i * 9.0;
+      canvas.drawLine(Offset(cx + d, cy - 35), Offset(cx + d, cy - 44), line(base * 2));
+      canvas.drawLine(Offset(cx + d, cy + 35), Offset(cx + d, cy + 44), line(base * 2));
+      canvas.drawLine(Offset(cx - 35, cy + d), Offset(cx - 44, cy + d), line(base * 2));
+      canvas.drawLine(Offset(cx + 35, cy + d), Offset(cx + 44, cy + d), line(base * 2));
+    }
+    // Traces leaving the chip, fainter with distance.
+    final traces = [
+      [Offset(cx - 44, cy - 18), Offset(cx - 110, cy - 18), Offset(cx - 140, cy - 48), Offset(cx - 260, cy - 48)],
+      [Offset(cx - 44, cy + 9), Offset(cx - 150, cy + 9), Offset(cx - 180, cy + 39), Offset(cx - 300, cy + 39)],
+      [Offset(cx + 44, cy - 9), Offset(cx + 100, cy - 9), Offset(cx + 120, cy - 29), Offset(cx + 200, cy - 29)],
+      [Offset(cx + 44, cy + 18), Offset(cx + 90, cy + 18), Offset(cx + 115, cy + 43), Offset(cx + 200, cy + 43)],
+      [Offset(cx - 9, cy - 44), Offset(cx - 9, cy - 70)],
+      [Offset(cx + 18, cy + 44), Offset(cx + 18, cy + 70)],
+    ];
+    for (final t in traces) {
+      for (var i = 0; i < t.length - 1; i++) {
+        canvas.drawLine(t[i], t[i + 1], line(base * (1.6 - i * 0.35).clamp(0.4, 1.6)));
+      }
+      canvas.drawCircle(t.last, 3, line(base * 0.9));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CircuitArt old) => old.accent != accent || old.dark != dark;
+}
+
+/// Small coloured status icon: ok / warning / error.
+enum Status { ok, warning, error, idle }
