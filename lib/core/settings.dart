@@ -229,8 +229,35 @@ class CadTemplate {
 /// Light / dark appearance, or follow the operating system.
 enum ThemePref { system, light, dark }
 
+/// PCB board colour in the navigator.
+enum BoardBackground { canvas, green, black, custom }
+
+/// Navigator colours: per-part-type overrides (ARGB, keyed by PartKind name)
+/// and the board background.
+class BoardStyle {
+  BoardStyle({Map<String, int>? partColors, this.background = BoardBackground.canvas, this.customBackground = 0xFF1E5E3B})
+      : partColors = partColors ?? {};
+
+  Map<String, int> partColors;
+  BoardBackground background;
+  int customBackground;
+
+  Map<String, dynamic> toJson() => {
+        'partColors': partColors,
+        'background': background.name,
+        'customBackground': customBackground,
+      };
+
+  factory BoardStyle.fromJson(Map<String, dynamic> j) => BoardStyle(
+        partColors: (j['partColors'] as Map?)?.map((k, v) => MapEntry(k as String, (v as num).toInt())),
+        background: BoardBackground.values.firstWhere((b) => b.name == j['background'], orElse: () => BoardBackground.canvas),
+        customBackground: (j['customBackground'] as num?)?.toInt() ?? 0xFF1E5E3B,
+      );
+}
+
 class AppSettings {
   AppSettings({
+    BoardStyle? board,
     CheckRules? rules,
     CadTemplate? cad,
     this.language = 'zh',
@@ -238,8 +265,10 @@ class AppSettings {
     this.autoUpdate = true,
     this.coordUnit = CoordUnit.auto,
   }) : rules = rules ?? CheckRules(),
-       cad = cad ?? CadTemplate();
+       cad = cad ?? CadTemplate(),
+       board = board ?? BoardStyle();
 
+  BoardStyle board;
   CheckRules rules;
   CadTemplate cad;
   String language;
@@ -251,6 +280,7 @@ class AppSettings {
 
   Map<String, dynamic> toJson() => {
     'rules': rules.toJson(),
+    'board': board.toJson(),
     'cad': cad.toJson(),
     'language': language,
     'theme': theme.name,
@@ -260,6 +290,7 @@ class AppSettings {
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
     rules: j['rules'] is Map ? CheckRules.fromJson((j['rules'] as Map).cast()) : null,
+    board: j['board'] is Map ? BoardStyle.fromJson((j['board'] as Map).cast()) : null,
     cad: j['cad'] is Map ? CadTemplate.fromJson((j['cad'] as Map).cast()) : null,
     language: j['language'] as String? ?? 'zh',
     theme: ThemePref.values.firstWhere(

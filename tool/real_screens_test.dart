@@ -106,4 +106,11 @@ void main() {
     s.setCheckView(CheckPageView.discrepancies);
     await shot(tester, s, 'discrepancies');
   });
+
+  testWidgets('real board green', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    s.setBoardBackground(BoardBackground.green);
+    await shot(tester, s, 'board_green');
+  });
 }

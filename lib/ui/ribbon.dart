@@ -341,6 +341,8 @@ class Ribbon extends StatelessWidget {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
     final s = Strings.of(context);
+    // Files and Check keep their commands on the page itself.
+    if (state.module == Module.files || state.module == Module.check) return const SizedBox.shrink();
     final trailing = state.module == Module.cad ? _CoordinateBlock(state: state) : null;
     return Container(
       height: m.ribbon,
@@ -485,6 +487,7 @@ class Ribbon extends StatelessWidget {
                 selected: state.boardColoring == BoardColoring.status,
                 onTap: () => state.setBoardColoring(BoardColoring.status)),
           ]),
+          RibbonButton(glyph: Glyph.palette, label: s.t('btn_colors'), onTap: () => state.openSettings(SettingsSection.board)),
         ]),
       ];
 }

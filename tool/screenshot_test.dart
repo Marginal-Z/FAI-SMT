@@ -177,4 +177,24 @@ void main() {
     s.setModule(Module.cad);
     await shot(tester, s, 'cad_zh_dark');
   });
+
+  testWidgets('settings board colours', (tester) async {
+    final s = demoState(dark: false);
+    s.openSettings(SettingsSection.board);
+    await shot(tester, s, 'settings_colors_light');
+  });
+
+  testWidgets('board green pcb', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    s.setBoardBackground(BoardBackground.green);
+    await shot(tester, s, 'board_green_light', zoomSteps: 5, zoomAt: const Offset(560, 560));
+  });
+
+  testWidgets('board black pcb', (tester) async {
+    final s = demoState();
+    s.setModule(Module.board);
+    s.setBoardBackground(BoardBackground.black);
+    await shot(tester, s, 'board_black_dark');
+  });
 }

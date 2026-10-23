@@ -59,7 +59,6 @@ class FilesPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PageHeader(title: s.t('mod_files'), subtitle: s.t('page_files_sub')),
         Expanded(
           child: Container(
             color: c.window,
@@ -98,6 +97,8 @@ class FilesPage extends StatelessWidget {
                           Expanded(
                             child: Text(s.t(ready ? 'files_ready' : 'files_not_ready'), style: TextStyle(fontSize: 13, color: c.textDim)),
                           ),
+                          FlatButton(label: s.t('btn_clear'), onTap: state.clearAll),
+                          const SizedBox(width: 10),
                           FlatButton(label: s.t('btn_run'), primary: true, onTap: ready ? () => runCheck(context, state) : null),
                         ]),
                       ),

@@ -39,7 +39,7 @@ class UserMessage implements Exception {
 enum Module { files, check, cad, board }
 
 /// Sections of the full-screen settings page.
-enum SettingsSection { appearance, rules, update, about }
+enum SettingsSection { appearance, board, rules, update, about }
 
 /// Sections of the rules editor inside settings.
 enum RulesSection { exclusion, alternates, general }
@@ -219,6 +219,30 @@ class AppState extends ChangeNotifier {
   void setBoardSource(BoardSource s) {
     boardSource = s;
     boardFitRequest++;
+    notifyListeners();
+  }
+
+  /// Sets (or with null resets) the colour of one part type in the navigator.
+  void setPartColor(String kind, int? argb) {
+    if (argb == null) {
+      settings.board.partColors.remove(kind);
+    } else {
+      settings.board.partColors[kind] = argb;
+    }
+    persist();
+    notifyListeners();
+  }
+
+  void setBoardBackground(BoardBackground b, {int? custom}) {
+    settings.board.background = b;
+    if (custom != null) settings.board.customBackground = custom;
+    persist();
+    notifyListeners();
+  }
+
+  void resetBoardStyle() {
+    settings.board = BoardStyle();
+    persist();
     notifyListeners();
   }
 

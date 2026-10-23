@@ -52,6 +52,7 @@ enum Glyph {
   rules,
   openFile,
   checkData,
+  palette,
 }
 
 const _regular = 'FluentSystemIcons-Regular';
@@ -102,6 +103,7 @@ const Map<Glyph, (IconData, IconData)> _glyphs = {
   Glyph.rules: (IconData(60120, fontFamily: _regular), IconData(60129, fontFamily: _filled)), // shield_task
   Glyph.openFile: (IconData(62511, fontFamily: _regular), IconData(62515, fontFamily: _filled)), // folder_open
   Glyph.checkData: (IconData(58218, fontFamily: _regular), IconData(58239, fontFamily: _filled)), // clipboard_text_ltr
+  Glyph.palette: (IconData(62198, fontFamily: _regular), IconData(62198, fontFamily: _filled)), // color
 };
 
 class GlyphIcon extends StatelessWidget {

@@ -9,12 +9,14 @@ import '../app_state.dart';
 import '../core/models.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
+import '../core/discrepancies.dart';
 import 'discrepancy_view.dart';
+import 'glyphs.dart';
 import 'icons.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-const _areaOrder = [CheckCategory.ng, CheckCategory.substitute, CheckCategory.excluded, CheckCategory.pass];
+const _areaOrder = [CheckCategory.pass, CheckCategory.ng, CheckCategory.excluded, CheckCategory.substitute];
 
 String _areaLabel(Strings s, CheckCategory c) => s.t(switch (c) {
   CheckCategory.pass => 'area_pass',
@@ -58,21 +60,21 @@ class _CheckViewState extends State<CheckView> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   final _hScroll = ScrollController();
-  CheckCategory? _area;
+  CheckCategory _area = CheckCategory.pass;
   CheckRow? _expanded;
 
   @override
   void initState() {
     super.initState();
     _search.text = widget.state.search;
-    // Open the area of a part selected elsewhere (e.g. the PCB navigator),
-    // or the area picked as a filter.
+    // Open the area of a part selected elsewhere (e.g. the PCB navigator) or
+    // picked as a filter; PASS otherwise.
     final sel = widget.state.selected;
     if (sel != null) {
       _expanded = sel;
       _area = sel.category;
-    } else {
-      _area = widget.state.filter;
+    } else if (widget.state.filter != null) {
+      _area = widget.state.filter!;
     }
   }
 
@@ -89,6 +91,13 @@ class _CheckViewState extends State<CheckView> {
     widget.state.select(_expanded);
   }
 
+  void _openArea(CheckCategory cat) {
+    setState(() => _area = cat);
+    final state = widget.state;
+    if (state.search.isNotEmpty) state.setSearch('');
+    state.setCheckView(CheckPageView.materials);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
@@ -97,7 +106,7 @@ class _CheckViewState extends State<CheckView> {
     final report = state.report;
     final stations = [state.stationA?.name, state.stationB?.name].whereType<String>().length;
     final header = PageHeader(
-      title: state.checkView == CheckPageView.discrepancies ? s.t('view_discrepancies') : s.t('mod_check'),
+      title: s.t('mod_check'),
       subtitle: state.bom == null ? null : s.t('page_check_sub', {'bom': state.bom!.name, 'stations': stations}),
     );
     if (report == null) {
@@ -117,20 +126,79 @@ class _CheckViewState extends State<CheckView> {
         ],
       );
     }
-    if (state.checkView == CheckPageView.discrepancies) {
+    if (_search.text != state.search) _search.text = state.search;
+
+    final discrepancies = state.discrepancies ?? const [];
+    final showDiscrepancies = state.checkView == CheckPageView.discrepancies;
+    final searching = !showDiscrepancies && state.search.trim().isNotEmpty;
+    final total = report.rows.length;
+
+    final cards = Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      color: c.window,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final items = <Widget>[
+            for (final cat in _areaOrder)
+              _AreaCard(
+                label: _areaLabel(s, cat),
+                count: report.count(cat),
+                total: total,
+                color: c.category(cat),
+                active: !showDiscrepancies && !searching && _area == cat,
+                onTap: () => _openArea(cat),
+              ),
+            _AreaCard(
+              label: s.t('view_discrepancies'),
+              count: discrepancies.length,
+              color: discrepancies.any((d) => d.severity == Severity.error) ? c.ng : c.accent,
+              glyph: Glyph.discrepancies,
+              active: showDiscrepancies,
+              onTap: () => state.setCheckView(CheckPageView.discrepancies),
+            ),
+            _AreaCard(
+              label: s.t('btn_export_report'),
+              caption: s.t('report_card_caption'),
+              color: c.accent,
+              glyph: Glyph.report,
+              onTap: () => exportReport(context, state),
+            ),
+          ];
+          // One row of six on wide screens, two rows of three on narrow ones.
+          final perRow = box.maxWidth >= 960 ? 6 : 3;
+          return Column(
+            children: [
+              for (var r = 0; r < items.length; r += perRow) ...[
+                if (r > 0) const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = r; i < r + perRow && i < items.length; i++) ...[
+                      if (i > r) const SizedBox(width: 12),
+                      Expanded(child: items[i]),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+
+    if (showDiscrepancies) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           header,
+          cards,
           Expanded(
-            child: DiscrepancyView(state: state, items: state.discrepancies ?? const []),
+            child: DiscrepancyView(state: state, items: discrepancies),
           ),
         ],
       );
     }
-    if (_search.text != state.search) _search.text = state.search;
 
-    final searching = state.search.trim().isNotEmpty;
     final visible = state.visibleRows();
     final entries = <_Entry>[];
     for (final cat in _areaOrder) {
@@ -141,54 +209,28 @@ class _CheckViewState extends State<CheckView> {
         if (identical(_expanded, rows[i])) entries.add(_Details(rows[i]));
       }
     }
+    final showReason = searching || _area != CheckCategory.pass;
 
-    final cards = Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+    final toolbar = Container(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       color: c.window,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            children: [
-              for (var i = 0; i < _areaOrder.length; i++) ...[
-                if (i > 0) const SizedBox(width: 12),
-                Expanded(
-                  child: _AreaCard(
-                    label: _areaLabel(s, _areaOrder[i]),
-                    count: report.count(_areaOrder[i]),
-                    total: report.rows.length,
-                    color: c.category(_areaOrder[i]),
-                    active: !searching && _area == _areaOrder[i],
-                    onTap: () => setState(() {
-                      _area = _area == _areaOrder[i] ? null : _areaOrder[i];
-                      if (searching) state.setSearch('');
-                    }),
-                  ),
-                ),
-              ],
-            ],
+          SizedBox(
+            width: 340,
+            child: TextInput(controller: _search, hint: s.t('search_hint'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              SizedBox(
-                width: 340,
-                child: TextInput(controller: _search, hint: s.t('search_hint'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch),
-              ),
-              const Spacer(),
-              Text(s.t('check_total', {'n': report.rows.length}), style: TextStyle(fontSize: 12, color: c.textDim)),
-            ],
-          ),
+          const Spacer(),
+          Text(s.t('check_total', {'n': total}), style: TextStyle(fontSize: 12, color: c.textDim)),
         ],
       ),
     );
 
     Widget body;
-    if (!searching && _area == null) {
-      body = EmptyState(icon: Ic.listChecks, text: s.t('area_hint'));
-    } else if (entries.isEmpty) {
+    if (entries.isEmpty) {
       body = EmptyState(icon: Ic.funnel, text: s.t(searching ? 'empty_filter' : 'area_empty'));
     } else {
+      bool lastAt(int i) => i + 1 >= entries.length || (entries[i + 1] is _Row && (entries[i + 1] as _Row).first);
       final list = ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -198,23 +240,21 @@ class _CheckViewState extends State<CheckView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (first) ...[
-                if (i > 0) const SizedBox(height: 12),
-                if (!widget.cards) _ColumnHeader() else Container(height: 1, color: c.border),
+                if (i > 0) const SizedBox(height: 14),
+                if (!widget.cards) _ColumnHeader(reason: showReason) else Container(height: 1, color: c.border),
               ],
               _ResultRow(
                 row: row,
                 index: index,
                 expanded: identical(_expanded, row),
                 cards: widget.cards,
-                last: i + 1 >= entries.length || (entries[i + 1] is _Row && (entries[i + 1] as _Row).first),
+                last: lastAt(i),
+                showReason: showReason,
                 onTap: () => _toggleRow(row),
               ),
             ],
           ),
-          _Details(:final row) => _RowDetails(
-            row: row,
-            last: i + 1 >= entries.length || (entries[i + 1] is _Row && (entries[i + 1] as _Row).first),
-          ),
+          _Details(:final row) => _RowDetails(row: row, last: lastAt(i)),
         },
       );
       body = widget.cards
@@ -240,6 +280,7 @@ class _CheckViewState extends State<CheckView> {
       children: [
         header,
         cards,
+        toolbar,
         Expanded(
           child: Container(color: c.window, child: body),
         ),
@@ -248,33 +289,41 @@ class _CheckViewState extends State<CheckView> {
   }
 }
 
-/// Result-area card: name, count and share; selecting it lists its items.
+/// Card in the result row: an area with count and share, the discrepancy
+/// list, or an action (export report).
 class _AreaCard extends StatelessWidget {
   const _AreaCard({
     required this.label,
-    required this.count,
-    required this.total,
     required this.color,
-    required this.active,
     required this.onTap,
+    this.count,
+    this.total,
+    this.glyph,
+    this.caption,
+    this.active = false,
   });
 
   final String label;
-  final int count;
-  final int total;
   final Color color;
-  final bool active;
   final VoidCallback onTap;
+  final int? count;
+
+  /// When set, a share bar is drawn.
+  final int? total;
+  final Glyph? glyph;
+  final String? caption;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
-    final share = total == 0 ? 0.0 : count / total;
+    final share = total == null || total == 0 || count == null ? null : count! / total!;
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => Container(
-        padding: EdgeInsets.fromLTRB(16, m.touch ? 14 : 12, 16, m.touch ? 14 : 12),
+        height: m.touch ? 112 : 104,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         decoration: BoxDecoration(
           color: active
               ? color.withValues(alpha: c.dark ? 0.14 : 0.07)
@@ -289,11 +338,14 @@ class _AreaCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
+                if (glyph != null)
+                  GlyphIcon(glyph!, size: 16, color: color)
+                else
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                  ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -303,53 +355,62 @@ class _AreaCard extends StatelessWidget {
                     style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
                   ),
                 ),
-                CustomPaint(size: const Size(11, 11), painter: _ChevronPainter(active ? color : c.textFaint, active)),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 26,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                    color: count == 0 ? c.textFaint : c.text,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+            const Spacer(),
+            if (count != null)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 26,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      color: count == 0 ? c.textFaint : c.text,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(
-                    '${(share * 100).toStringAsFixed(share > 0 && share < 0.01 ? 1 : 0)}%',
-                    style: TextStyle(fontSize: 12, color: c.textFaint),
-                  ),
-                ),
-              ],
-            ),
+                  if (share != null) ...[
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        '${(share * 100).toStringAsFixed(share > 0 && share < 0.01 ? 1 : 0)}%',
+                        style: TextStyle(fontSize: 12, color: c.textFaint),
+                      ),
+                    ),
+                  ],
+                ],
+              )
+            else
+              Text(
+                caption ?? '',
+                style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600),
+              ),
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(2),
               child: SizedBox(
                 height: 4,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (share > 0)
-                      Expanded(
-                        flex: (share * 1000).round().clamp(1, 1000),
-                        child: ColoredBox(color: color),
+                child: share == null
+                    ? ColoredBox(color: active ? color : c.border)
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (share > 0)
+                            Expanded(
+                              flex: (share * 1000).round().clamp(1, 1000),
+                              child: ColoredBox(color: color),
+                            ),
+                          if (share < 1)
+                            Expanded(
+                              flex: (1000 - share * 1000).round().clamp(1, 1000),
+                              child: ColoredBox(color: c.border),
+                            ),
+                        ],
                       ),
-                    if (share < 1)
-                      Expanded(
-                        flex: (1000 - share * 1000).round().clamp(1, 1000),
-                        child: ColoredBox(color: c.border),
-                      ),
-                  ],
-                ),
               ),
             ),
           ],
@@ -359,51 +420,61 @@ class _AreaCard extends StatelessWidget {
   }
 }
 
-const _minWidth = 980.0;
+const _minWidth = 1000.0;
 
-/// Table columns: fixed widths or flex weights.
-const _cols = <(double, int)>[
-  (40, 0), // No.
-  (168, 0), // Part no.
-  (0, 3), // Description
-  (56, 0), // BOM qty
-  (56, 0), // SMT qty
-  (0, 4), // Designators
-  (52, 0), // Side
-  (84, 0), // Result
-  (0, 4), // Reason
-  (30, 0), // Chevron
+enum _Col { no, pn, desc, bom, smt, refs, side, reason, result }
+
+/// Fixed width or flex weight per column.
+const _colSpec = {
+  _Col.no: (48.0, 0),
+  _Col.pn: (180.0, 0),
+  _Col.desc: (0.0, 3),
+  _Col.bom: (80.0, 0),
+  _Col.smt: (80.0, 0),
+  _Col.refs: (0.0, 5),
+  _Col.side: (64.0, 0),
+  _Col.reason: (0.0, 4),
+  _Col.result: (112.0, 0),
+};
+
+/// PASS rows have nothing to explain, so the reason column is left out.
+List<_Col> _columns({required bool reason}) => [
+  for (final col in _Col.values)
+    if (col != _Col.reason || reason) col,
 ];
 
-Widget _cell(int i, Widget child, {Alignment align = Alignment.centerLeft}) {
-  final (w, flex) = _cols[i];
+Widget _cell(_Col col, Widget child, {Alignment align = Alignment.centerLeft}) {
+  final (w, flex) = _colSpec[col]!;
   final padded = Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 10),
     child: Align(alignment: align, child: child),
   );
   return flex > 0 ? Expanded(flex: flex, child: padded) : SizedBox(width: w, child: padded);
 }
 
 class _ColumnHeader extends StatelessWidget {
+  const _ColumnHeader({required this.reason});
+
+  final bool reason;
+
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final style = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textFaint, letterSpacing: 0.2);
-    final labels = [
-      '#',
-      s.t('col_pn'),
-      s.t('col_desc'),
-      'BOM',
-      'SMT',
-      s.t('col_bom_refs'),
-      s.t('col_side'),
-      s.t('col_result'),
-      s.t('col_reason'),
-      '',
-    ];
+    final style = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.textFaint, letterSpacing: 0.2);
+    final labels = {
+      _Col.no: '#',
+      _Col.pn: s.t('col_pn'),
+      _Col.desc: s.t('col_desc'),
+      _Col.bom: s.t('col_bom_qty'),
+      _Col.smt: s.t('col_smt_qty'),
+      _Col.refs: s.t('col_bom_refs'),
+      _Col.side: s.t('col_side'),
+      _Col.reason: s.t('col_reason'),
+      _Col.result: s.t('col_result'),
+    };
     return Container(
-      height: 30,
+      height: 38,
       decoration: BoxDecoration(
         color: c.panelAlt,
         border: Border.all(color: c.border),
@@ -412,47 +483,20 @@ class _ColumnHeader extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 3),
-          for (var i = 0; i < labels.length; i++)
+          for (final col in _columns(reason: reason))
             _cell(
-              i,
-              Text(labels[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
-              align: i == 3 || i == 4 ? Alignment.center : Alignment.centerLeft,
+              col,
+              Text(labels[col]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+              align: switch (col) {
+                _Col.bom || _Col.smt => Alignment.center,
+                _Col.result => Alignment.centerRight,
+                _ => Alignment.centerLeft,
+              },
             ),
         ],
       ),
     );
   }
-}
-
-class _ChevronPainter extends CustomPainter {
-  _ChevronPainter(this.color, this.open);
-
-  final Color color;
-  final bool open;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final w = size.width, h = size.height;
-    final path = open
-        ? (Path()
-            ..moveTo(w * 0.2, h * 0.35)
-            ..lineTo(w * 0.5, h * 0.68)
-            ..lineTo(w * 0.8, h * 0.35))
-        : (Path()
-            ..moveTo(w * 0.35, h * 0.2)
-            ..lineTo(w * 0.68, h * 0.5)
-            ..lineTo(w * 0.35, h * 0.8));
-    canvas.drawPath(path, p);
-  }
-
-  @override
-  bool shouldRepaint(_ChevronPainter old) => old.open != open || old.color != color;
 }
 
 /// One compact line per part; the full detail opens below it.
@@ -464,6 +508,7 @@ class _ResultRow extends StatelessWidget {
     required this.cards,
     required this.last,
     required this.onTap,
+    this.showReason = true,
   });
 
   final CheckRow row;
@@ -472,6 +517,9 @@ class _ResultRow extends StatelessWidget {
   final bool cards;
   final bool last;
   final VoidCallback onTap;
+
+  /// Whether the table has a reason column.
+  final bool showReason;
 
   @override
   Widget build(BuildContext context) {
@@ -546,12 +594,42 @@ class _ResultRow extends StatelessWidget {
       );
     }
 
-    final mono = TextStyle(fontSize: 12.5, color: c.text, fontFeatures: const [FontFeature.tabularFigures()]);
+    final mono = TextStyle(fontSize: 13, color: c.text, fontFeatures: const [FontFeature.tabularFigures()]);
+    final passRow = row.category == CheckCategory.pass;
+    Widget content(_Col col) => switch (col) {
+      _Col.no => Text('$index', style: TextStyle(fontSize: 12, color: c.textFaint)),
+      _Col.pn => Text(
+        row.partNo,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.text),
+      ),
+      _Col.desc => Text(
+        row.description,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 13, color: c.textDim),
+      ),
+      _Col.bom => Text(_qty(row.bomQty), style: mono),
+      _Col.smt => Text(row.smtQty?.toString() ?? '-', style: mono),
+      _Col.refs => _RefLine(marks: refs),
+      _Col.side => Text(_sides(row.sides), style: TextStyle(fontSize: 12.5, color: c.textDim)),
+      _Col.reason =>
+        passRow
+            ? const SizedBox.shrink()
+            : Text(
+                '$reasonText$more',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: reasonColor),
+              ),
+      _Col.result => _CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
+    };
     return Hoverable(
       onTap: onTap,
       cursor: SystemMouseCursors.basic,
       builder: (context, hover, _) => Container(
-        height: m.touch ? 50 : 42,
+        height: m.touch ? 60 : 54,
         decoration: decoration.copyWith(
           color: expanded
               ? c.selected
@@ -561,41 +639,17 @@ class _ResultRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(width: 3, color: row.category == CheckCategory.pass ? catColor.withValues(alpha: 0.4) : catColor),
-            _cell(0, Text('$index', style: TextStyle(fontSize: 11.5, color: c.textFaint))),
-            _cell(
-              1,
-              Text(
-                row.partNo,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: c.text),
+            Container(width: 3, color: passRow ? catColor.withValues(alpha: 0.4) : catColor),
+            for (final col in _columns(reason: showReason))
+              _cell(
+                col,
+                content(col),
+                align: switch (col) {
+                  _Col.bom || _Col.smt => Alignment.center,
+                  _Col.result => Alignment.centerRight,
+                  _ => Alignment.centerLeft,
+                },
               ),
-            ),
-            _cell(
-              2,
-              Text(
-                row.description,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, color: c.textDim),
-              ),
-            ),
-            _cell(3, Text(_qty(row.bomQty), style: mono), align: Alignment.center),
-            _cell(4, Text(row.smtQty?.toString() ?? '-', style: mono), align: Alignment.center),
-            _cell(5, _RefLine(marks: refs)),
-            _cell(6, Text(_sides(row.sides), style: TextStyle(fontSize: 12, color: c.textDim))),
-            _cell(7, _CategoryBadge(category: row.category, label: categoryLabel(s, row.category))),
-            _cell(
-              8,
-              Text(
-                '$reasonText$more',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, color: reasonColor),
-              ),
-            ),
-            _cell(9, CustomPaint(size: const Size(11, 11), painter: _ChevronPainter(c.textFaint, expanded))),
           ],
         ),
       ),

@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import '../app_state.dart';
 import '../core/footprints.dart';
 import '../core/models.dart';
+import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'check_view.dart';
@@ -22,37 +23,47 @@ import 'icons.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// Flat part colours (no gradients).
+/// Part colours for the navigator: refined flat defaults (no gradients),
+/// overridable per part type in Settings.
 class PartPalette {
-  static const resistor = Color(0xFF2FA36B);
-  static const capacitor = Color(0xFFE8892B);
-  static const inductor = Color(0xFF4A5566);
-  static const diode = Color(0xFF2B2F35);
-  static const led = Color(0xFFEDEFF2);
-  static const transistor = Color(0xFF25292E);
-  static const ic = Color(0xFF2F6FD6);
-  static const crystal = Color(0xFFB9BFC7);
-  static const connector = Color(0xFFD8CFBD);
-  static const testPoint = Color(0xFFD4A84A);
-  static const fiducial = Color(0xFFC98A4B);
-  static const other = Color(0xFF8A929C);
+  PartPalette(this.style);
+
+  final BoardStyle style;
+
+  static const defaults = {
+    PartKind.resistor: Color(0xFF2E9E6A),
+    PartKind.capacitor: Color(0xFFD98A3D),
+    PartKind.inductor: Color(0xFF5B6575),
+    PartKind.diode: Color(0xFF3B4048),
+    PartKind.led: Color(0xFFE9EBEE),
+    PartKind.transistor: Color(0xFF2F343B),
+    PartKind.ic: Color(0xFF3D78D8),
+    PartKind.crystal: Color(0xFFB4BAC2),
+    PartKind.connector: Color(0xFFCDC4B1),
+    PartKind.testPoint: Color(0xFFB59D6B),
+    PartKind.fiducial: Color(0xFFBF8A57),
+    PartKind.other: Color(0xFF98A0A9),
+  };
+
   static const terminal = Color(0xFFCDD2D8);
   static const copper = Color(0xFFC0844A);
 
-  static Color body(PartKind k) => switch (k) {
-    PartKind.resistor => resistor,
-    PartKind.capacitor => capacitor,
-    PartKind.inductor => inductor,
-    PartKind.diode => diode,
-    PartKind.led => led,
-    PartKind.transistor => transistor,
-    PartKind.ic => ic,
-    PartKind.crystal => crystal,
-    PartKind.connector => connector,
-    PartKind.testPoint => testPoint,
-    PartKind.fiducial => fiducial,
-    PartKind.other => other,
+  static const backgrounds = {
+    BoardBackground.green: Color(0xFF1E5E3B),
+    BoardBackground.black: Color(0xFF16181B),
   };
+
+  Color body(PartKind k) {
+    final o = style.partColors[k.name];
+    return o != null ? Color(o) : defaults[k]!;
+  }
+
+  /// Board fill, or null to follow the canvas (outline only).
+  Color? get board => switch (style.background) {
+        BoardBackground.canvas => null,
+        BoardBackground.custom => Color(style.customBackground),
+        final b => backgrounds[b],
+      };
 
   /// Text colour readable on the body colour.
   static Color label(Color body) => body.computeLuminance() > 0.45 ? const Color(0xFF15181C) : const Color(0xFFFFFFFF);
@@ -234,13 +245,14 @@ class _BoardViewState extends State<BoardView> {
                                 hover: _hover,
                                 dimBottom: state.boardSide == BoardSideFilter.both,
                                 showLabels: _zoom > 1.05,
+                                palette: PartPalette(state.settings.board),
                               ),
                             ),
                           ),
                           Positioned(
                             left: 14,
                             bottom: 14,
-                            child: _LegendCard(coloring: state.boardColoring, checked: report != null),
+                            child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: PartPalette(state.settings.board)),
                           ),
                           if (widget.immersive) Positioned(top: 14, right: 14, child: _FloatingControls(state: state)),
                           if (_hover != null)
@@ -370,7 +382,10 @@ class _AssemblyPainter extends CustomPainter {
     required this.hover,
     required this.dimBottom,
     required this.showLabels,
+    required this.palette,
   });
+
+  final PartPalette palette;
 
   final List<_Part> all;
   final List<_Part> parts;
@@ -385,8 +400,10 @@ class _AssemblyPainter extends CustomPainter {
   /// Designators are drawn only once the user zooms in.
   final bool showLabels;
 
-  Color get _boardFill => colors.dark ? const Color(0xFF15211C) : const Color(0xFFF2F5F1);
-  Color get _boardEdge => colors.dark ? const Color(0xFF2C4A3D) : const Color(0xFFBFCFC4);
+  Color get _boardFill => palette.board ?? colors.window;
+  Color get _boardEdge => palette.board == null
+      ? colors.borderStrong
+      : Color.lerp(palette.board, palette.board!.computeLuminance() > 0.3 ? const Color(0xFF000000) : const Color(0xFFFFFFFF), 0.25)!;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -434,7 +451,7 @@ class _AssemblyPainter extends CustomPainter {
     final m = part.merged;
     if (checked && m == null) return null;
     if (coloring == BoardColoring.status && checked) return colors.category(m!.category);
-    return PartPalette.body(part.shape.kind);
+    return palette.body(part.shape.kind);
   }
 
   void _drawPart(Canvas canvas, _Part part, double px) {
@@ -591,10 +608,11 @@ class _AssemblyPainter extends CustomPainter {
 }
 
 class _LegendCard extends StatelessWidget {
-  const _LegendCard({required this.coloring, required this.checked});
+  const _LegendCard({required this.coloring, required this.checked, required this.palette});
 
   final BoardColoring coloring;
   final bool checked;
+  final PartPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -608,14 +626,17 @@ class _LegendCard extends StatelessWidget {
             (null, s.t('board_not_in_bom')),
           ]
         : <(Color?, String)>[
-            (PartPalette.resistor, s.t('type_resistor')),
-            (PartPalette.capacitor, s.t('type_capacitor')),
-            (PartPalette.inductor, s.t('type_inductor')),
-            (PartPalette.diode, s.t('type_diode')),
-            (PartPalette.transistor, s.t('type_transistor')),
-            (PartPalette.ic, s.t('type_ic')),
-            (PartPalette.crystal, s.t('type_crystal')),
-            (PartPalette.connector, s.t('type_connector')),
+            for (final (k, key) in [
+              (PartKind.resistor, 'type_resistor'),
+              (PartKind.capacitor, 'type_capacitor'),
+              (PartKind.inductor, 'type_inductor'),
+              (PartKind.diode, 'type_diode'),
+              (PartKind.transistor, 'type_transistor'),
+              (PartKind.ic, 'type_ic'),
+              (PartKind.crystal, 'type_crystal'),
+              (PartKind.connector, 'type_connector'),
+            ])
+              (palette.body(k), s.t(key)),
             (null, s.t('type_other')),
           ];
     return IgnorePointer(
