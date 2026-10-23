@@ -114,14 +114,14 @@ class _ModelGridState extends State<_ModelGrid> {
                     final active = m.id == widget.selected;
                     return Container(
                       decoration: BoxDecoration(
-                        color: c.panel,
-                        borderRadius: BorderRadius.circular(10),
+                        color: c.well,
+                        borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: active
-                              ? c.accent
+                              ? c.blue
                               : hover && widget.onPick != null
-                              ? c.borderStrong
-                              : c.border,
+                              ? c.lineStrong
+                              : c.line,
                           width: active ? 1.6 : 1,
                         ),
                       ),
@@ -129,14 +129,14 @@ class _ModelGridState extends State<_ModelGrid> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           ClipRRect(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(17)),
                             child: SizedBox(
                               height: 112,
                               child: PartPreview(model: m, body: _real ? Color(m.realColor) : palette.body(m.kind), real: _real, board: board),
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -225,17 +225,17 @@ class PartLibraryPage extends StatelessWidget {
     final s = Strings.of(context);
     final rules = state.settings.partRules;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.only(bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             s.t('set_library'),
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: c.text),
+            style: TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx),
           ),
           const SizedBox(height: 4),
-          Text(s.t('lib_intro', {'n': partLibrary.length}), style: TextStyle(fontSize: 12.5, color: c.textDim, height: 1.5)),
-          const SizedBox(height: 14),
+          Text(s.t('lib_intro', {'n': partLibrary.length}), style: TextStyle(fontSize: 14, color: c.tx2, height: 1.5)),
+          const SizedBox(height: 20),
           SurfaceCard(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
             child: Column(

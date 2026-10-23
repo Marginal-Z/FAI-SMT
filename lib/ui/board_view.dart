@@ -7,7 +7,6 @@ library;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show PointMode;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -22,9 +21,10 @@ import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'check_view.dart';
-import 'glyphs.dart';
+import 'design.dart';
 import 'icons.dart';
 import 'library_page.dart';
+import 'lucide.dart';
 import 'part_render.dart';
 import 'theme.dart';
 import 'tour.dart';
@@ -274,25 +274,31 @@ class _BoardViewState extends State<BoardView> {
     final fromFile = state.boardSource == BoardSource.file && state.boardFile != null;
     final coords = fromFile ? state.boardFile : state.coords;
     if (coords == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PageHeader(title: s.t('mod_board')),
-          Expanded(
-            child: EmptyState(
-              icon: Ic.crosshair,
-              text: s.t('board_empty_any'),
-              action: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FlatButton(label: s.t('btn_coord'), primary: true, onTap: () => importFile(context, state, InputKind.coords)),
-                  const SizedBox(width: 10),
-                  FlatButton(label: s.t('btn_open_cad'), onTap: () => importFile(context, state, InputKind.boardCad)),
-                ],
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _BoardToolbar(state: state),
+            const SizedBox(height: 20),
+            Expanded(
+              child: DCard(
+                child: EmptyState(
+                  icon: Ic.crosshair,
+                  text: s.t('board_empty_any'),
+                  action: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FlatButton(label: s.t('btn_coord'), primary: true, onTap: () => importFile(context, state, InputKind.coords)),
+                      const SizedBox(width: 10),
+                      FlatButton(label: s.t('btn_open_cad'), onTap: () => importFile(context, state, InputKind.boardCad)),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
     if (state.boardResetRequest != _resetSeen) {
@@ -322,139 +328,191 @@ class _BoardViewState extends State<BoardView> {
     final palette = PartPalette(state.settings.board);
 
     final source = fromFile ? s.t('board_source_file', {'name': coords.name}) : s.t('board_source_check');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!widget.immersive)
-          PageHeader(
-            title: s.t('mod_board'),
-            subtitle: '$source  ·  ${s.t(depth ? (m.touch ? 'page_board_sub_3d_touch' : 'page_board_sub_3d') : 'page_board_sub', {'n': parts.length})}',
-            trailing: [
-              Text(
-                s.t('board_view_state', {'deg': deg, 'mirror': state.boardMirror ? s.t('board_mirrored') : ''}),
-                style: TextStyle(fontSize: 12, color: c.textDim, fontFeatures: const [FontFeature.tabularFigures()]),
-              ),
-            ],
-          ),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, box) {
-              final size = Size(box.maxWidth, box.maxHeight);
-              _View view() => _fitView(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
-              return Listener(
-                onPointerSignal: (e) {
-                  if (e is PointerScrollEvent) _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size);
-                },
-                // Right or middle drag orbits the 3D view.
-                onPointerMove: (e) {
-                  if (depth && e.kind == PointerDeviceKind.mouse && e.buttons & (kSecondaryMouseButton | kMiddleMouseButton) != 0) {
-                    _orbit(yaw: -e.delta.dx * 0.4, pitch: e.delta.dy * 0.35);
-                  }
-                },
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.grab,
-                  onHover: (e) {
-                    final best = _partAt(e.localPosition, parts, view(), depth, raisedSide);
-                    _hover.value = best == null ? null : (best, e.localPosition);
-                  },
-                  onExit: (_) => _hover.value = null,
-                  child: GestureDetector(
-                    // Right-click or long-press a part to choose its model.
-                    onSecondaryTapUp: (d) {
-                      final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
-                      if (part != null) _pickModel(context, part);
-                    },
-                    onLongPressStart: (d) {
-                      final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
-                      if (part != null) _pickModel(context, part);
-                    },
-                    onScaleStart: (d) {
-                      _gestureStart = _cam.value;
-                      _gestureFocal = d.localFocalPoint;
-                    },
-                    onScaleUpdate: (d) {
-                      final cam = _cam.value;
-                      final center = Offset(size.width / 2, size.height / 2);
-                      final newZoom = (_gestureStart.zoom * d.scale).clamp(0.2, 200.0);
-                      final f = newZoom / cam.zoom;
-                      var next = cam.copyWith(zoom: newZoom, pan: (d.localFocalPoint - center) * (1 - f) + cam.pan * f + d.focalPointDelta);
-                      // Touch: two fingers turn the 3D view, three fingers tilt it.
-                      if (depth && d.pointerCount >= 2) {
-                        next = next.copyWith(yaw: (_gestureStart.yaw - d.rotation * 180 / math.pi) % 360);
-                        if (d.pointerCount >= 3) {
-                          next = next.copyWith(pan: cam.pan, pitch: (_gestureStart.pitch + (d.localFocalPoint.dy - _gestureFocal.dy) * 0.3).clamp(0.0, 80.0));
-                        }
-                      }
-                      _cam.value = next;
-                    },
-                    onDoubleTap: _fit,
-                    child: ClipRect(
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: RepaintBoundary(
-                              key: tourTargets.boardCanvas,
-                              child: CustomPaint(
-                                isComplex: true,
-                                painter: _AssemblyPainter(
-                                  model: model,
-                                  parts: parts,
-                                  cam: _cam,
-                                  hover: _hover,
-                                  quarter: state.boardQuarterTurns,
-                                  mirror: state.boardMirror,
-                                  colors: c,
-                                  coloring: state.boardColoring,
-                                  checked: report != null,
-                                  highlight: highlight,
-                                  dimOther: state.boardSide == BoardSideFilter.both,
-                                  raisedSide: raisedSide,
-                                  depth: depth,
-                                  palette: palette,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            left: 14,
-                            bottom: 14,
-                            child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
-                          ),
-                          if (widget.immersive) Positioned(top: 14, right: 14, child: _FloatingControls(state: state)),
-                          if (depth)
-                            Positioned(
-                              right: 14,
-                              bottom: 14,
-                              child: ValueListenableBuilder(
-                                valueListenable: _cam,
-                                builder: (context, cam, _) => _OrbitControls(
-                                  cam: cam,
-                                  onOrbit: _orbit,
-                                  onTop: () => _cam.value = cam.copyWith(yaw: 0, pitch: 0),
-                                  onDefault: () => _cam.value = cam.copyWith(yaw: 0, pitch: _defaultPitch),
-                                ),
-                              ),
-                            ),
-                          ValueListenableBuilder(
-                            valueListenable: _hover,
-                            builder: (context, hover, _) => hover == null
-                                ? const SizedBox.shrink()
-                                : Positioned(
-                                    left: math.min(hover.$2.dx + 16, size.width - 250),
-                                    top: math.min(hover.$2.dy + 16, size.height - 120),
-                                    child: _HoverCard(part: hover.$1),
-                                  ),
-                          ),
-                        ],
-                      ),
+    final immersive = widget.immersive;
+    return Padding(
+      padding: immersive ? const EdgeInsets.all(20) : const EdgeInsets.fromLTRB(32, 12, 32, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!immersive) ...[
+            _BoardToolbar(state: state),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: PageHeader(
+                      title: s.t('mod_board'),
+                      subtitle: '$source · ${s.t(depth ? (m.touch ? 'page_board_sub_3d_touch' : 'page_board_sub_3d') : 'page_board_sub', {'n': parts.length})}',
                     ),
                   ),
+                  const SizedBox(width: 24),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
+                    child: Text(
+                      s.t('board_view_state', {'deg': deg, 'mirror': state.boardMirror ? s.t('board_mirrored') : ''}),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(32),
+              child: ColoredBox(
+                color: c.hover,
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final size = Size(box.maxWidth, box.maxHeight);
+                    _View view() => _fitView(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
+                    return Listener(
+                      onPointerSignal: (e) {
+                        if (e is PointerScrollEvent) _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size);
+                      },
+                      // Right or middle drag orbits the 3D view.
+                      onPointerMove: (e) {
+                        if (depth && e.kind == PointerDeviceKind.mouse && e.buttons & (kSecondaryMouseButton | kMiddleMouseButton) != 0) {
+                          _orbit(yaw: -e.delta.dx * 0.4, pitch: e.delta.dy * 0.35);
+                        }
+                      },
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.grab,
+                        onHover: (e) {
+                          final best = _partAt(e.localPosition, parts, view(), depth, raisedSide);
+                          _hover.value = best == null ? null : (best, e.localPosition);
+                        },
+                        onExit: (_) => _hover.value = null,
+                        child: GestureDetector(
+                          // Right-click or long-press a part to choose its model.
+                          onSecondaryTapUp: (d) {
+                            final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
+                            if (part != null) _pickModel(context, part);
+                          },
+                          onLongPressStart: (d) {
+                            final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
+                            if (part != null) _pickModel(context, part);
+                          },
+                          onScaleStart: (d) {
+                            _gestureStart = _cam.value;
+                            _gestureFocal = d.localFocalPoint;
+                          },
+                          onScaleUpdate: (d) {
+                            final cam = _cam.value;
+                            final center = Offset(size.width / 2, size.height / 2);
+                            final newZoom = (_gestureStart.zoom * d.scale).clamp(0.2, 200.0);
+                            final f = newZoom / cam.zoom;
+                            var next = cam.copyWith(zoom: newZoom, pan: (d.localFocalPoint - center) * (1 - f) + cam.pan * f + d.focalPointDelta);
+                            // Touch: two fingers turn the 3D view, three fingers tilt it.
+                            if (depth && d.pointerCount >= 2) {
+                              next = next.copyWith(yaw: (_gestureStart.yaw - d.rotation * 180 / math.pi) % 360);
+                              if (d.pointerCount >= 3) {
+                                next = next.copyWith(
+                                  pan: cam.pan,
+                                  pitch: (_gestureStart.pitch + (d.localFocalPoint.dy - _gestureFocal.dy) * 0.3).clamp(0.0, 80.0),
+                                );
+                              }
+                            }
+                            _cam.value = next;
+                          },
+                          onDoubleTap: _fit,
+                          child: ClipRect(
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: RepaintBoundary(
+                                    key: tourTargets.boardCanvas,
+                                    child: CustomPaint(
+                                      isComplex: true,
+                                      painter: _AssemblyPainter(
+                                        model: model,
+                                        parts: parts,
+                                        cam: _cam,
+                                        hover: _hover,
+                                        quarter: state.boardQuarterTurns,
+                                        mirror: state.boardMirror,
+                                        colors: c,
+                                        coloring: state.boardColoring,
+                                        checked: report != null,
+                                        highlight: highlight,
+                                        dimOther: state.boardSide == BoardSideFilter.both,
+                                        raisedSide: raisedSide,
+                                        depth: depth,
+                                        palette: palette,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 20,
+                                  bottom: 20,
+                                  child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
+                                ),
+                                if (immersive) Positioned(top: 20, right: 20, child: _FloatingControls(state: state)),
+                                Positioned(
+                                  right: 20,
+                                  bottom: 20,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      GlassButton(
+                                        icon: Lucide.plus,
+                                        size: 40,
+                                        tooltip: s.t('zoom_in'),
+                                        onTap: () => _zoomAt(Offset(size.width / 2, size.height / 2), 1.25, size),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      GlassButton(
+                                        icon: Lucide.minus,
+                                        size: 40,
+                                        tooltip: s.t('zoom_out'),
+                                        onTap: () => _zoomAt(Offset(size.width / 2, size.height / 2), 1 / 1.25, size),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (depth)
+                                  Positioned(
+                                    right: 80,
+                                    bottom: 20,
+                                    child: ValueListenableBuilder(
+                                      valueListenable: _cam,
+                                      builder: (context, cam, _) => _OrbitControls(
+                                        cam: cam,
+                                        onOrbit: _orbit,
+                                        onTop: () => _cam.value = cam.copyWith(yaw: 0, pitch: 0),
+                                        onDefault: () => _cam.value = cam.copyWith(yaw: 0, pitch: _defaultPitch),
+                                      ),
+                                    ),
+                                  ),
+                                ValueListenableBuilder(
+                                  valueListenable: _hover,
+                                  builder: (context, hover, _) => hover == null
+                                      ? const SizedBox.shrink()
+                                      : Positioned(
+                                          left: math.min(hover.$2.dx + 16, size.width - 250),
+                                          top: math.min(hover.$2.dy + 16, size.height - 120),
+                                          child: _HoverCard(part: hover.$1),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -546,17 +604,10 @@ class _AssemblyPainter extends CustomPainter {
   /// Board thickness drawn as the slab edge in 3D, mm.
   static const _boardThickness = 1.6;
 
-  // Canvas dot grid, rebuilt only when the size changes.
-  static Float32List? _dots;
-  static Size? _dotsSize;
-
   /// Board colour: the user's choice; real colours put parts on green solder
   /// mask; otherwise the canvas.
   Color? get _board => palette.board ?? (coloring == BoardColoring.real ? PartPalette.solderMask : null);
-  Color get _boardFill => _board ?? colors.window;
-  Color get _boardEdge => _board == null
-      ? colors.borderStrong
-      : Color.lerp(_board, _board!.computeLuminance() > 0.3 ? const Color(0xFF000000) : const Color(0xFFFFFFFF), 0.25)!;
+  Color get _boardFill => _board ?? colors.solid;
 
   /// Parts of the side being looked at stand up in 3D (unknown counts as top).
   bool _raised(_Part part) => depth && (part.side == BoardSide.bottom) == (raisedSide == BoardSide.bottom);
@@ -565,22 +616,6 @@ class _AssemblyPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = colors.window);
-    if (_dotsSize != size) {
-      _dotsSize = size;
-      _dots = Float32List.fromList([
-        for (var x = 12.0; x < size.width; x += 24)
-          for (var y = 12.0; y < size.height; y += 24) ...[x, y],
-      ]);
-    }
-    canvas.drawRawPoints(
-      PointMode.points,
-      _dots!,
-      Paint()
-        ..color = colors.border.withValues(alpha: 0.7)
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round,
-    );
     if (model.parts.isEmpty) return;
     final view = _fitView(model.extents, size, quarter, mirror, cam.value, tilt: depth);
     _drawBoard(canvas, view);
@@ -679,19 +714,40 @@ class _AssemblyPainter extends CustomPainter {
   void _drawBoard(Canvas canvas, _View view) {
     final (minX, minY, maxX, maxY) = model.extents;
     final pts = [(minX - 2, minY - 2), (maxX + 2, minY - 2), (maxX + 2, maxY + 2), (minX - 2, maxY + 2)];
-    final edge = Paint()
-      ..color = _boardEdge
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
     final straight = !depth || (cam.value.yaw % 90 == 0 && !view.tilted);
+    final top = [for (final (x, y) in pts) view.project(x, y)];
+    final bounds = _bounds(top);
+    // Solder mask shades from top-left to bottom-right, like the design.
+    final fill = Paint()
+      ..shader = LinearGradient(
+        begin: const Alignment(-0.36, -1),
+        end: const Alignment(0.36, 1),
+        colors: [_lighter(_boardFill), _boardFill],
+      ).createShader(bounds);
+    final ring = Paint()
+      ..color = _board == null ? colors.lineStrong : const Color(0x1AFFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _board == null ? 1 : 2;
+    final short = bounds.shortestSide;
     if (straight) {
-      final rect = Rect.fromPoints(view.project(pts[0].$1, pts[0].$2), view.project(pts[2].$1, pts[2].$2));
-      final rr = RRect.fromRectAndRadius(rect, Radius.circular(math.min(12, view.scale * 1.5)));
-      canvas.drawRRect(rr, Paint()..color = _boardFill);
-      canvas.drawRRect(rr, edge);
+      final rr = RRect.fromRectAndRadius(bounds, Radius.circular(math.min(24, short * 0.055)));
+      canvas.drawRRect(
+        rr.shift(const Offset(0, 22)),
+        Paint()
+          ..color = Color.fromRGBO(0, 0, 0, colors.dark ? 0.45 : 0.2)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+      );
+      canvas.drawRRect(rr, fill);
+      canvas.drawRRect(rr.deflate(1), ring);
+      _drawHoles(canvas, top, short);
       return;
     }
-    final top = [for (final (x, y) in pts) view.project(x, y)];
+    canvas.drawPath(
+      (Path()..addPolygon(top, true)).shift(const Offset(0, 22)),
+      Paint()
+        ..color = Color.fromRGBO(0, 0, 0, colors.dark ? 0.45 : 0.2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+    );
     if (view.tilted) {
       final side = Color.lerp(_board ?? colors.borderStrong, const Color(0xFF000000), 0.35)!;
       for (var i = 0; i < 4; i++) {
@@ -705,8 +761,31 @@ class _AssemblyPainter extends CustomPainter {
       }
     }
     final path = Path()..addPolygon(top, true);
-    canvas.drawPath(path, Paint()..color = _boardFill);
-    canvas.drawPath(path, edge);
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, ring);
+    _drawHoles(canvas, top, short);
+  }
+
+  /// The light end of the board gradient: the same hue, a little brighter.
+  static Color _lighter(Color c) {
+    final hsl = HSLColor.fromColor(c);
+    return hsl.withLightness(math.min(1, hsl.lightness + (hsl.lightness > 0.6 ? 0.02 : 0.085))).toColor();
+  }
+
+  /// Mounting holes in the four corners of the board outline [corners].
+  void _drawHoles(Canvas canvas, List<Offset> corners, double short) {
+    if (short < 80) return;
+    final r = math.min(5.0, short * 0.012);
+    final inset = r * 3.8;
+    final centre = corners.reduce((a, b) => a + b) / 4;
+    final paint = Paint()..color = const Color(0x59000000);
+    for (final p in corners) {
+      final d = centre - p;
+      final len = d.distance;
+      if (len == 0) continue;
+      // Along the diagonal so the hole sits [inset] in from both edges.
+      canvas.drawCircle(p + d / len * inset * math.sqrt2, r, paint);
+    }
   }
 
   /// Fill colour for a part in the current colouring mode, or null to draw
@@ -855,66 +934,168 @@ class _OrbitControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final m = Metrics.of(context);
-    final size = m.touch ? 40.0 : 34.0;
-    Widget button(Glyph g, String tip, VoidCallback onTap) => Hoverable(
+    final size = Metrics.of(context).touch ? 40.0 : 34.0;
+    Widget button(Lucide icon, String tip, VoidCallback onTap) => Hoverable(
       onTap: onTap,
       tooltip: tip,
       builder: (context, hover, _) => Container(
         width: size,
         height: size,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: BorderRadius.circular(7)),
-        child: GlyphIcon(g, size: 18, color: c.text),
+        decoration: BoxDecoration(color: hover ? c.hover : null, shape: BoxShape.circle),
+        child: LucideIcon(icon, size: 17, color: c.tx),
       ),
     );
     Widget text(String label, VoidCallback onTap, bool active) => Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => Container(
         height: size,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? c.accent.withValues(alpha: 0.14)
+              ? c.blueTint
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           label,
-          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: active ? c.accent : c.text),
+          style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w600 : FontWeight.w500, color: active ? c.blueTx : c.tx),
         ),
       ),
     );
     final yaw = cam.yaw > 180 ? cam.yaw - 360 : cam.yaw;
     return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: c.panel.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.border),
-        boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 14, offset: Offset(0, 4))],
-      ),
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.only(left: 12, right: 6),
             child: Text(
               s.t('orbit_state', {'tilt': cam.pitch.round(), 'turn': yaw.round()}),
-              style: TextStyle(fontSize: 12, color: c.textDim, fontFeatures: const [FontFeature.tabularFigures()]),
+              style: TextStyle(fontSize: 13, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()]),
             ),
           ),
-          button(Glyph.chevronUp, s.t('orbit_tilt_less'), () => onOrbit(pitch: -10)),
-          button(Glyph.chevronDown, s.t('orbit_tilt_more'), () => onOrbit(pitch: 10)),
-          button(Glyph.rotateLeft, s.t('orbit_turn_left'), () => onOrbit(yaw: 15)),
-          button(Glyph.rotateRight, s.t('orbit_turn_right'), () => onOrbit(yaw: -15)),
-          Container(width: 1, height: 20, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
+          button(Lucide.chevronUp, s.t('orbit_tilt_less'), () => onOrbit(pitch: -10)),
+          button(Lucide.chevronDown, s.t('orbit_tilt_more'), () => onOrbit(pitch: 10)),
+          button(Lucide.rotateLeft, s.t('orbit_turn_left'), () => onOrbit(yaw: 15)),
+          button(Lucide.rotateRight, s.t('orbit_turn_right'), () => onOrbit(yaw: -15)),
+          const SizedBox(width: 4),
           text(s.t('orbit_top'), onTop, cam.pitch == 0 && cam.yaw == 0),
           text(s.t('orbit_default'), onDefault, cam.pitch == _defaultPitch && cam.yaw == 0),
         ],
+      ),
+    );
+  }
+}
+
+/// The navigator's toolbar card: data source, side, view, colours and the
+/// 2D / 3D switch, each group of tiles over its caption.
+class _BoardToolbar extends StatelessWidget {
+  const _BoardToolbar({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Strings.of(context);
+    Widget group(String caption, List<Widget> tiles, {Key? key}) => Column(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(width: 4), tiles[i]],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Caption(caption),
+      ],
+    );
+    Widget radios(List<Widget> options) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < options.length; i++) ...[if (i > 0) const SizedBox(height: 2), options[i]],
+        ],
+      ),
+    );
+    final groups = [
+      group(s.t('grp_source'), [
+        ToolTile(
+          icon: Lucide.clipboardCheck,
+          label: s.t('btn_check_data'),
+          active: state.boardSource == BoardSource.check,
+          onTap: () => state.setBoardSource(BoardSource.check),
+        ),
+        ToolTile(
+          icon: Lucide.folderOpen,
+          label: s.t('btn_open_cad'),
+          active: state.boardSource == BoardSource.file,
+          onTap: () => state.boardFile != null && state.boardSource != BoardSource.file
+              ? state.setBoardSource(BoardSource.file)
+              : importFile(context, state, InputKind.boardCad),
+        ),
+      ]),
+      group(s.t('grp_side'), [
+        ToolTile(
+          icon: Lucide.layers,
+          label: s.t('side_both'),
+          active: state.boardSide == BoardSideFilter.both,
+          onTap: () => state.setBoardSide(BoardSideFilter.both),
+        ),
+        ToolTile(
+          icon: Lucide.faceTop,
+          label: s.t('side_top'),
+          active: state.boardSide == BoardSideFilter.top,
+          onTap: () => state.setBoardSide(BoardSideFilter.top),
+        ),
+        ToolTile(
+          icon: Lucide.faceBottom,
+          label: s.t('side_bottom'),
+          active: state.boardSide == BoardSideFilter.bottom,
+          onTap: () => state.setBoardSide(BoardSideFilter.bottom),
+        ),
+      ]),
+      group(key: tourTargets.boardView, s.t('grp_view'), [
+        ToolTile(icon: Lucide.mirror, label: s.t('board_mirror'), active: state.boardMirror, onTap: state.toggleBoardMirror),
+        ToolTile(icon: Lucide.rotateLeft, label: s.t('board_rotate_left'), onTap: () => state.rotateBoard(1)),
+        ToolTile(icon: Lucide.rotateRight, label: s.t('board_rotate_right'), onTap: () => state.rotateBoard(3)),
+        ToolTile(icon: Lucide.fit, label: s.t('board_fit'), onTap: state.fitBoard),
+        ToolTile(icon: Lucide.reset, label: s.t('btn_reset_view'), onTap: state.resetBoardView),
+        ToolTile(icon: Lucide.fullscreen, label: s.t('btn_fullscreen'), onTap: () => state.setBoardFullscreen(true)),
+      ]),
+      group(key: tourTargets.boardColoring, s.t('grp_coloring'), [
+        radios([
+          for (final (mode, key) in [(BoardColoring.real, 'color_real'), (BoardColoring.type, 'color_type'), (BoardColoring.status, 'color_status')])
+            RadioPill(label: s.t(key), on: state.boardColoring == mode, onTap: () => state.setBoardColoring(mode)),
+        ]),
+        ToolTile(icon: Lucide.palette, label: s.t('btn_colors'), onTap: () => state.openSettings(SettingsSection.board)),
+      ]),
+      group(key: tourTargets.boardRender, s.t('grp_render'), [
+        radios([
+          RadioPill(label: s.t('render_flat'), on: !state.settings.board.depth, onTap: () => state.setBoardDepth(false)),
+          RadioPill(label: s.t('render_3d'), on: state.settings.board.depth, onTap: () => state.setBoardDepth(true)),
+        ]),
+      ]),
+    ];
+    return DCard(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < groups.length; i++) ...[if (i > 0) const SizedBox(width: 36), groups[i]],
+          ],
+        ),
       ),
     );
   }
@@ -931,103 +1112,70 @@ class _LegendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    if (coloring == BoardColoring.real) {
-      return IgnorePointer(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: c.panel.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: c.border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                s.t('color_real'),
-                style: TextStyle(fontSize: 11.5, color: c.textDim, fontWeight: FontWeight.w600),
-              ),
-              if (checked) ...[
-                const SizedBox(width: 14),
-                Container(
-                  width: 14,
-                  height: 8,
-                  decoration: BoxDecoration(border: Border.all(color: c.ng, width: 1.5)),
-                ),
-                const SizedBox(width: 6),
-                Text(s.t('cat_ng'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
-                const SizedBox(width: 14),
-                Container(
-                  width: 14,
-                  height: 8,
-                  decoration: BoxDecoration(border: Border.all(color: c.textFaint)),
-                ),
-                const SizedBox(width: 6),
-                Text(s.t('board_not_in_bom'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-    final items = coloring == BoardColoring.status && checked
-        ? <(Color?, String)>[(c.pass, s.t('cat_pass')), (c.ng, s.t('cat_ng')), (c.substitute, s.t('cat_substitute')), (null, s.t('board_not_in_bom'))]
-        : <(Color?, String)>[
-            for (final (k, key) in [
-              (PartKind.resistor, 'type_resistor'),
-              (PartKind.capacitor, 'type_capacitor'),
-              (PartKind.inductor, 'type_inductor'),
-              (PartKind.diode, 'type_diode'),
-              (PartKind.transistor, 'type_transistor'),
-              (PartKind.ic, 'type_ic'),
-              (PartKind.crystal, 'type_crystal'),
-              (PartKind.connector, 'type_connector'),
-              (PartKind.electromech, 'type_electromech'),
-            ])
-              (palette.body(k), s.t(key)),
-            (null, s.t('type_other')),
-          ];
+    // A filled square, or a ring for outlines (NG frame, not in the BOM).
+    Widget swatch(Color? fill, {Color? ring}) => Container(
+      width: ring != null ? 16 : 12,
+      height: ring != null ? 10 : 12,
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(ring != null ? 3 : 4),
+        border: ring != null ? Border.all(color: ring, width: 1.5) : null,
+      ),
+    );
+    final notInBom = (swatch(null, ring: c.tx3), s.t('board_not_in_bom'));
+    final ngRing = (swatch(null, ring: c.ngSolid), s.t('cat_ng'));
+    final (title, items) = switch (coloring) {
+      BoardColoring.real => (s.t('color_real'), checked ? [ngRing, notInBom] : <(Widget, String)>[]),
+      BoardColoring.status when checked => (
+        s.t('color_status'),
+        [
+          (swatch(c.okSolid), s.t('cat_pass')),
+          (swatch(c.ngSolid), s.t('cat_ng')),
+          (swatch(c.warnSolid), s.t('cat_substitute')),
+          (swatch(null, ring: c.tx3), s.t('board_not_in_bom')),
+        ],
+      ),
+      _ => (
+        s.t('color_type'),
+        [
+          for (final (k, key) in [
+            (PartKind.resistor, 'type_resistor'),
+            (PartKind.capacitor, 'type_capacitor'),
+            (PartKind.inductor, 'type_inductor'),
+            (PartKind.diode, 'type_diode'),
+            (PartKind.transistor, 'type_transistor'),
+            (PartKind.ic, 'type_ic'),
+            (PartKind.crystal, 'type_crystal'),
+            (PartKind.connector, 'type_connector'),
+            (PartKind.electromech, 'type_electromech'),
+          ])
+            (swatch(palette.body(k)), s.t(key)),
+          (swatch(null, ring: c.tx3), s.t('type_other')),
+          if (checked) ngRing,
+        ],
+      ),
+    };
     return IgnorePointer(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: c.panel.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: c.border),
-        ),
+        constraints: const BoxConstraints(maxWidth: 640),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(22), boxShadow: c.shadowSm),
         child: Wrap(
-          spacing: 14,
+          spacing: 16,
           runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            for (final (color, label) in items)
+            Text(
+              title,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
+            ),
+            for (final (sw, label) in items)
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 14,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: color,
-                      border: Border.all(color: color == null ? c.textFaint : c.border),
-                      borderRadius: BorderRadius.circular(1.5),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(label, style: TextStyle(fontSize: 11.5, color: c.textDim)),
-                ],
-              ),
-            if (coloring != BoardColoring.status && checked)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 14,
-                    height: 8,
-                    decoration: BoxDecoration(border: Border.all(color: c.ng, width: 1.5)),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(s.t('cat_ng'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
+                  sw,
+                  const SizedBox(width: 7),
+                  Text(label, style: TextStyle(fontSize: 13, color: c.tx2)),
                 ],
               ),
           ],
@@ -1102,49 +1250,61 @@ class _FloatingControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    Widget button(Glyph g, String tip, VoidCallback onTap, {bool active = false}) => Hoverable(
+    Widget button(Lucide icon, String tip, VoidCallback onTap, {bool active = false}) => Hoverable(
       onTap: onTap,
       tooltip: tip,
       builder: (context, hover, _) => Container(
-        width: 40,
-        height: 40,
+        width: 38,
+        height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? c.accent.withValues(alpha: 0.16)
+              ? c.blueTint
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(8),
+          shape: BoxShape.circle,
         ),
-        child: GlyphIcon(g, size: 20, color: active ? c.accent : c.text),
+        child: LucideIcon(icon, size: 18, color: active ? c.blueTx : c.tx),
       ),
     );
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: c.panel.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.border),
-        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 16, offset: Offset(0, 4))],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          button(Glyph.layersBoth, s.t('side_both'), () => state.setBoardSide(BoardSideFilter.both), active: state.boardSide == BoardSideFilter.both),
-          button(Glyph.layerTop, s.t('side_top'), () => state.setBoardSide(BoardSideFilter.top), active: state.boardSide == BoardSideFilter.top),
-          button(Glyph.layerBottom, s.t('side_bottom'), () => state.setBoardSide(BoardSideFilter.bottom), active: state.boardSide == BoardSideFilter.bottom),
-          Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
-          button(Glyph.mirror, s.t('board_mirror'), state.toggleBoardMirror, active: state.boardMirror),
-          button(Glyph.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
-          button(Glyph.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
-          button(Glyph.fit, s.t('board_fit'), state.fitBoard),
-          button(Glyph.reset, s.t('btn_reset_view'), state.resetBoardView),
-          button(Glyph.cube, s.t('render_3d'), () => state.setBoardDepth(!state.settings.board.depth), active: state.settings.board.depth),
-          Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
-          button(Glyph.exitFullscreen, s.t('btn_exit_fullscreen'), () => state.setBoardFullscreen(false)),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              button(Lucide.layers, s.t('side_both'), () => state.setBoardSide(BoardSideFilter.both), active: state.boardSide == BoardSideFilter.both),
+              button(Lucide.faceTop, s.t('side_top'), () => state.setBoardSide(BoardSideFilter.top), active: state.boardSide == BoardSideFilter.top),
+              button(
+                Lucide.faceBottom,
+                s.t('side_bottom'),
+                () => state.setBoardSide(BoardSideFilter.bottom),
+                active: state.boardSide == BoardSideFilter.bottom,
+              ),
+              const SizedBox(width: 6),
+              button(Lucide.mirror, s.t('board_mirror'), state.toggleBoardMirror, active: state.boardMirror),
+              button(Lucide.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
+              button(Lucide.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
+              button(Lucide.fit, s.t('board_fit'), state.fitBoard),
+              button(Lucide.reset, s.t('btn_reset_view'), state.resetBoardView),
+              button(Lucide.cube, s.t('render_3d'), () => state.setBoardDepth(!state.settings.board.depth), active: state.settings.board.depth),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        PillButton(
+          label: s.t('btn_exit_fullscreen'),
+          kind: PillKind.glass,
+          height: 38,
+          fontSize: 14,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          onTap: () => state.setBoardFullscreen(false),
+        ),
+      ],
     );
   }
 }

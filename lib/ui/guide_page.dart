@@ -33,7 +33,7 @@ class GuidePage extends StatelessWidget {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.only(bottom: 24),
       child: Align(
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
@@ -49,10 +49,10 @@ class GuidePage extends StatelessWidget {
                       children: [
                         Text(
                           s.t('set_guide'),
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: c.text),
+                          style: TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx),
                         ),
                         const SizedBox(height: 4),
-                        Text(s.t('guide_intro'), style: TextStyle(fontSize: 12.5, color: c.textDim)),
+                        Text(s.t('guide_intro'), style: TextStyle(fontSize: 14, color: c.tx2)),
                       ],
                     ),
                   ),

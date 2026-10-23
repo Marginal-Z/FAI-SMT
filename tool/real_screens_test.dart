@@ -5,6 +5,7 @@
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show debugDisableShadows;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
@@ -26,11 +27,12 @@ void main() {
     await _font('Noto Sans', ['/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf', '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf']);
     // Unregistered fallback names resolve to the test font (boxes), so the
     // first CJK fallback name must be a registered family.
-    for (final f in ['Microsoft YaHei UI', 'Noto Sans CJK SC']) {
+    for (final f in ['PingFang SC', 'Microsoft YaHei UI', 'Noto Sans CJK SC']) {
       await _font(f, ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc']);
     }
     await _font('Noto Sans Thai', ['/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf', '/usr/share/fonts/truetype/noto/NotoSansThai-Bold.ttf']);
     await _font('DejaVu Sans Mono', ['/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf']);
+    await _font('Inter', ['assets/fonts/Inter-Regular.ttf', 'assets/fonts/Inter-Medium.ttf', 'assets/fonts/Inter-SemiBold.ttf', 'assets/fonts/Inter-Bold.ttf']);
     await _font('PhosphorRegular', ['assets/fonts/Phosphor-Regular.ttf']);
     await _font('PhosphorBold', ['assets/fonts/Phosphor-Bold.ttf']);
     await _font('FluentSystemIcons-Regular', ['assets/fonts/FluentSystemIcons-Regular.ttf']);
@@ -43,6 +45,7 @@ void main() {
       final f = Directory('samples/$dir').listSync().whereType<File>().firstWhere((f) => f.path.endsWith('$suffix.xlsx'));
       state.load(k, f.uri.pathSegments.last, f.readAsBytesSync());
     }
+
     load(InputKind.bom, 'BOM');
     load(InputKind.stationA, 'station', '-A');
     load(InputKind.stationB, 'station', '-B');
@@ -52,10 +55,19 @@ void main() {
     return state;
   }
 
-  Future<void> shot(WidgetTester tester, AppState state, String name,
-      {Size size = const Size(1600, 940), bool touch = false, int zoomSteps = 0, Offset zoomAt = const Offset(800, 560)}) async {
+  Future<void> shot(
+    WidgetTester tester,
+    AppState state,
+    String name, {
+    Size size = const Size(1440, 1060),
+    bool touch = false,
+    int zoomSteps = 0,
+    Offset zoomAt = const Offset(720, 600),
+  }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
+    // Real blurred shadows, as the app draws them.
+    debugDisableShadows = false;
     await tester.pumpWidget(SmtFaiApp(state: state, touch: touch));
     await tester.pumpAndSettle();
     for (var i = 0; i < zoomSteps; i++) {
@@ -63,6 +75,7 @@ void main() {
       await tester.pump();
     }
     await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens_real/$name.png'));
+    debugDisableShadows = true;
   }
 
   testWidgets('real check', (tester) async {
@@ -119,6 +132,13 @@ void main() {
     s.setModule(Module.board);
     s.settings.board.depth = true;
     await shot(tester, s, 'board_3d');
+  });
+
+  testWidgets('real board fullscreen', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    s.setBoardFullscreen(true);
+    await shot(tester, s, 'board_fullscreen');
   });
 
   testWidgets('real board 3d zoom', (tester) async {

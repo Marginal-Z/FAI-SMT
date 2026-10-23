@@ -1,7 +1,9 @@
-/// Check module page. Results are grouped into their result areas (NG,
-/// alternates, excluded, PASS), each collapsed by default; a row expands in
-/// place to show every designator and the reasons with explanations.
+/// BOM check page: file header with export, one statistic card per result
+/// area (doubling as the area filter), search and filters, the result table
+/// with manual confirmation, and the details of the selected part.
 library;
+
+import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
@@ -9,10 +11,10 @@ import '../app_state.dart';
 import '../core/models.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
-import '../core/discrepancies.dart';
+import 'design.dart';
 import 'discrepancy_view.dart';
-import 'glyphs.dart';
 import 'icons.dart';
+import 'lucide.dart';
 import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
@@ -26,35 +28,24 @@ String _areaLabel(Strings s, CheckCategory c) => s.t(switch (c) {
   CheckCategory.substitute => 'area_substitute',
 });
 
+/// Short result names for badges and the result filter.
+String _resultShort(Strings s, CheckCategory c) => s.t(switch (c) {
+  CheckCategory.pass => 'res_pass',
+  CheckCategory.ng => 'res_ng',
+  CheckCategory.excluded => 'res_excluded_short',
+  CheckCategory.substitute => 'res_substitute_short',
+});
+
 class CheckView extends StatefulWidget {
   const CheckView({super.key, required this.state, this.cards = false});
 
   final AppState state;
 
-  /// Narrow screens: two-line rows instead of table columns.
+  /// Narrow screens: rows as cards instead of table columns.
   final bool cards;
 
   @override
   State<CheckView> createState() => _CheckViewState();
-}
-
-/// One entry of the item list: a row, or the details of the expanded row.
-sealed class _Entry {}
-
-class _Row extends _Entry {
-  _Row(this.row, this.index, this.first);
-
-  final CheckRow row;
-  final int index;
-
-  /// First row of an area (draws the column header above it).
-  final bool first;
-}
-
-class _Details extends _Entry {
-  _Details(this.row);
-
-  final CheckRow row;
 }
 
 enum _SideFilter { all, a, b, both }
@@ -65,12 +56,12 @@ class _CheckViewState extends State<CheckView> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   final _hScroll = ScrollController();
+  final _page = ScrollController();
 
   /// Result-area filter; null shows every area.
   CheckCategory? _area = CheckCategory.pass;
   _SideFilter _side = _SideFilter.all;
   _ConfirmFilter _confirm = _ConfirmFilter.all;
-  CheckRow? _expanded;
 
   @override
   void initState() {
@@ -80,7 +71,6 @@ class _CheckViewState extends State<CheckView> {
     // picked as a filter; PASS otherwise.
     final sel = widget.state.selected;
     if (sel != null) {
-      _expanded = sel;
       _area = sel.category;
     } else if (widget.state.filter != null) {
       _area = widget.state.filter!;
@@ -94,12 +84,8 @@ class _CheckViewState extends State<CheckView> {
     _search.dispose();
     _scroll.dispose();
     _hScroll.dispose();
+    _page.dispose();
     super.dispose();
-  }
-
-  void _toggleRow(CheckRow row) {
-    setState(() => _expanded = identical(_expanded, row) ? null : row);
-    widget.state.select(_expanded);
   }
 
   void _setArea(CheckCategory? cat) {
@@ -141,177 +127,140 @@ class _CheckViewState extends State<CheckView> {
     final discrepancies = state.discrepancies ?? const [];
     final showDiscrepancies = state.checkView == CheckPageView.discrepancies;
     final total = report.rows.length;
+    final narrow = widget.cards;
 
-    final header = Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: c.panel,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.border),
-      ),
+    // File header.
+    final header = DCard(
+      padding: EdgeInsets.symmetric(horizontal: narrow ? 20 : 28, vertical: 22),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: c.pass, borderRadius: BorderRadius.circular(10)),
-            child: const GlyphIcon(Glyph.modCad, size: 24, filled: true, color: Color(0xFFFFFFFF)),
-          ),
-          const SizedBox(width: 14),
+          const GradientTile(icon: Lucide.clipboardCheck, colors: GradientTile.blue, glow: GradientTile.blueGlow, size: 56, radius: 17, iconSize: 26),
+          const SizedBox(width: 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   state.bom?.name ?? '-',
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.text),
+                  style: TextStyle(fontSize: narrow ? 20 : 26, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.65, color: c.tx),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 5),
                 Text(
                   [
                     s.t('hdr_stations', {'n': stations}),
                     if (state.checkedAt != null) formatTime(state.checkedAt!),
                     s.t('hdr_total', {'n': total}),
-                  ].join('   |   '),
-                  style: TextStyle(fontSize: 12.5, color: c.textDim),
+                  ].join(' · '),
+                  style: TextStyle(fontSize: 14, color: c.tx2),
                 ),
               ],
             ),
           ),
-          Hoverable(
+          const SizedBox(width: 16),
+          PillButton(
             key: tourTargets.checkExport,
+            label: s.t('btn_export_excel'),
+            icon: Lucide.download,
+            kind: PillKind.glass,
+            height: 44,
+            fontSize: 15,
+            iconSize: 17,
+            color: c.blueTx,
             onTap: () => exportReport(context, state),
-            builder: (context, hover, _) => Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: hover ? c.accent.withValues(alpha: 0.08) : c.panel,
-                borderRadius: BorderRadius.circular(9),
-                border: Border.all(color: c.accent.withValues(alpha: 0.5)),
-              ),
-              child: Row(
-                children: [
-                  GlyphIcon(Glyph.report, size: 18, color: c.accent),
-                  const SizedBox(width: 8),
-                  Text(
-                    s.t('btn_export_excel'),
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.accent),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
     );
 
-    final cardItems = <Widget>[
-      for (final (cat, glyph) in [
-        (CheckCategory.pass, Glyph.okCircle),
-        (CheckCategory.ng, Glyph.errorCircle),
-        (CheckCategory.excluded, Glyph.cube),
-        (CheckCategory.substitute, Glyph.alternates),
+    // Statistic cards.
+    final statCards = <Widget>[
+      for (final (cat, icon) in [
+        (CheckCategory.pass, Lucide.check),
+        (CheckCategory.ng, Lucide.x),
+        (CheckCategory.excluded, Lucide.package),
+        (CheckCategory.substitute, Lucide.swap),
       ])
-        _AreaCard(
+        _StatCard(
           label: _areaLabel(s, cat),
-          glyph: glyph,
-          count: report.count(cat),
+          icon: icon,
+          value: report.count(cat),
           total: total,
           confirmed: state.confirmedCount(cat),
-          color: c.category(cat),
-          active: !showDiscrepancies && _area == cat,
-          onTap: () => _setArea(_area == cat ? null : cat),
+          tint: c.categorySoft(cat),
+          fg: c.categoryText(cat),
+          bar: _barColor(cat),
+          glow: _glow(cat),
+          selected: !showDiscrepancies && _area == cat,
+          onTap: () => _setArea(cat),
         ),
-      _AreaCard(
+      _StatCard(
         label: s.t('view_discrepancies'),
-        glyph: Glyph.discrepancies,
-        count: discrepancies.length,
-        color: discrepancies.any((d) => d.severity == Severity.error) ? c.ng : c.accent,
-        active: showDiscrepancies,
+        icon: Lucide.alert,
+        value: discrepancies.length,
+        tint: c.blueTint,
+        fg: c.blueTx,
+        bar: const Color(0xFF0A84FF),
+        glow: const Color(0x420A84FF),
+        selected: showDiscrepancies,
         chevron: true,
         onTap: () => state.setCheckView(showDiscrepancies ? CheckPageView.materials : CheckPageView.discrepancies),
       ),
     ];
-    final cards = LayoutBuilder(
+    final stats = LayoutBuilder(
       key: tourTargets.checkCards,
       builder: (context, box) {
-        final perRow = box.maxWidth >= 900 ? 5 : 3;
-        return Column(
-          children: [
-            for (var r = 0; r < cardItems.length; r += perRow) ...[
-              if (r > 0) const SizedBox(height: 12),
-              Row(
-                children: [
-                  for (var i = r; i < r + perRow; i++) ...[
-                    if (i > r) const SizedBox(width: 12),
-                    Expanded(child: i < cardItems.length ? cardItems[i] : const SizedBox.shrink()),
-                  ],
-                ],
-              ),
-            ],
-          ],
+        final perRow = box.maxWidth >= 1100 ? 5 : (box.maxWidth >= 640 ? 3 : 2);
+        final w = (box.maxWidth - (perRow - 1) * 20) / perRow;
+        return Wrap(
+          spacing: 20,
+          runSpacing: 20,
+          children: [for (final card in statCards) SizedBox(width: w, child: card)],
         );
       },
     );
 
-    final top = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 12), cards]),
-    );
+    final top = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 20), stats, const SizedBox(height: 20)]);
+    final pad = EdgeInsets.fromLTRB(narrow ? 16 : 32, 12, narrow ? 16 : 32, 0);
 
     if (showDiscrepancies) {
-      return Container(
-        color: c.window,
+      return Padding(
+        padding: pad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             top,
             Expanded(
-              child: DiscrepancyView(state: state, items: discrepancies),
+              child: DCard(
+                clip: true,
+                child: DiscrepancyView(state: state, items: discrepancies),
+              ),
             ),
           ],
         ),
       );
     }
 
-    final visible = state.visibleRows().where((r) => _sideMatches(r) && _confirmMatches(r)).toList();
-    final entries = <_Entry>[];
-    var shown = 0;
-    for (final cat in _areaOrder) {
-      if (_area != null && cat != _area) continue;
-      final rows = visible.where((r) => r.category == cat).toList();
-      for (var i = 0; i < rows.length; i++) {
-        shown++;
-        entries.add(_Row(rows[i], shown, entries.isEmpty));
-        if (identical(_expanded, rows[i])) entries.add(_Details(rows[i]));
-      }
-    }
-    final showReason = _area != CheckCategory.pass;
-    final listed = [
-      for (final e in entries)
-        if (e is _Row) e.row,
-    ];
-    final allConfirmed = listed.isNotEmpty && listed.every((r) => state.confirmationOf(r) != null);
+    final visible = state.visibleRows().where((r) => _sideMatches(r) && _confirmMatches(r) && (_area == null || r.category == _area)).toList()
+      ..sort((a, b) => _areaOrder.indexOf(a.category) - _areaOrder.indexOf(b.category));
+    final allConfirmed = visible.isNotEmpty && visible.every((r) => state.confirmationOf(r) != null);
 
-    final search = TextInput(controller: _search, hint: s.t('search_hint_fuzzy'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch);
     Widget labelled(String label, Widget child) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: TextStyle(fontSize: 13, color: c.textDim)),
-        const SizedBox(width: 8),
+        Text(label, style: TextStyle(fontSize: 14, color: c.tx2)),
+        const SizedBox(width: 10),
         child,
       ],
     );
-    final dropdowns = [
+    final selects = [
       labelled(
         s.t('col_side'),
         DropdownSelect<_SideFilter>(
           value: _side,
-          width: 130,
-          options: [(_SideFilter.all, s.t('opt_all')), (_SideFilter.a, s.t('side_a')), (_SideFilter.b, s.t('side_b')), (_SideFilter.both, 'A+B')],
+          width: 104,
+          options: [(_SideFilter.all, s.t('opt_all')), (_SideFilter.a, 'A'), (_SideFilter.b, 'B'), (_SideFilter.both, 'A+B')],
           onChanged: (v) => setState(() => _side = v),
         ),
       ),
@@ -319,8 +268,8 @@ class _CheckViewState extends State<CheckView> {
         s.t('col_result'),
         DropdownSelect<CheckCategory?>(
           value: _area,
-          width: 140,
-          options: [(null, s.t('opt_all')), for (final cat in _areaOrder) (cat, _areaLabel(s, cat))],
+          width: 112,
+          options: [(null, s.t('opt_all')), for (final cat in _areaOrder) (cat, _resultShort(s, cat))],
           onChanged: _setArea,
         ),
       ),
@@ -328,261 +277,265 @@ class _CheckViewState extends State<CheckView> {
         s.t('confirm_filter'),
         DropdownSelect<_ConfirmFilter>(
           value: _confirm,
-          width: 120,
+          width: 112,
           options: [(_ConfirmFilter.all, s.t('opt_all')), (_ConfirmFilter.yes, s.t('confirm_yes')), (_ConfirmFilter.no, s.t('confirm_no'))],
           onChanged: (v) => setState(() => _confirm = v),
         ),
       ),
     ];
-    final count = Text(s.t('check_total', {'n': shown}), style: TextStyle(fontSize: 12.5, color: c.textDim));
-    // Narrow screens: search on its own line above the filters.
-    final filters = Padding(
-      key: tourTargets.checkFilters,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: widget.cards
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                search,
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(child: Wrap(spacing: 16, runSpacing: 8, children: dropdowns)),
-                    count,
-                  ],
-                ),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(flex: 3, child: search),
-                for (final d in dropdowns) ...[const SizedBox(width: 20), d],
-                const Spacer(flex: 2),
-                count,
-              ],
-            ),
+    final search = PillSearch(controller: _search, hint: s.t('search_hint_fuzzy'), onChanged: state.setSearch);
+    final count = Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: s.t('count_prefix')),
+          TextSpan(
+            text: '${visible.length}',
+            style: TextStyle(fontWeight: FontWeight.w600, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+          TextSpan(text: s.t('count_suffix')),
+        ],
+      ),
+      style: TextStyle(fontSize: 14, color: c.tx2),
     );
 
-    Widget body;
-    if (entries.isEmpty) {
-      body = EmptyState(
-        icon: Ic.funnel,
-        text: s.t(state.search.trim().isNotEmpty || _side != _SideFilter.all || _confirm != _ConfirmFilter.all ? 'empty_filter' : 'area_empty'),
+    final Widget table;
+    if (visible.isEmpty) {
+      table = DCard(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 56),
+            child: Text(s.t('no_rows'), style: TextStyle(fontSize: 15, color: c.tx2)),
+          ),
+        ),
+      );
+    } else if (narrow) {
+      table = DCard(
+        clip: true,
+        child: ThinScrollbar(
+          controller: _scroll,
+          child: ListView.builder(
+            controller: _scroll,
+            padding: const EdgeInsets.all(12),
+            itemCount: visible.length,
+            itemBuilder: (context, i) => _RowCard(state: state, row: visible[i]),
+          ),
+        ),
       );
     } else {
-      bool lastAt(int i) => i + 1 >= entries.length;
-      final list = ListView.builder(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        itemCount: entries.length,
-        itemBuilder: (context, i) => switch (entries[i]) {
-          _Row(:final row, :final index, :final first) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (first)
-                (!widget.cards
-                    ? _ColumnHeader(
-                        reason: showReason,
-                        allConfirmed: allConfirmed,
-                        listed: listed.length,
-                        onConfirmAll: () => state.setConfirmed(listed, !allConfirmed),
-                      )
-                    : Container(height: 1, color: c.border)),
-              _ResultRow(
-                row: row,
-                index: index,
-                expanded: identical(_expanded, row),
-                cards: widget.cards,
-                last: lastAt(i),
-                showReason: showReason,
-                confirmed: state.confirmationOf(row) != null,
-                onConfirm: () => state.setConfirmed([row], state.confirmationOf(row) == null),
-                onTap: () => _toggleRow(row),
-              ),
-            ],
-          ),
-          _Details(:final row) => _RowDetails(key: ValueKey(row.key), row: row, state: state, last: lastAt(i)),
-        },
-      );
-      body = widget.cards
-          ? ThinScrollbar(controller: _scroll, child: list)
-          : LayoutBuilder(
-              builder: (context, box) => ThinScrollbar(
+      table = DCard(
+        clip: true,
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final width = box.maxWidth < _minTable ? _minTable : box.maxWidth;
+            return ThinScrollbar(
+              controller: _hScroll,
+              horizontal: true,
+              child: SingleChildScrollView(
                 controller: _hScroll,
-                horizontal: true,
-                child: SingleChildScrollView(
-                  controller: _hScroll,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: box.maxWidth < _minWidth ? _minWidth : box.maxWidth,
-                    child: ThinScrollbar(controller: _scroll, child: list),
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: width,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                        child: _HeaderRow(allConfirmed: allConfirmed, listed: visible.length, onConfirmAll: () => state.setConfirmed(visible, !allConfirmed)),
+                      ),
+                      Expanded(
+                        child: ThinScrollbar(
+                          controller: _scroll,
+                          child: ListView.builder(
+                            controller: _scroll,
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                            itemCount: visible.length,
+                            itemBuilder: (context, i) => _ResultRow(state: state, row: visible[i], index: i + 1),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             );
+          },
+        ),
+      );
     }
 
-    return Container(
-      color: c.window,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    final filters = KeyedSubtree(
+      key: tourTargets.checkFilters,
+      child: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                search,
+                const SizedBox(height: 12),
+                Wrap(spacing: 16, runSpacing: 12, children: selects),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: ConstrainedBox(constraints: const BoxConstraints(minWidth: 260), child: search),
+                ),
+                for (final w in selects) ...[const SizedBox(width: 16), w],
+                const SizedBox(width: 16),
+                count,
+              ],
+            ),
+    );
+    final keyedTable = KeyedSubtree(key: tourTargets.checkTable, child: table);
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Short windows (tablets in landscape) scroll the whole page so the
+        // table keeps a usable height.
+        final short = box.maxHeight < 900;
+        final children = [
           top,
           filters,
-          Expanded(
-            child: KeyedSubtree(key: tourTargets.checkTable, child: body),
-          ),
-        ],
-      ),
+          const SizedBox(height: 20),
+          short ? SizedBox(height: math.max(420.0, box.maxHeight * 0.62), child: keyedTable) : Expanded(child: keyedTable),
+          const SizedBox(height: 20),
+          _Detail(state: state),
+          if (short) const SizedBox(height: 20),
+        ];
+        final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+        return Padding(
+          padding: pad,
+          child: short ? SingleChildScrollView(controller: _page, child: column) : column,
+        );
+      },
     );
   }
+
+  static Color _barColor(CheckCategory c) => switch (c) {
+    CheckCategory.pass => const Color(0xFF34C759),
+    CheckCategory.ng => const Color(0xFFFF3B30),
+    CheckCategory.excluded => const Color(0xFF8E8E93),
+    CheckCategory.substitute => const Color(0xFFFF9500),
+  };
+
+  static Color _glow(CheckCategory c) => switch (c) {
+    CheckCategory.pass => const Color(0x4234C759),
+    CheckCategory.ng => const Color(0x3DFF3B30),
+    CheckCategory.excluded => const Color(0x38787880),
+    CheckCategory.substitute => const Color(0x42FF9500),
+  };
 }
 
-/// Statistic card with an icon tile; doubles as a filter.
-class _AreaCard extends StatelessWidget {
-  const _AreaCard({
+/// Statistic card: icon, label, big number, share and bar; lifts when chosen.
+class _StatCard extends StatelessWidget {
+  const _StatCard({
     required this.label,
-    required this.glyph,
-    required this.color,
+    required this.icon,
+    required this.value,
+    required this.tint,
+    required this.fg,
+    required this.bar,
+    required this.glow,
+    required this.selected,
     required this.onTap,
-    required this.count,
     this.total,
     this.confirmed = 0,
-    this.active = false,
     this.chevron = false,
   });
 
   final String label;
-  final Glyph glyph;
-  final Color color;
+  final Lucide icon;
+  final int value;
+  final Color tint;
+  final Color fg;
+  final Color bar;
+  final Color glow;
+  final bool selected;
   final VoidCallback onTap;
-  final int count;
 
-  /// When set, a share bar and percentage are drawn.
+  /// When set, the share and bar are shown.
   final int? total;
-
-  /// Rows of this area confirmed by an operator.
   final int confirmed;
-  final bool active;
   final bool chevron;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final m = Metrics.of(context);
-    final share = total == null || total == 0 ? null : count / total!;
+    final s = Strings.of(context);
+    final share = total == null || total == 0 ? null : value / total!;
+    final pct = share == null ? '' : '${(share * 100).toStringAsFixed(share > 0 && share < 0.02 ? 1 : 0)}%';
     return Hoverable(
       onTap: onTap,
-      builder: (context, hover, _) => Container(
-        height: m.touch ? 112 : 104,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      builder: (context, hover, _) => AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        transform: Matrix4.translationValues(0, selected ? -3 : 0, 0),
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
         decoration: BoxDecoration(
-          color: active
-              ? color.withValues(alpha: c.dark ? 0.14 : 0.07)
-              : hover
-              ? c.hover
-              : c.panel,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: active ? color.withValues(alpha: 0.85) : c.border, width: active ? 1.5 : 1),
+          color: c.card,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: selected
+              ? [BoxShadow(color: glow, offset: const Offset(0, 2), blurRadius: 4), BoxShadow(color: glow, offset: const Offset(0, 24), blurRadius: 56)]
+              : c.shadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 40,
+                  height: 40,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color.withValues(alpha: c.dark ? 0.2 : 0.13),
-                  ),
-                  child: GlyphIcon(glyph, size: 20, filled: true, color: color),
+                  decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+                  child: LucideIcon(icon, size: 20, color: fg, stroke: 2.3),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textDim),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '$count',
-                            style: TextStyle(
-                              fontSize: 26,
-                              height: 1,
-                              fontWeight: FontWeight.w800,
-                              color: count == 0 ? c.textFaint : c.text,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                          if (share != null) ...[
-                            const SizedBox(width: 8),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Text(
-                                '${(share * 100).toStringAsFixed(share > 0 && share < 0.01 ? 1 : 0)}%',
-                                style: TextStyle(fontSize: 12.5, color: c.textFaint),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: -0.15, color: c.tx),
                   ),
                 ),
-                if (confirmed > 0)
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(6, 2, 8, 2),
-                    decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        GlyphIcon(Glyph.okCircle, size: 13, filled: true, color: c.accent),
-                        const SizedBox(width: 4),
-                        Text(
-                          Strings.of(context).t('confirm_count', {'n': confirmed}),
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.accent),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (chevron) GlyphIcon(Glyph.chevronRight, size: 16, color: c.textFaint),
+                if (chevron) LucideIcon(Lucide.chevronRight, size: 16, color: c.tx2, stroke: 2.2),
               ],
             ),
-            const Spacer(),
-            if (share != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: SizedBox(
-                  height: 5,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (share > 0)
-                        Expanded(
-                          flex: (share * 1000).round().clamp(1, 1000),
-                          child: ColoredBox(color: color),
-                        ),
-                      if (share < 1)
-                        Expanded(
-                          flex: (1000 - share * 1000).round().clamp(1, 1000),
-                          child: ColoredBox(color: c.border),
-                        ),
-                    ],
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '$value',
+                  style: TextStyle(
+                    fontSize: 42,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -1.47,
+                    color: c.tx,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-              ),
+                if (share != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    pct,
+                    style: TextStyle(fontSize: 14, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                ],
+                if (confirmed > 0) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      s.t('confirm_count', {'n': confirmed}),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.blueTx),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (share != null) ...[const SizedBox(height: 16), TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar)],
           ],
         ),
       ),
@@ -590,45 +543,56 @@ class _AreaCard extends StatelessWidget {
   }
 }
 
-const _minWidth = 1100.0;
+const _minTable = 1200.0;
 
-enum _Col { no, pn, desc, bom, smt, refs, side, reason, confirm, result }
-
-/// Fixed width or flex weight per column.
-const _colSpec = {
-  _Col.no: (48.0, 0),
-  _Col.pn: (180.0, 0),
-  _Col.desc: (0.0, 3),
-  _Col.bom: (80.0, 0),
-  _Col.smt: (80.0, 0),
-  _Col.refs: (0.0, 5),
-  _Col.side: (64.0, 0),
-  _Col.reason: (0.0, 4),
-  _Col.confirm: (126.0, 0),
-  _Col.result: (112.0, 0),
-};
-
-/// PASS rows have nothing to explain, so the reason column is left out.
-List<_Col> _columns({required bool reason}) => [
-  for (final col in _Col.values)
-    if (col != _Col.reason || reason) col,
+/// Column widths: fixed px, or flex weight with a minimum.
+const _cols = [
+  (44.0, 0.0), // #
+  (196.0, 0.0), // part number
+  (260.0, 1.6), // description
+  (84.0, 0.0), // BOM qty
+  (84.0, 0.0), // SMT qty
+  (280.0, 2.4), // designators
+  (72.0, 0.0), // side
+  (112.0, 0.0), // confirmation
+  (104.0, 0.0), // result
 ];
 
-Widget _cell(_Col col, Widget child, {Alignment align = Alignment.centerLeft}) {
-  final (w, flex) = _colSpec[col]!;
-  final padded = Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 10),
-    child: Align(alignment: align, child: child),
-  );
-  return flex > 0 ? Expanded(flex: flex, child: padded) : SizedBox(width: w, child: padded);
-}
+/// Lays out one table line in the design's grid.
+Widget _gridRow(List<Widget> cells, {List<Alignment>? align}) => LayoutBuilder(
+  builder: (context, box) {
+    final fixed = _cols.fold<double>(0, (a, e) => a + e.$1);
+    final flex = _cols.fold<double>(0, (a, e) => a + e.$2);
+    final spare = (box.maxWidth - fixed).clamp(0.0, double.infinity);
+    // Narrower than the fixed columns (tablets): shrink them all evenly.
+    final shrink = box.maxWidth < fixed ? box.maxWidth / fixed : 1.0;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        for (var i = 0; i < cells.length; i++)
+          SizedBox(
+            width: _cols[i].$1 * shrink + (flex == 0 ? 0 : spare * _cols[i].$2 / flex),
+            child: Align(alignment: align?[i] ?? Alignment.centerLeft, child: cells[i]),
+          ),
+      ],
+    );
+  },
+);
 
-class _ColumnHeader extends StatelessWidget {
-  const _ColumnHeader({required this.reason, required this.allConfirmed, required this.listed, required this.onConfirmAll});
+const _centerCols = {3, 4};
 
-  final bool reason;
+List<Alignment> _alignments() => [
+  for (var i = 0; i < _cols.length; i++)
+    i == _cols.length - 1
+        ? Alignment.centerRight
+        : _centerCols.contains(i)
+        ? Alignment.center
+        : Alignment.centerLeft,
+];
 
-  /// Every listed row is confirmed; the confirm header toggles them all.
+class _HeaderRow extends StatelessWidget {
+  const _HeaderRow({required this.allConfirmed, required this.listed, required this.onConfirmAll});
+
   final bool allConfirmed;
   final int listed;
   final VoidCallback onConfirmAll;
@@ -637,223 +601,172 @@ class _ColumnHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final style = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.textFaint, letterSpacing: 0.2);
-    final labels = {
-      _Col.no: '#',
-      _Col.pn: s.t('col_pn'),
-      _Col.desc: s.t('col_desc'),
-      _Col.bom: s.t('col_bom_qty'),
-      _Col.smt: s.t('col_smt_qty'),
-      _Col.refs: s.t('col_bom_refs'),
-      _Col.side: s.t('col_side'),
-      _Col.reason: s.t('col_reason'),
-      _Col.confirm: s.t('col_confirm'),
-      _Col.result: s.t('col_result'),
-    };
+    final style = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.tx2);
+    Text t(String key) => Text(s.t(key), maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
     return Container(
-      height: 38,
-      decoration: BoxDecoration(
-        color: c.panelAlt,
-        border: Border.all(color: c.border),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 3),
-          for (final col in _columns(reason: reason))
-            _cell(
-              col,
-              col == _Col.confirm
-                  ? Hoverable(
-                      onTap: onConfirmAll,
-                      tooltip: allConfirmed ? s.t('confirm_none_visible') : s.t('confirm_all_visible', {'n': listed}),
-                      builder: (context, hover, _) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GlyphIcon(Glyph.okCircle, size: 15, filled: allConfirmed, color: allConfirmed || hover ? c.accent : c.textFaint),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              labels[col]!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: style.copyWith(color: hover ? c.accent : null),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Text(labels[col]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
-              align: switch (col) {
-                _Col.bom || _Col.smt || _Col.confirm => Alignment.center,
-                _Col.result => Alignment.centerRight,
-                _ => Alignment.centerLeft,
-              },
-            ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(18)),
+      child: _gridRow([
+        Text('#', style: style),
+        t('col_pn'),
+        t('col_desc'),
+        t('col_bom_qty'),
+        t('col_smt_qty'),
+        t('col_bom_refs'),
+        t('col_side'),
+        Hoverable(
+          onTap: onConfirmAll,
+          tooltip: allConfirmed ? s.t('confirm_none_visible') : s.t('confirm_all_visible', {'n': listed}),
+          builder: (context, hover, _) => Text(s.t('col_confirm'), style: style.copyWith(color: hover ? c.blueTx : null)),
+        ),
+        t('col_result'),
+      ], align: _alignments()),
     );
   }
 }
 
-/// One compact line per part; the full detail opens below it.
-class _ResultRow extends StatelessWidget {
-  const _ResultRow({
-    required this.row,
-    required this.index,
-    required this.expanded,
-    required this.cards,
-    required this.last,
-    required this.onTap,
-    required this.confirmed,
-    required this.onConfirm,
-    this.showReason = true,
-  });
+/// Designators of a row: BOM designators, plus extra ones from the station.
+List<RefMark> _refs(CheckRow row) => [...row.bomRefs, ...row.smtRefs.where((r) => r.state == RefState.extra)];
 
+Widget _chip(AppColors c, CheckRow row, RefMark m) {
+  // Chips take the row's result colour; a designator with its own problem
+  // (missing, extra, conflicting) shows in red.
+  final bad = m.state == RefState.missing || m.state == RefState.extra || m.state == RefState.conflict;
+  final cat = bad ? CheckCategory.ng : row.category;
+  return DotChip(text: m.ref, background: c.categorySoft(cat), color: c.categoryText(cat), strike: m.state == RefState.extra);
+}
+
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({required this.state, required this.row, required this.index});
+
+  final AppState state;
   final CheckRow row;
   final int index;
-  final bool expanded;
-  final bool cards;
-  final bool last;
-  final VoidCallback onTap;
-  final bool confirmed;
-  final VoidCallback onConfirm;
-
-  /// Whether the table has a reason column.
-  final bool showReason;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final m = Metrics.of(context);
-    final catColor = c.category(row.category);
-    final refs = [...row.bomRefs, ...row.smtRefs.where((r) => r.state == RefState.extra)];
-    final firstReason = row.reasons.isEmpty ? null : row.reasons.first;
-    final reasonText = firstReason == null ? '-' : s.t(firstReason.code, firstReason.args);
-    final more = row.reasons.length > 1 ? '  +${row.reasons.length - 1}' : '';
-    final reasonColor = firstReason == null ? c.textFaint : (firstReason.info ? c.textDim : c.ng);
-
-    final decoration = BoxDecoration(
-      color: expanded ? c.selected : null,
-      border: Border(
-        left: BorderSide(color: c.border),
-        right: BorderSide(color: c.border),
-        bottom: BorderSide(color: c.border),
-      ),
-      borderRadius: last && !expanded ? const BorderRadius.vertical(bottom: Radius.circular(8)) : null,
-    );
-
-    if (cards) {
-      return Hoverable(
-        onTap: onTap,
-        cursor: SystemMouseCursors.basic,
-        builder: (context, hover, _) => Container(
-          decoration: decoration.copyWith(
-            color: expanded
-                ? c.selected
-                : hover
-                ? c.hover
-                : c.panel,
-          ),
-          padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      row.partNo,
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: c.text),
-                    ),
-                  ),
-                  _ConfirmToggle(confirmed: confirmed, onTap: onConfirm),
-                  const SizedBox(width: 8),
-                  _CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Text(
-                row.description,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, color: c.textDim),
-              ),
-              const SizedBox(height: 6),
-              _RefLine(marks: refs),
-              if (firstReason != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '$reasonText$more',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12.5, color: reasonColor),
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-
-    final mono = TextStyle(fontSize: 13, color: c.text, fontFeatures: const [FontFeature.tabularFigures()]);
-    final passRow = row.category == CheckCategory.pass;
-    Widget content(_Col col) => switch (col) {
-      _Col.no => Text('$index', style: TextStyle(fontSize: 12, color: c.textFaint)),
-      _Col.pn => Text(
-        row.partNo,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.text),
-      ),
-      _Col.desc => Text(
-        row.description,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 13, color: c.textDim),
-      ),
-      _Col.bom => Text(_qty(row.bomQty), style: mono),
-      _Col.smt => Text(row.smtQty?.toString() ?? '-', style: mono),
-      _Col.refs => _RefLine(marks: refs),
-      _Col.side => Text(_sides(row.sides), style: TextStyle(fontSize: 12.5, color: c.textDim)),
-      _Col.reason =>
-        passRow
-            ? const SizedBox.shrink()
-            : Text(
-                '$reasonText$more',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: reasonColor),
-              ),
-      _Col.confirm => _ConfirmToggle(confirmed: confirmed, onTap: onConfirm),
-      _Col.result => _CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
-    };
+    final selected = identical(state.selected, row);
+    final refs = _refs(row);
+    final shown = refs.take(12).toList();
+    final mismatch = row.smtQty != null && row.bomQty != null && row.smtQty != row.bomQty!.round();
+    final mono = TextStyle(fontSize: 14, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]);
     return Hoverable(
-      onTap: onTap,
+      onTap: () => state.select(selected ? null : row),
       cursor: SystemMouseCursors.basic,
       builder: (context, hover, _) => Container(
-        height: m.touch ? 60 : 54,
-        decoration: decoration.copyWith(
-          color: expanded
-              ? c.selected
+        constraints: const BoxConstraints(minHeight: 56),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? c.rowSel
               : hover
               ? c.hover
-              : c.panel,
+              : null,
+          borderRadius: BorderRadius.circular(18),
         ),
-        child: Row(
+        child: _gridRow([
+          Text(
+            '$index',
+            style: TextStyle(fontSize: 13, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+          Text(
+            row.partNo,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: -0.07, color: hover ? c.blueTx : c.tx),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Text(row.description, style: TextStyle(fontSize: 14, height: 1.45, color: c.tx)),
+          ),
+          Text(_qty(row.bomQty), style: mono),
+          Text(
+            row.smtQty?.toString() ?? '-',
+            style: mismatch ? mono.copyWith(color: c.ngTx, fontWeight: FontWeight.w700) : mono,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Wrap(
+              spacing: 5,
+              runSpacing: 5,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (final m in shown) _chip(c, row, m),
+                if (refs.length > shown.length) Text('+${refs.length - shown.length}', style: TextStyle(fontSize: 12, color: c.tx2)),
+                if (refs.isEmpty) Text('-', style: TextStyle(color: c.tx3)),
+              ],
+            ),
+          ),
+          Text(_sides(row.sides), style: TextStyle(fontSize: 14, color: c.tx2)),
+          _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
+          DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+        ], align: _alignments()),
+      ),
+    );
+  }
+}
+
+/// Narrow screens: one card per part.
+class _RowCard extends StatelessWidget {
+  const _RowCard({required this.state, required this.row});
+
+  final AppState state;
+  final CheckRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final selected = identical(state.selected, row);
+    final refs = _refs(row);
+    final reason = row.reasons.isEmpty ? null : row.reasons.first;
+    return Hoverable(
+      onTap: () => state.select(selected ? null : row),
+      cursor: SystemMouseCursors.basic,
+      builder: (context, hover, _) => Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? c.rowSel
+              : hover
+              ? c.hover
+              : null,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(width: 3, color: passRow ? catColor.withValues(alpha: 0.4) : catColor),
-            for (final col in _columns(reason: showReason))
-              _cell(
-                col,
-                content(col),
-                align: switch (col) {
-                  _Col.bom || _Col.smt || _Col.confirm => Alignment.center,
-                  _Col.result => Alignment.centerRight,
-                  _ => Alignment.centerLeft,
-                },
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    row.partNo,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx),
+                  ),
+                ),
+                _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
+                const SizedBox(width: 8),
+                DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(row.description, style: TextStyle(fontSize: 13, color: c.tx2)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 5,
+              runSpacing: 5,
+              children: [
+                for (final m in refs.take(12)) _chip(c, row, m),
+                if (refs.length > 12) Text('+${refs.length - 12}', style: TextStyle(fontSize: 12, color: c.tx2)),
+              ],
+            ),
+            if (reason != null) ...[
+              const SizedBox(height: 6),
+              Text(s.t(reason.code, reason.args), style: TextStyle(fontSize: 13, color: reason.info ? c.tx2 : c.ngTx)),
+            ],
           ],
         ),
       ),
@@ -861,9 +774,8 @@ class _ResultRow extends StatelessWidget {
   }
 }
 
-/// Per-row manual confirmation switch.
-class _ConfirmToggle extends StatelessWidget {
-  const _ConfirmToggle({required this.confirmed, required this.onTap});
+class _ConfirmPill extends StatelessWidget {
+  const _ConfirmPill({required this.confirmed, required this.onTap});
 
   final bool confirmed;
   final VoidCallback onTap;
@@ -876,29 +788,16 @@ class _ConfirmToggle extends StatelessWidget {
       onTap: onTap,
       tooltip: confirmed ? s.t('confirm_undo') : null,
       builder: (context, hover, _) => Container(
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: confirmed
-              ? c.accent.withValues(alpha: hover ? 0.2 : 0.13)
-              : hover
-              ? c.hover
-              : null,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: confirmed ? c.accent.withValues(alpha: 0.55) : (hover ? c.borderStrong : c.border)),
-        ),
+        height: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(color: confirmed ? c.blueTint : (hover ? c.glass2 : c.hover), borderRadius: BorderRadius.circular(15)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GlyphIcon(Glyph.okCircle, size: 15, filled: confirmed, color: confirmed ? c.accent : c.textFaint),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                confirmed ? s.t('confirm_done') : s.t('confirm_btn'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: confirmed ? c.accent : c.textDim),
-              ),
+            if (confirmed) ...[LucideIcon(Lucide.check, size: 13, color: c.blueTx, stroke: 2.8), const SizedBox(width: 6)],
+            Text(
+              confirmed ? s.t('confirm_done') : s.t('confirm_btn'),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: confirmed ? c.blueTx : c.tx2),
             ),
           ],
         ),
@@ -907,56 +806,20 @@ class _ConfirmToggle extends StatelessWidget {
   }
 }
 
-/// Single line of designator chips, cut with "+N".
-class _RefLine extends StatelessWidget {
-  const _RefLine({required this.marks});
+/// Details of the selected part: quantities, side, result, reasons and the
+/// manual confirmation with its note.
+class _Detail extends StatefulWidget {
+  const _Detail({required this.state});
 
-  final List<RefMark> marks;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    if (marks.isEmpty) return Text('-', style: TextStyle(color: c.textFaint));
-    return LayoutBuilder(
-      builder: (context, box) {
-        // Roughly 52 px per chip; keep room for the "+N" counter.
-        final fit = ((box.maxWidth - 30) / 54).floor().clamp(1, marks.length);
-        final shown = marks.take(fit).toList();
-        return ClipRect(
-          child: Row(
-            children: [
-              for (final m in shown)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: RefChip(text: m.ref, color: c.refState(m.state), soft: c.refStateSoft(m.state), strike: m.state == RefState.extra),
-                ),
-              if (marks.length > fit)
-                Text(
-                  '+${marks.length - fit}',
-                  style: TextStyle(fontSize: 11.5, color: c.textDim, fontWeight: FontWeight.w600),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Full designator lists, loaded part numbers and reasons with explanations.
-class _RowDetails extends StatefulWidget {
-  const _RowDetails({super.key, required this.row, required this.state, required this.last});
-
-  final CheckRow row;
   final AppState state;
-  final bool last;
 
   @override
-  State<_RowDetails> createState() => _RowDetailsState();
+  State<_Detail> createState() => _DetailState();
 }
 
-class _RowDetailsState extends State<_RowDetails> {
-  late final _note = TextEditingController(text: widget.state.confirmationOf(widget.row)?.note ?? '');
+class _DetailState extends State<_Detail> {
+  final _note = TextEditingController();
+  CheckRow? _noteFor;
 
   @override
   void dispose() {
@@ -966,175 +829,132 @@ class _RowDetailsState extends State<_RowDetails> {
 
   @override
   Widget build(BuildContext context) {
-    final row = widget.row;
-    final last = widget.last;
-    final state = widget.state;
-    final confirmation = state.confirmationOf(row);
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    Widget label(String t) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        t,
-        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textFaint, letterSpacing: 0.3),
+    final state = widget.state;
+    final row = state.selected;
+    final narrow = MediaQuery.sizeOf(context).width < 900;
+    if (row == null) {
+      return DCard(
+        radius: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+        child: Text(s.t('detail_hint'), style: TextStyle(fontSize: 14, color: c.tx2)),
+      );
+    }
+    final confirmation = state.confirmationOf(row);
+    if (!identical(_noteFor, row)) {
+      _noteFor = row;
+      _note.text = confirmation?.note ?? '';
+    }
+    Widget fact(String label, String value) => Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: '$label '),
+          TextSpan(
+            text: value,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.tx),
+          ),
+        ],
       ),
+      style: TextStyle(fontSize: 13, color: c.tx2),
     );
-    Widget chips(List<RefMark> marks, {bool strike = false}) => marks.isEmpty
-        ? Text('-', style: TextStyle(color: c.textFaint))
-        : Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: [
-              for (final m in marks)
-                RefChip(text: m.ref, color: c.refState(m.state), soft: c.refStateSoft(m.state), strike: strike && m.state == RefState.extra),
-            ],
-          );
-    final facts = [
-      (s.t('col_bom_qty'), _qty(row.bomQty)),
-      (s.t('col_smt_qty'), row.smtQty?.toString() ?? '-'),
-      (s.t('col_smt_pn'), row.smtPartNos.isEmpty ? '-' : row.smtPartNos.join(', ')),
-      (s.t('col_slot'), row.slots.isEmpty ? '-' : row.slots.join(', ')),
-      (s.t('col_side'), _sides(row.sides)),
-    ];
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-      decoration: BoxDecoration(
-        color: c.panelAlt,
-        border: Border(
-          left: BorderSide(color: c.border),
-          right: BorderSide(color: c.border),
-          bottom: BorderSide(color: c.border),
-        ),
-        borderRadius: last ? const BorderRadius.vertical(bottom: Radius.circular(8)) : null,
-      ),
+    return DCard(
+      radius: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(row.description, style: TextStyle(fontSize: 13, color: c.text)),
-          const SizedBox(height: 10),
           Wrap(
-            spacing: 28,
-            runSpacing: 6,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 24,
+            runSpacing: 12,
             children: [
-              for (final (k, v) in facts)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('$k  ', style: TextStyle(fontSize: 12, color: c.textFaint)),
-                    Text(
-                      v,
-                      style: TextStyle(fontSize: 12.5, color: c.text, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          LayoutBuilder(
-            builder: (context, box) {
-              final two = box.maxWidth > 700;
-              final bom = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [label(s.t('col_bom_refs')), chips(row.bomRefs)]);
-              final smt = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [label(s.t('col_smt_refs')), chips(row.smtRefs, strike: true)]);
-              return two
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: bom),
-                        const SizedBox(width: 24),
-                        Expanded(child: smt),
-                      ],
-                    )
-                  : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [bom, const SizedBox(height: 12), smt]);
-            },
-          ),
-          if (row.reasons.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            label(s.t('col_reason')),
-            for (final r in row.reasons)
-              Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                decoration: BoxDecoration(
-                  color: c.panel,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border(left: BorderSide(color: r.info ? c.substitute : c.ng, width: 3)),
-                ),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 640),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(s.t('detail_selected', {'pn': row.partNo}), style: TextStyle(fontSize: 12, color: c.tx2)),
+                    const SizedBox(height: 4),
                     Text(
-                      s.t(r.code, r.args),
-                      style: TextStyle(fontSize: 13, color: c.text, fontWeight: FontWeight.w600),
+                      row.description,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.16, color: c.tx),
                     ),
-                    if (Texts.has('why_${r.code}')) ...[
-                      const SizedBox(height: 3),
-                      Text(s.t('why_${r.code}'), style: TextStyle(fontSize: 12.5, color: c.textDim, height: 1.45)),
-                    ],
+                  ],
+                ),
+              ),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 28,
+                runSpacing: 8,
+                children: [
+                  fact('BOM', _qty(row.bomQty)),
+                  fact('SMT', row.smtQty?.toString() ?? '-'),
+                  fact(s.t('col_side'), _sides(row.sides)),
+                  if (row.slots.isNotEmpty) fact(s.t('col_slot'), row.slots.join(', ')),
+                  DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+                ],
+              ),
+            ],
+          ),
+          if (row.reasons.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final r in row.reasons)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: r.info ? c.warnSolid : c.ngSolid),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: s.t(r.code, r.args),
+                              style: TextStyle(fontWeight: FontWeight.w600, color: r.info ? c.warnTx : c.ngTx),
+                            ),
+                            if (Texts.has('why_${r.code}')) TextSpan(text: '  ${s.t('why_${r.code}')}'),
+                          ],
+                        ),
+                        style: TextStyle(fontSize: 13, height: 1.5, color: c.tx2),
+                      ),
+                    ),
                   ],
                 ),
               ),
           ],
-          const SizedBox(height: 14),
-          label(s.t('confirm_section')),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-            decoration: BoxDecoration(
-              color: c.panel,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: confirmation != null ? c.accent.withValues(alpha: 0.45) : c.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    GlyphIcon(Glyph.okCircle, size: 17, filled: confirmation != null, color: confirmation != null ? c.accent : c.textFaint),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        confirmation != null ? s.t('confirm_at', {'time': formatTime(confirmation.at)}) : s.t('confirm_pending'),
-                        style: TextStyle(fontSize: 12.5, color: confirmation != null ? c.text : c.textDim),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _ConfirmPill(confirmed: confirmation != null, onTap: () => state.setConfirmed([row], confirmation == null)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: confirmation == null
+                    ? Text(s.t('confirm_pending'), style: TextStyle(fontSize: 13, color: c.tx2))
+                    : PillSearch(
+                        controller: _note,
+                        hint: '${s.t('confirm_at', {'time': formatTime(confirmation.at)})} · ${s.t('confirm_note_hint')}',
+                        icon: Lucide.fileText,
+                        onChanged: (v) => state.setConfirmNote(row, v),
+                        flat: true,
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    FlatButton(
-                      label: confirmation != null ? s.t('confirm_undo') : s.t('confirm_btn'),
-                      primary: confirmation == null,
-                      compact: true,
-                      onTap: () => state.setConfirmed([row], confirmation == null),
-                    ),
-                  ],
-                ),
-                if (confirmation != null) ...[
-                  const SizedBox(height: 8),
-                  TextInput(controller: _note, hint: s.t('confirm_note_hint'), onChanged: (v) => state.setConfirmNote(row, v)),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
-}
-
-class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({required this.category, required this.label});
-
-  final CheckCategory category;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => ResultBadge(
-    text: label,
-    color: AppTheme.of(context).category(category),
-    icon: switch (category) {
-      CheckCategory.pass => IcBold.checkCircle,
-      CheckCategory.ng => IcBold.xCircle,
-      CheckCategory.excluded => IcBold.prohibit,
-      CheckCategory.substitute => IcBold.arrowsLeftRight,
-    },
-  );
 }
 
 String _qty(double? q) {
@@ -1148,6 +968,7 @@ String _sides(Set<StationSide> sides) {
   return sides.first == StationSide.a ? 'A' : 'B';
 }
 
+/// Centred message with an icon, for pages that have nothing to show yet.
 class EmptyState extends StatelessWidget {
   const EmptyState({super.key, required this.icon, required this.text, this.action});
 
@@ -1159,7 +980,6 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     return Container(
-      color: c.window,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1169,20 +989,16 @@ class EmptyState extends StatelessWidget {
             width: 72,
             height: 72,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: c.panel,
-              shape: BoxShape.circle,
-              border: Border.all(color: c.border),
-            ),
-            child: Icon(icon, size: 30, color: c.textFaint),
+            decoration: BoxDecoration(color: c.glass, shape: BoxShape.circle, boxShadow: c.shadowSm),
+            child: Icon(icon, size: 30, color: c.tx2),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
             text,
             textAlign: TextAlign.center,
-            style: TextStyle(color: c.textDim, fontSize: 13),
+            style: TextStyle(color: c.tx2, fontSize: 15),
           ),
-          if (action != null) ...[const SizedBox(height: 16), action!],
+          if (action != null) ...[const SizedBox(height: 18), action!],
         ],
       ),
     );

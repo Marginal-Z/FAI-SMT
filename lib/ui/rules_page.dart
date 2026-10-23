@@ -140,16 +140,16 @@ class _RulesPageState extends State<RulesPage> {
             FlatButton(label: s.t('dlg_save'), compact: true, primary: true, onTap: _save),
           ],
         ),
+        const SizedBox(height: 20),
         Expanded(
-          child: Container(
-            color: c.window,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 820),
-                  child: SurfaceCard(
-                    padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: SurfaceCard(
+                  padding: const EdgeInsets.fromLTRB(28, 22, 28, 10),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Row(children: [
                         GlyphIcon(glyph, size: 22, color: c.accent),
@@ -166,7 +166,6 @@ class _RulesPageState extends State<RulesPage> {
               ),
             ),
           ),
-        ),
       ],
     );
   }

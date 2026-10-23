@@ -12,15 +12,17 @@ import '../core/updater.dart';
 import '../l10n/strings.dart';
 import '../version.dart';
 import 'board_view.dart';
-import 'glyphs.dart';
+import 'design.dart';
 import 'guide_page.dart';
 import 'library_page.dart';
+import 'lucide.dart';
 import 'rules_page.dart';
 import 'theme.dart';
 import 'ui_scale.dart';
 import 'widgets.dart';
 
-/// Full-screen settings, opened from the title bar gear and closed with Back.
+/// Full-screen settings, opened from the header gear and closed with Back:
+/// a navigation card on the left, the chosen section on the right.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.state});
 
@@ -29,53 +31,77 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final m = Metrics.of(context);
     final s = Strings.of(context);
     final sections = [
-      (SettingsSection.appearance, Glyph.appearance, s.t('set_appearance')),
-      (SettingsSection.board, Glyph.palette, s.t('set_board_colors')),
-      (SettingsSection.library, Glyph.library, s.t('set_library')),
-      (SettingsSection.rules, Glyph.rules, s.t('set_rules')),
-      (SettingsSection.guide, Glyph.guide, s.t('set_guide')),
-      (SettingsSection.update, Glyph.update, s.t('set_update')),
-      (SettingsSection.about, Glyph.info, s.t('set_about')),
+      (SettingsSection.appearance, Lucide.brush, s.t('set_appearance')),
+      (SettingsSection.board, Lucide.palette, s.t('set_board_colors')),
+      (SettingsSection.library, Lucide.library, s.t('set_library')),
+      (SettingsSection.rules, Lucide.shield, s.t('set_rules')),
+      (SettingsSection.guide, Lucide.book, s.t('set_guide')),
+      (SettingsSection.update, Lucide.update, s.t('set_update')),
+      (SettingsSection.about, Lucide.info, s.t('set_about')),
     ];
     final narrow = MediaQuery.sizeOf(context).width < 900;
+    final items = [
+      for (final (sec, icon, label) in sections)
+        _NavItem(icon: icon, label: label, active: state.settingsSection == sec, onTap: () => state.setSettingsSection(sec)),
+    ];
+    final back = PillButton(
+      label: s.t('btn_back'),
+      icon: Lucide.back,
+      kind: PillKind.glass,
+      height: 36,
+      fontSize: 14,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      onTap: state.closeSettings,
+    );
+    final title = Text(
+      s.t('mod_settings'),
+      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: c.tx),
+    );
+    final version = Text('SMT-FAI ${s.t('about_version', {'v': appVersion})}', style: TextStyle(fontSize: 12, color: c.tx3));
 
     final nav = narrow
-        ? Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: c.panel,
-              border: Border(bottom: BorderSide(color: c.border)),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  for (final (sec, glyph, label) in sections)
-                    _NavItem(glyph: glyph, label: label, active: state.settingsSection == sec, onTap: () => state.setSettingsSection(sec)),
-                ],
-              ),
-            ),
-          )
-        : Container(
-            width: 232,
-            padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
-            decoration: BoxDecoration(
-              color: c.panel,
-              border: Border(right: BorderSide(color: c.border)),
-            ),
+        ? DCard(
+            radius: 26,
+            padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final (sec, glyph, label) in sections)
-                  _NavItem(glyph: glyph, label: label, active: state.settingsSection == sec, onTap: () => state.setSettingsSection(sec)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 8, 8),
+                  child: Row(children: [back, const SizedBox(width: 14), title, const Spacer(), version]),
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: items),
+                ),
               ],
+            ),
+          )
+        : DCard(
+            radius: 32,
+            padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
+            child: SizedBox(
+              width: 220,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 0, 6, 18),
+                    child: Row(children: [back, const Spacer()]),
+                  ),
+                  Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 12), child: title),
+                  ...items,
+                  const Spacer(),
+                  Padding(padding: const EdgeInsets.fromLTRB(14, 12, 14, 0), child: version),
+                ],
+              ),
             ),
           );
 
+    // Rules, library and guide lay out their own cards; the short sections
+    // share one content card.
     final content = switch (state.settingsSection) {
       SettingsSection.rules => RulesPage(state: state),
       SettingsSection.library => PartLibraryPage(state: state),
@@ -98,75 +124,33 @@ class SettingsScreen extends StatelessWidget {
       ),
     };
 
-    return Container(
-      color: c.window,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: m.menuBar + 10,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: c.chrome,
-              border: Border(bottom: BorderSide(color: c.border)),
-            ),
-            child: Row(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(narrow ? 16 : 32, 12, narrow ? 16 : 32, 0),
+      child: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Hoverable(
-                  onTap: state.closeSettings,
-                  builder: (context, hover, _) => Container(
-                    height: m.iconButton + 4,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: BorderRadius.circular(6)),
-                    child: Row(
-                      children: [
-                        GlyphIcon(Glyph.back, size: 18, color: c.text),
-                        const SizedBox(width: 6),
-                        Text(s.t('btn_back'), style: TextStyle(fontSize: 13, color: c.text)),
-                      ],
-                    ),
-                  ),
-                ),
-                Container(width: 1, height: 18, margin: const EdgeInsets.symmetric(horizontal: 12), color: c.borderStrong),
-                GlyphIcon(Glyph.settings, size: 18, color: c.accent),
-                const SizedBox(width: 8),
-                Text(
-                  s.t('mod_settings'),
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.text),
-                ),
-                const Spacer(),
-                Text('SMT-FAI ${s.t('about_version', {'v': appVersion})}', style: TextStyle(fontSize: 12, color: c.textFaint)),
-                const SizedBox(width: 6),
+                nav,
+                const SizedBox(height: 16),
+                Expanded(child: content is _Section ? DCard(clip: true, child: content) : content),
+              ],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                nav,
+                const SizedBox(width: 20),
+                Expanded(child: content is _Section ? DCard(clip: true, child: content) : content),
               ],
             ),
-          ),
-          Expanded(
-            child: narrow
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      nav,
-                      Expanded(child: content),
-                    ],
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      nav,
-                      Expanded(child: content),
-                    ],
-                  ),
-          ),
-        ],
-      ),
     );
   }
 }
 
 class _NavItem extends StatelessWidget {
-  const _NavItem({required this.glyph, required this.label, required this.active, required this.onTap});
+  const _NavItem({required this.icon, required this.label, required this.active, required this.onTap});
 
-  final Glyph glyph;
+  final Lucide icon;
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -176,28 +160,28 @@ class _NavItem extends StatelessWidget {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+      padding: const EdgeInsets.all(2),
       child: Hoverable(
         onTap: onTap,
         builder: (context, hover, _) => Container(
-          height: m.touch ? 44 : 38,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: m.touch ? 46 : 42,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: active
-                ? c.accent.withValues(alpha: c.dark ? 0.16 : 0.09)
+                ? c.blueTint
                 : hover
                 ? c.hover
                 : null,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              GlyphIcon(glyph, size: 18, filled: active, color: active ? c.accent : c.textDim),
-              const SizedBox(width: 10),
+              LucideIcon(icon, size: 18, color: active ? c.blueTx : c.tx2),
+              const SizedBox(width: 12),
               Text(
                 label,
-                style: TextStyle(fontSize: 13, color: active ? c.accent : c.text, fontWeight: active ? FontWeight.w700 : FontWeight.w400),
+                style: TextStyle(fontSize: 14, color: active ? c.blueTx : c.tx, fontWeight: active ? FontWeight.w600 : FontWeight.w500),
               ),
             ],
           ),
@@ -207,7 +191,7 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-/// Scrollable content column with one titled card.
+/// Scrollable content with the section title over its settings.
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.child});
 
@@ -218,20 +202,20 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 32),
       child: Align(
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 860),
+          constraints: const BoxConstraints(maxWidth: 900),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 title,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: c.text),
+                style: TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx),
               ),
-              const SizedBox(height: 14),
-              SurfaceCard(padding: const EdgeInsets.fromLTRB(22, 18, 22, 20), child: child),
+              const SizedBox(height: 20),
+              child,
             ],
           ),
         ),
@@ -279,20 +263,13 @@ class _Appearance extends StatelessWidget {
           DropdownSelect<double>(
             value: state.settings.uiScale,
             width: 180,
-            options: [
-              (0, s.t('ui_scale_auto')),
-              for (final v in uiScaleSteps) (v, '${(v * 100).round()}%'),
-            ],
+            options: [(0, s.t('ui_scale_auto')), for (final v in uiScaleSteps) (v, '${(v * 100).round()}%')],
             onChanged: state.setUiScale,
           ),
         ),
         row(
           s.t('set_language'),
-          Segmented<String>(
-            value: state.language,
-            options: [for (final l in supportedLanguages) (l, languageNames[l]!)],
-            onChanged: state.setLanguage,
-          ),
+          Segmented<String>(value: state.language, options: [for (final l in supportedLanguages) (l, languageNames[l]!)], onChanged: state.setLanguage),
         ),
       ],
     );
@@ -487,11 +464,7 @@ class _BoardColors extends StatelessWidget {
         const SizedBox(height: 10),
         Row(
           children: [
-            Segmented<bool>(
-              value: style.depth,
-              options: [(false, s.t('render_flat')), (true, s.t('render_3d'))],
-              onChanged: state.setBoardDepth,
-            ),
+            Segmented<bool>(value: style.depth, options: [(false, s.t('render_flat')), (true, s.t('render_3d'))], onChanged: state.setBoardDepth),
           ],
         ),
         const SizedBox(height: 18),
@@ -647,7 +620,7 @@ class _Preview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final board = palette.board ?? c.window;
+    final board = palette.board ?? c.well;
     Widget chip(PartKind k, double w, double h, {bool ends = false}) {
       final body = palette.body(k);
       return Container(
@@ -672,8 +645,8 @@ class _Preview extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: board,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.borderStrong),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.line),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -781,9 +754,7 @@ class _PickerBodyState extends State<_PickerBody> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: [
-              for (final v in _presets) _Swatch(color: Color(v), size: 38, selected: _color.toARGB32() == v, onTap: () => _set(Color(v))),
-            ],
+            children: [for (final v in _presets) _Swatch(color: Color(v), size: 38, selected: _color.toARGB32() == v, onTap: () => _set(Color(v)))],
           ),
           const SizedBox(height: 16),
           Row(

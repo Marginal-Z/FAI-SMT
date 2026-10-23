@@ -52,15 +52,7 @@ class _HoverableState extends State<Hoverable> {
 
 /// Compact button with optional icon, used in toolbars and dialogs.
 class FlatButton extends StatelessWidget {
-  const FlatButton({
-    super.key,
-    this.icon,
-    required this.label,
-    this.onTap,
-    this.primary = false,
-    this.compact = false,
-    this.danger = false,
-  });
+  const FlatButton({super.key, this.icon, required this.label, this.onTap, this.primary = false, this.compact = false, this.danger = false});
 
   final IconData? icon;
   final String label;
@@ -77,17 +69,7 @@ class FlatButton extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, pressed) {
-        final bg = primary
-            ? (pressed
-                  ? c.accent.withValues(alpha: 0.8)
-                  : hover
-                  ? c.accent.withValues(alpha: 0.9)
-                  : c.accent)
-            : (pressed
-                  ? c.pressed
-                  : hover
-                  ? c.hover
-                  : c.panelAlt);
+        final bg = primary ? (hover ? c.btnHover : c.btn) : (hover ? c.glass2 : c.hover);
         final fg = !enabled
             ? c.textFaint
             : primary
@@ -95,20 +77,35 @@ class FlatButton extends StatelessWidget {
             : danger
             ? c.ng
             : c.text;
-        return Container(
-          height: compact ? m.compactControl : m.control,
-          padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 16),
-          decoration: BoxDecoration(
-            color: enabled ? bg : c.panelAlt,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: primary && enabled ? c.accent : c.borderStrong),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[Icon(icon, size: 15, color: fg), const SizedBox(width: 6)],
-              Text(label, style: TextStyle(color: fg, fontSize: 12.5)),
-            ],
+        final h = compact ? (m.touch ? 36.0 : 32.0) : (m.touch ? 44.0 : 40.0);
+        return AnimatedScale(
+          scale: pressed && enabled ? 0.97 : 1,
+          duration: const Duration(milliseconds: 150),
+          child: Opacity(
+            opacity: enabled || !primary ? 1 : 0.4,
+            child: Container(
+              height: h,
+              padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(h / 2),
+                boxShadow: primary && enabled ? const [BoxShadow(color: Color(0x4D0071E3), offset: Offset(0, 6), blurRadius: 16)] : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[Icon(icon, size: 15, color: fg), const SizedBox(width: 6)],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: primary ? const Color(0xFFFFFFFF) : fg,
+                      fontSize: compact ? 13 : 14,
+                      fontWeight: primary ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -141,13 +138,11 @@ class IconBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? c.selected
-              : pressed
-              ? c.pressed
+              ? c.blueTint
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(size / 2),
         ),
         child: Icon(
           icon,
@@ -165,16 +160,7 @@ class IconBtn extends StatelessWidget {
 
 /// Underlined tab used for ribbon tabs and workspace tabs.
 class TabItem extends StatelessWidget {
-  const TabItem({
-    super.key,
-    required this.label,
-    required this.active,
-    required this.onTap,
-    this.icon,
-    this.count,
-    this.color,
-    this.dense = false,
-  });
+  const TabItem({super.key, required this.label, required this.active, required this.onTap, this.icon, this.count, this.color, this.dense = false});
 
   final String label;
   final bool active;
@@ -239,12 +225,8 @@ class RefChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: soft,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.7)),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(9)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -253,7 +235,7 @@ class RefChip extends StatelessWidget {
             height: 5,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Text(
             text,
             style: TextStyle(
@@ -281,18 +263,13 @@ class ResultBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFFFFFFFF)),
-          const SizedBox(width: 5),
-          Text(
-            text,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFFFFFFF)),
-          ),
-        ],
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(13)),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.24, color: color),
       ),
     );
   }
@@ -300,16 +277,7 @@ class ResultBadge extends StatelessWidget {
 
 /// Single- or multi-line text input built on [EditableText].
 class TextInput extends StatefulWidget {
-  const TextInput({
-    super.key,
-    required this.controller,
-    this.hint,
-    this.maxLines = 1,
-    this.onChanged,
-    this.prefix,
-    this.mono = false,
-    this.width,
-  });
+  const TextInput({super.key, required this.controller, this.hint, this.maxLines = 1, this.onChanged, this.prefix, this.mono = false, this.width});
 
   final TextEditingController controller;
   final String? hint;
@@ -353,12 +321,12 @@ class _TextInputState extends State<TextInput> {
         cursor: SystemMouseCursors.text,
         child: Container(
           width: widget.width,
-          height: multi ? null : Metrics.of(context).compactControl + 2,
-          padding: EdgeInsets.symmetric(horizontal: 8, vertical: multi ? 6 : 0),
+          height: multi ? null : (Metrics.of(context).touch ? 40 : 36),
+          padding: EdgeInsets.symmetric(horizontal: multi ? 14 : 14, vertical: multi ? 10 : 0),
           decoration: BoxDecoration(
-            color: c.input,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: _focus.hasFocus ? c.accent : c.borderStrong, width: _focus.hasFocus ? 1.5 : 1),
+            color: c.hover,
+            borderRadius: BorderRadius.circular(multi ? 16 : 18),
+            border: Border.all(color: _focus.hasFocus ? c.blue : const Color(0x00000000), width: 2),
           ),
           child: Row(
             crossAxisAlignment: multi ? CrossAxisAlignment.start : CrossAxisAlignment.center,
@@ -484,39 +452,34 @@ class Segmented<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     return Container(
-      height: Metrics.of(context).compactControl + 2,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: c.borderStrong),
-        color: c.input,
-      ),
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: c.hover, borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (var i = 0; i < options.length; i++)
+          for (var i = 0; i < options.length; i++) ...[
+            if (i > 0) const SizedBox(width: 2),
             Hoverable(
               onTap: () => onChanged(options[i].$1),
               builder: (context, hover, _) {
                 final on = options[i].$1 == value;
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  height: Metrics.of(context).touch ? 36 : 32,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: on
-                        ? c.accent.withValues(alpha: c.dark ? 0.22 : 0.12)
-                        : hover
-                        ? c.hover
-                        : null,
-                    border: i == 0 ? null : Border(left: BorderSide(color: c.borderStrong)),
+                    color: on ? c.solid : (hover ? c.hover : null),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: on ? const [BoxShadow(color: Color(0x1A000000), offset: Offset(0, 2), blurRadius: 8)] : null,
                   ),
                   child: Text(
                     options[i].$2,
-                    style: TextStyle(fontSize: 12.5, color: on ? c.accent : c.textDim, fontWeight: on ? FontWeight.w700 : FontWeight.w500),
+                    style: TextStyle(fontSize: 13, color: on ? c.blueTx : c.tx2, fontWeight: on ? FontWeight.w600 : FontWeight.w500),
                   ),
                 );
               },
             ),
+          ],
         ],
       ),
     );
@@ -609,17 +572,12 @@ class ThinScrollbar extends StatelessWidget {
 }
 
 /// Shows a modal dialog with a flat frame.
-Future<T?> showAppDialog<T>(
-  BuildContext context, {
-  required String title,
-  required Widget Function(BuildContext) body,
-  double width = 520,
-}) {
+Future<T?> showAppDialog<T>(BuildContext context, {required String title, required Widget Function(BuildContext) body, double width = 520}) {
   return showGeneralDialog<T>(
     context: context,
     barrierDismissible: true,
     barrierLabel: title,
-    barrierColor: const Color(0x66000000),
+    barrierColor: const Color(0x52000000),
     transitionDuration: const Duration(milliseconds: 90),
     pageBuilder: (ctx, a1, a2) {
       final c = AppTheme.of(context);
@@ -633,29 +591,23 @@ Future<T?> showAppDialog<T>(
               child: Container(
                 width: width.clamp(0, MediaQuery.sizeOf(ctx).width - 24).toDouble(),
                 constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height - 48),
-                decoration: BoxDecoration(
-                  color: c.panel,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: c.borderStrong),
-                  boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 28, offset: Offset(0, 10))],
-                ),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(26), boxShadow: c.shadow),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(
-                      height: Metrics.of(context).touch ? 46 : 40,
-                      padding: const EdgeInsets.only(left: 16, right: 6),
-                      decoration: BoxDecoration(
-                        color: c.panelAlt,
-                        border: Border(bottom: BorderSide(color: c.border)),
-                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 18, 14, 4),
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            child: Text(
+                              title,
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: c.tx),
+                            ),
                           ),
-                          IconBtn(icon: Ic.x, onTap: () => Navigator.of(ctx).pop()),
+                          IconBtn(icon: Ic.x, size: 32, onTap: () => Navigator.of(ctx).pop()),
                         ],
                       ),
                     ),
@@ -672,14 +624,7 @@ Future<T?> showAppDialog<T>(
 }
 
 /// Simple message / confirm dialog. Returns true when confirmed.
-Future<bool> showMessage(
-  BuildContext context, {
-  required String title,
-  required String message,
-  required String ok,
-  String? cancel,
-  bool error = false,
-}) async {
+Future<bool> showMessage(BuildContext context, {required String title, required String message, required String ok, String? cancel, bool error = false}) async {
   final r = await showAppDialog<bool>(
     context,
     title: title,
@@ -687,7 +632,7 @@ Future<bool> showMessage(
     body: (ctx) {
       final c = AppTheme.of(context);
       return Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -695,9 +640,14 @@ Future<bool> showMessage(
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(width: 3, height: 18, color: error ? c.ng : c.accent, margin: const EdgeInsets.only(right: 10, top: 1)),
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(right: 12, top: 7),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: error ? c.ngSolid : c.blue),
+                ),
                 Expanded(
-                  child: Text(message, style: TextStyle(color: c.text)),
+                  child: Text(message, style: TextStyle(color: c.text, fontSize: 14, height: 1.55)),
                 ),
               ],
             ),
@@ -833,21 +783,35 @@ class PageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, m.touch ? 14 : 12, 16, m.touch ? 14 : 12),
-      decoration: BoxDecoration(color: c.panel, border: Border(bottom: BorderSide(color: c.border))),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.text, letterSpacing: 0.2)),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.textFaint)),
-            ],
-          ]),
-        ),
-        for (final t in trailing) ...[const SizedBox(width: 8), t],
-      ]),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(8, m.touch ? 8 : 4, 0, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 30, height: 1.15, fontWeight: FontWeight.w700, color: c.text, letterSpacing: -0.84),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, color: c.textDim),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          for (final t in trailing) ...[const SizedBox(width: 8), t],
+        ],
+      ),
     );
   }
 }
@@ -866,10 +830,10 @@ class SurfaceCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: c.panel,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: borderColor ?? c.border),
-        boxShadow: [BoxShadow(color: c.dark ? const Color(0x22000000) : const Color(0x0D101828), blurRadius: 10, offset: const Offset(0, 2))],
+        color: c.card,
+        borderRadius: BorderRadius.circular(26),
+        border: borderColor == null ? null : Border.all(color: borderColor!),
+        boxShadow: c.shadow,
       ),
       child: child,
     );
@@ -889,12 +853,15 @@ String formatTime(DateTime t) {
 
 /// Compact select box that opens a list below it.
 class DropdownSelect<T> extends StatefulWidget {
-  const DropdownSelect({super.key, required this.value, required this.options, required this.onChanged, this.width = 150});
+  const DropdownSelect({super.key, required this.value, required this.options, required this.onChanged, this.width = 150, this.flat = false});
 
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T> onChanged;
   final double width;
+
+  /// Inside a card: hover tint, no glass shadow.
+  final bool flat;
 
   @override
   State<DropdownSelect<T>> createState() => _DropdownSelectState<T>();
@@ -913,79 +880,92 @@ class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
       link: _link,
       child: OverlayPortal(
         controller: _portal,
-        overlayChildBuilder: (_) => Stack(children: [
-          Positioned.fill(child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _portal.hide)),
-          CompositedTransformFollower(
-            link: _link,
-            targetAnchor: Alignment.bottomLeft,
-            offset: const Offset(0, 4),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: AppTheme(
-                colors: c,
-                child: DefaultTextStyle(
-                  style: baseTextStyle(c),
-                  child: Container(
-                    width: widget.width,
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    decoration: BoxDecoration(
-                      color: c.panel,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: c.borderStrong),
-                      boxShadow: const [BoxShadow(color: Color(0x2E000000), blurRadius: 16, offset: Offset(0, 6))],
-                    ),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      for (final (v, label) in widget.options)
-                        Hoverable(
-                          onTap: () {
-                            _portal.hide();
-                            widget.onChanged(v);
-                          },
-                          builder: (context, hover, _) => Container(
-                            height: m.touch ? 40 : 32,
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            decoration: BoxDecoration(
-                              color: v == widget.value
-                                  ? c.accent.withValues(alpha: 0.1)
-                                  : hover
+        overlayChildBuilder: (_) => Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _portal.hide),
+            ),
+            CompositedTransformFollower(
+              link: _link,
+              targetAnchor: Alignment.bottomLeft,
+              offset: const Offset(0, 6),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: AppTheme(
+                  colors: c,
+                  child: DefaultTextStyle(
+                    style: baseTextStyle(c),
+                    child: Container(
+                      width: widget.width < 150 ? 150 : widget.width,
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(18), boxShadow: c.shadow),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final (v, label) in widget.options)
+                            Hoverable(
+                              onTap: () {
+                                _portal.hide();
+                                widget.onChanged(v);
+                              },
+                              builder: (context, hover, _) => Container(
+                                height: m.touch ? 40 : 36,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                alignment: Alignment.centerLeft,
+                                decoration: BoxDecoration(
+                                  color: v == widget.value
+                                      ? c.blueTint
+                                      : hover
                                       ? c.hover
                                       : null,
-                              borderRadius: BorderRadius.circular(5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: v == widget.value ? c.blueTx : c.text,
+                                    fontWeight: v == widget.value ? FontWeight.w600 : FontWeight.w400,
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: Text(label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: v == widget.value ? c.accent : c.text,
-                                  fontWeight: v == widget.value ? FontWeight.w600 : FontWeight.w400,
-                                )),
-                          ),
-                        ),
-                    ]),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
         child: Hoverable(
           onTap: _portal.toggle,
           builder: (context, hover, _) => Container(
             width: widget.width,
-            height: m.compactControl + 4,
-            padding: const EdgeInsets.only(left: 12, right: 8),
+            height: m.touch ? 44 : 40,
+            padding: const EdgeInsets.only(left: 16, right: 14),
             decoration: BoxDecoration(
-              color: c.input,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: hover ? c.textFaint : c.borderStrong),
+              color: widget.flat ? (hover ? Color.alphaBlend(c.hover, c.hover) : c.hover) : (hover ? c.glass2 : c.glass),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: widget.flat ? null : c.shadowSm,
             ),
-            child: Row(children: [
-              Expanded(child: Text(current.$2, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: c.text))),
-              CustomPaint(size: const Size(10, 10), painter: _DownCaret(c.textDim)),
-            ]),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    current.$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: c.text),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                CustomPaint(size: const Size(10, 10), painter: _DownCaret(c.textDim)),
+              ],
+            ),
           ),
         ),
       ),
@@ -1038,23 +1018,41 @@ class PageBanner extends StatelessWidget {
         border: Border.all(color: c.border),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        Positioned(right: 0, top: 0, bottom: 0, width: 420, child: CustomPaint(painter: _CircuitArt(c.accent, c.dark))),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Row(children: [
-            if (leading != null) ...[leading!, const SizedBox(width: 18)],
-            Expanded(
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: c.text, letterSpacing: 0.3)),
-                const SizedBox(height: 6),
-                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: c.textDim)),
-              ]),
+      child: Stack(
+        children: [
+          Positioned(right: 0, top: 0, bottom: 0, width: 420, child: CustomPaint(painter: _CircuitArt(c.accent, c.dark))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Row(
+              children: [
+                if (leading != null) ...[leading!, const SizedBox(width: 18)],
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: c.text, letterSpacing: 0.3),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: c.textDim),
+                      ),
+                    ],
+                  ),
+                ),
+                ?trailing,
+              ],
             ),
-            ?trailing,
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }

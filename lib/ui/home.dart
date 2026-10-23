@@ -1,20 +1,19 @@
-/// Main window: title bar with module tabs, the module's ribbon, the module
-/// page and the status bar. Each ribbon tab owns exactly one page.
+/// Main window: header with the module navigation, the module page (or
+/// Settings) and the footer, on the design's mesh background.
 library;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
-import '../core/models.dart';
-import '../l10n/strings.dart';
 import 'actions.dart';
 import 'board_view.dart';
 import 'cad_view.dart';
 import 'check_view.dart';
 import 'files_page.dart';
-import 'ribbon.dart';
+import 'design.dart';
 import 'settings_page.dart';
+import 'shell.dart';
 import 'theme.dart';
 import 'tour.dart';
 
@@ -55,88 +54,30 @@ class HomeWindow extends StatelessWidget {
   }
 
   Widget _body(AppColors c) {
-    return state.settingsOpen
-            ? SettingsScreen(state: state)
-            : state.module == Module.board && state.boardFullscreen
-            ? BoardView(state: state, immersive: true)
-            : Container(
-                color: c.window,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TitleBar(state: state),
-                    Ribbon(state: state),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, box) {
-                          final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
-                          return switch (state.module) {
-                            Module.files => FilesPage(state: state),
-                            Module.check => CheckView(state: state, cards: compact),
-                            Module.cad => CadView(state: state, compact: compact),
-                            Module.board => BoardView(state: state),
-                          };
-                        },
-                      ),
-                    ),
-                    _StatusBar(state: state),
-                  ],
-                ),
-              );
-  }
-}
-
-class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.state});
-
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final m = Metrics.of(context);
-    final s = Strings.of(context);
-    final ng = state.report?.count(CheckCategory.ng);
-    final wide = MediaQuery.sizeOf(context).width >= 1100 && !m.touch;
-    final files = [state.bom, state.stationA, state.stationB, state.coords].where((f) => f != null).length;
-    return Container(
-      height: m.statusBar,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: c.chrome,
-        border: Border(top: BorderSide(color: c.border)),
-      ),
-      child: Row(
+    if (state.module == Module.board && state.boardFullscreen && !state.settingsOpen) {
+      return MeshBackground(child: BoardView(state: state, immersive: true));
+    }
+    return MeshBackground(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: state.report == null
-                  ? c.textFaint
-                  : (ng ?? 0) > 0
-                  ? c.ng
-                  : c.pass,
-            ),
-          ),
-          const SizedBox(width: 8),
+          AppHeader(state: state),
           Expanded(
-            child: Text(
-              s.t(state.statusKey, state.statusArgs),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: c.textDim),
-            ),
+            child: state.settingsOpen
+                ? SettingsScreen(state: state)
+                : LayoutBuilder(
+                    builder: (context, box) {
+                      final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
+                      return switch (state.module) {
+                        Module.files => FilesPage(state: state),
+                        Module.check => CheckView(state: state, cards: compact),
+                        Module.cad => CadView(state: state, compact: compact),
+                        Module.board => BoardView(state: state),
+                      };
+                    },
+                  ),
           ),
-          Text('${s.t('mod_files')} $files/4', style: TextStyle(fontSize: 11.5, color: c.textFaint)),
-          if (wide) ...[
-            const SizedBox(width: 18),
-            Text(
-              'F5 ${s.t('btn_run')}    Ctrl+E ${s.t('btn_export_report')}    Ctrl+G ${s.t('btn_gen_cad')}',
-              style: TextStyle(fontSize: 11.5, color: c.textFaint),
-            ),
-          ],
+          AppFooter(state: state),
         ],
       ),
     );

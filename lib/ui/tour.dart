@@ -220,12 +220,11 @@ class _TourOverlayState extends State<TourOverlay> {
               top: pos.dy,
               width: cardW,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
                 decoration: BoxDecoration(
-                  color: c.panel,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: c.borderStrong),
-                  boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 24, offset: Offset(0, 8))],
+                  color: c.solid,
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 48, offset: Offset(0, 18))],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -239,7 +238,7 @@ class _TourOverlayState extends State<TourOverlay> {
                             child: Container(
                               height: 3,
                               margin: const EdgeInsets.only(right: 2),
-                              decoration: BoxDecoration(color: i <= step ? c.accent : c.border, borderRadius: BorderRadius.circular(2)),
+                              decoration: BoxDecoration(color: i <= step ? c.blue : c.track, borderRadius: BorderRadius.circular(2)),
                             ),
                           ),
                       ],
@@ -257,14 +256,14 @@ class _TourOverlayState extends State<TourOverlay> {
                         Expanded(
                           child: Text(
                             s.t('tour_${_steps[step].key}_title'),
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.text),
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: c.tx),
                           ),
                         ),
                         Text('${step + 1} / ${_steps.length}', style: TextStyle(fontSize: 12, color: c.textFaint)),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(s.t('tour_${_steps[step].key}_body'), style: TextStyle(fontSize: 13, color: c.textDim, height: 1.55)),
+                    Text(s.t('tour_${_steps[step].key}_body'), style: TextStyle(fontSize: 14, color: c.tx2, height: 1.55)),
                     const SizedBox(height: 16),
                     Row(
                       children: [
