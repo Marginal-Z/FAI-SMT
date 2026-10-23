@@ -180,6 +180,10 @@ class CheckRow {
   final List<String> slots;
   final List<Reason> reasons;
 
+  /// Identity of the row's content, used to keep a manual confirmation
+  /// across re-checks while the result stays the same.
+  String get key => '${category.name}|$partNo|${bomRefs.map((m) => m.ref).join(',')}|${smtRefs.map((m) => m.ref).join(',')}';
+
   /// Same row turned NG with extra reasons.
   CheckRow asNg(List<Reason> extra) => CheckRow(
         category: CheckCategory.ng,
@@ -194,6 +198,14 @@ class CheckRow {
         slots: slots,
         reasons: [...reasons, ...extra],
       );
+}
+
+/// Operator sign-off on a check result.
+class ManualCheck {
+  const ManualCheck(this.at, {this.note = ''});
+
+  final DateTime at;
+  final String note;
 }
 
 /// Per-designator merged record used to build the CAD file.

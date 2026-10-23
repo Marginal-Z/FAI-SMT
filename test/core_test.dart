@@ -2,6 +2,8 @@ import 'dart:ffi' show Abi;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smt_fai/app_state.dart';
+import 'package:smt_fai/core/board_layout.dart';
 import 'package:smt_fai/core/checker.dart';
 import 'package:smt_fai/core/discrepancies.dart';
 import 'package:smt_fai/core/footprints.dart';
@@ -181,6 +183,40 @@ void main() {
       expect(merged.rows[1][0], 'R1');
     });
 
+    test('confirmations go to the report and survive a re-check', () {
+      final state = AppState(AppSettings(), Directory.systemTemp.path);
+      final report = runCheck(
+          [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])],
+          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])],
+          CheckRules());
+      state.report = report;
+      state.setConfirmed(report.rows, true);
+      state.setConfirmNote(report.rows.first, 'ok by QA');
+      expect(state.confirmedCount(CheckCategory.pass), 1);
+      // Same content in a new report keeps the sign-off.
+      final again = runCheck(
+          [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])],
+          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])],
+          CheckRules());
+      state.report = again;
+      expect(state.confirmationOf(again.rows.first)?.note, 'ok by QA');
+      final bytes = exportCheckWorkbook(
+          again,
+          ExportLabels(
+            sheetCheck: 'Check',
+            sheetMerged: 'Merged',
+            checkHeaders: List.generate(14, (i) => 'h$i'),
+            mergedHeaders: List.generate(7, (i) => 'm$i'),
+            category: (c) => c.name,
+            reason: (r) => r.code,
+            side: (s) => s?.name ?? '',
+          ),
+          confirmations: state.confirmations);
+      final check = readTableBytes(bytes, 'x.xlsx').firstWhere((g) => g.name == 'Check');
+      expect(check.rows[1][12], isNotEmpty);
+      expect(check.rows[1][13], 'ok by QA');
+    });
+
     test('every string has zh, en and th text', () {
       for (final k in Texts.keys) {
         for (final lang in supportedLanguages) {
@@ -288,6 +324,36 @@ void main() {
       expect(shapeOf('1Q2', footprint: 'SOT23').kind, PartKind.transistor);
       expect(shapeOf('MARK1').kind, PartKind.fiducial);
       expect(shapeOf('TP10_1').kind, PartKind.testPoint);
+    });
+  });
+
+  group('body fitting', () {
+    test('neighbours shrink apart, centres stay, stacked alternates are left', () {
+      final f = fitBodies(const [
+        // Two estimated test points 0.5 mm apart (1.2 mm default bodies).
+        BodyBox(x: 0, y: 0, rotation: 0, width: 1.2, height: 1.2, side: 1),
+        BodyBox(x: 0.5, y: 0, rotation: 0, width: 1.2, height: 1.2, side: 1),
+        // Same spot on the other side: never compared with the first two.
+        BodyBox(x: 0, y: 0, rotation: 0, width: 3, height: 3, side: 2),
+        // Alternate footprints sharing one spot.
+        BodyBox(x: 10, y: 10, rotation: 0, width: 4, height: 4, side: 1),
+        BodyBox(x: 10.1, y: 10.3, rotation: 0, width: 3, height: 2, side: 1, exact: true),
+      ]);
+      // The pair along X now fits: 0.6 * w0 + 0.6 * w1 <= 0.5 - gap.
+      expect(0.6 * f[0].$1 + 0.6 * f[1].$1, lessThanOrEqualTo(0.5));
+      expect(f[0].$2, 1.0);
+      expect(f[2], (1.0, 1.0));
+      expect(f[3], (1.0, 1.0));
+      expect(f[4], (1.0, 1.0));
+    });
+
+    test('an estimated body gives way to a package-code body', () {
+      final f = fitBodies(const [
+        BodyBox(x: 0, y: 0, rotation: 0, width: 4, height: 4, side: 1),
+        BodyBox(x: 2.1, y: 0, rotation: 90, width: 1.0, height: 0.5, side: 1, exact: true),
+      ]);
+      expect(f[1], (1.0, 1.0));
+      expect(f[0].$1, lessThan(1));
     });
   });
 

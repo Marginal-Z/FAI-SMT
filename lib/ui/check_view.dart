@@ -58,6 +58,8 @@ class _Details extends _Entry {
 
 enum _SideFilter { all, a, b, both }
 
+enum _ConfirmFilter { all, yes, no }
+
 class _CheckViewState extends State<CheckView> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
@@ -66,6 +68,7 @@ class _CheckViewState extends State<CheckView> {
   /// Result-area filter; null shows every area.
   CheckCategory? _area = CheckCategory.pass;
   _SideFilter _side = _SideFilter.all;
+  _ConfirmFilter _confirm = _ConfirmFilter.all;
   CheckRow? _expanded;
 
   @override
@@ -108,6 +111,12 @@ class _CheckViewState extends State<CheckView> {
     _SideFilter.a => r.sides.length == 1 && r.sides.contains(StationSide.a),
     _SideFilter.b => r.sides.length == 1 && r.sides.contains(StationSide.b),
     _SideFilter.both => r.sides.length == 2,
+  };
+
+  bool _confirmMatches(CheckRow r) => switch (_confirm) {
+    _ConfirmFilter.all => true,
+    _ConfirmFilter.yes => widget.state.confirmationOf(r) != null,
+    _ConfirmFilter.no => widget.state.confirmationOf(r) == null,
   };
 
   @override
@@ -209,6 +218,7 @@ class _CheckViewState extends State<CheckView> {
           glyph: glyph,
           count: report.count(cat),
           total: total,
+          confirmed: state.confirmedCount(cat),
           color: c.category(cat),
           active: !showDiscrepancies && _area == cat,
           onTap: () => _setArea(_area == cat ? null : cat),
@@ -264,7 +274,7 @@ class _CheckViewState extends State<CheckView> {
       );
     }
 
-    final visible = state.visibleRows().where(_sideMatches).toList();
+    final visible = state.visibleRows().where((r) => _sideMatches(r) && _confirmMatches(r)).toList();
     final entries = <_Entry>[];
     var shown = 0;
     for (final cat in _areaOrder) {
@@ -277,49 +287,91 @@ class _CheckViewState extends State<CheckView> {
       }
     }
     final showReason = _area != CheckCategory.pass;
+    final listed = [for (final e in entries) if (e is _Row) e.row];
+    final allConfirmed = listed.isNotEmpty && listed.every((r) => state.confirmationOf(r) != null);
 
+    final search = TextInput(controller: _search, hint: s.t('search_hint_fuzzy'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch);
+    Widget labelled(String label, Widget child) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: TextStyle(fontSize: 13, color: c.textDim)),
+        const SizedBox(width: 8),
+        child,
+      ],
+    );
+    final dropdowns = [
+      labelled(
+        s.t('col_side'),
+        DropdownSelect<_SideFilter>(
+          value: _side,
+          width: 130,
+          options: [
+            (_SideFilter.all, s.t('opt_all')),
+            (_SideFilter.a, s.t('side_a')),
+            (_SideFilter.b, s.t('side_b')),
+            (_SideFilter.both, 'A+B'),
+          ],
+          onChanged: (v) => setState(() => _side = v),
+        ),
+      ),
+      labelled(
+        s.t('col_result'),
+        DropdownSelect<CheckCategory?>(
+          value: _area,
+          width: 140,
+          options: [(null, s.t('opt_all')), for (final cat in _areaOrder) (cat, _areaLabel(s, cat))],
+          onChanged: _setArea,
+        ),
+      ),
+      labelled(
+        s.t('confirm_filter'),
+        DropdownSelect<_ConfirmFilter>(
+          value: _confirm,
+          width: 120,
+          options: [
+            (_ConfirmFilter.all, s.t('opt_all')),
+            (_ConfirmFilter.yes, s.t('confirm_yes')),
+            (_ConfirmFilter.no, s.t('confirm_no')),
+          ],
+          onChanged: (v) => setState(() => _confirm = v),
+        ),
+      ),
+    ];
+    final count = Text(s.t('check_total', {'n': shown}), style: TextStyle(fontSize: 12.5, color: c.textDim));
+    // Narrow screens: search on its own line above the filters.
     final filters = Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: TextInput(controller: _search, hint: s.t('search_hint_fuzzy'), prefix: Ic.magnifyingGlass, onChanged: state.setSearch),
-          ),
-          const SizedBox(width: 20),
-          Text(s.t('col_side'), style: TextStyle(fontSize: 13, color: c.textDim)),
-          const SizedBox(width: 8),
-          DropdownSelect<_SideFilter>(
-            value: _side,
-            width: 130,
-            options: [
-              (_SideFilter.all, s.t('opt_all')),
-              (_SideFilter.a, s.t('side_a')),
-              (_SideFilter.b, s.t('side_b')),
-              (_SideFilter.both, 'A+B'),
-            ],
-            onChanged: (v) => setState(() => _side = v),
-          ),
-          const SizedBox(width: 20),
-          Text(s.t('col_result'), style: TextStyle(fontSize: 13, color: c.textDim)),
-          const SizedBox(width: 8),
-          DropdownSelect<CheckCategory?>(
-            value: _area,
-            width: 140,
-            options: [(null, s.t('opt_all')), for (final cat in _areaOrder) (cat, _areaLabel(s, cat))],
-            onChanged: _setArea,
-          ),
-          const Spacer(flex: 2),
-          Text(s.t('check_total', {'n': shown}), style: TextStyle(fontSize: 12.5, color: c.textDim)),
-        ],
-      ),
+      child: widget.cards
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                search,
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Wrap(spacing: 16, runSpacing: 8, children: dropdowns),
+                    ),
+                    count,
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(flex: 3, child: search),
+                for (final d in dropdowns) ...[const SizedBox(width: 20), d],
+                const Spacer(flex: 2),
+                count,
+              ],
+            ),
     );
 
     Widget body;
     if (entries.isEmpty) {
       body = EmptyState(
         icon: Ic.funnel,
-        text: s.t(state.search.trim().isNotEmpty || _side != _SideFilter.all ? 'empty_filter' : 'area_empty'),
+        text: s.t(state.search.trim().isNotEmpty || _side != _SideFilter.all || _confirm != _ConfirmFilter.all ? 'empty_filter' : 'area_empty'),
       );
     } else {
       bool lastAt(int i) => i + 1 >= entries.length;
@@ -331,7 +383,15 @@ class _CheckViewState extends State<CheckView> {
           _Row(:final row, :final index, :final first) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (first) (!widget.cards ? _ColumnHeader(reason: showReason) : Container(height: 1, color: c.border)),
+              if (first)
+                (!widget.cards
+                    ? _ColumnHeader(
+                        reason: showReason,
+                        allConfirmed: allConfirmed,
+                        listed: listed.length,
+                        onConfirmAll: () => state.setConfirmed(listed, !allConfirmed),
+                      )
+                    : Container(height: 1, color: c.border)),
               _ResultRow(
                 row: row,
                 index: index,
@@ -339,11 +399,13 @@ class _CheckViewState extends State<CheckView> {
                 cards: widget.cards,
                 last: lastAt(i),
                 showReason: showReason,
+                confirmed: state.confirmationOf(row) != null,
+                onConfirm: () => state.setConfirmed([row], state.confirmationOf(row) == null),
                 onTap: () => _toggleRow(row),
               ),
             ],
           ),
-          _Details(:final row) => _RowDetails(row: row, last: lastAt(i)),
+          _Details(:final row) => _RowDetails(key: ValueKey(row.key), row: row, state: state, last: lastAt(i)),
         },
       );
       body = widget.cards
@@ -387,6 +449,7 @@ class _AreaCard extends StatelessWidget {
     required this.onTap,
     required this.count,
     this.total,
+    this.confirmed = 0,
     this.active = false,
     this.chevron = false,
   });
@@ -399,6 +462,9 @@ class _AreaCard extends StatelessWidget {
 
   /// When set, a share bar and percentage are drawn.
   final int? total;
+
+  /// Rows of this area confirmed by an operator.
+  final int confirmed;
   final bool active;
   final bool chevron;
 
@@ -477,6 +543,22 @@ class _AreaCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (confirmed > 0)
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(6, 2, 8, 2),
+                    decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GlyphIcon(Glyph.okCircle, size: 13, filled: true, color: c.accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          Strings.of(context).t('confirm_count', {'n': confirmed}),
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.accent),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (chevron) GlyphIcon(Glyph.chevronRight, size: 16, color: c.textFaint),
               ],
             ),
@@ -510,9 +592,9 @@ class _AreaCard extends StatelessWidget {
   }
 }
 
-const _minWidth = 1000.0;
+const _minWidth = 1100.0;
 
-enum _Col { no, pn, desc, bom, smt, refs, side, reason, result }
+enum _Col { no, pn, desc, bom, smt, refs, side, reason, confirm, result }
 
 /// Fixed width or flex weight per column.
 const _colSpec = {
@@ -524,6 +606,7 @@ const _colSpec = {
   _Col.refs: (0.0, 5),
   _Col.side: (64.0, 0),
   _Col.reason: (0.0, 4),
+  _Col.confirm: (126.0, 0),
   _Col.result: (112.0, 0),
 };
 
@@ -543,9 +626,14 @@ Widget _cell(_Col col, Widget child, {Alignment align = Alignment.centerLeft}) {
 }
 
 class _ColumnHeader extends StatelessWidget {
-  const _ColumnHeader({required this.reason});
+  const _ColumnHeader({required this.reason, required this.allConfirmed, required this.listed, required this.onConfirmAll});
 
   final bool reason;
+
+  /// Every listed row is confirmed; the confirm header toggles them all.
+  final bool allConfirmed;
+  final int listed;
+  final VoidCallback onConfirmAll;
 
   @override
   Widget build(BuildContext context) {
@@ -561,6 +649,7 @@ class _ColumnHeader extends StatelessWidget {
       _Col.refs: s.t('col_bom_refs'),
       _Col.side: s.t('col_side'),
       _Col.reason: s.t('col_reason'),
+      _Col.confirm: s.t('col_confirm'),
       _Col.result: s.t('col_result'),
     };
     return Container(
@@ -576,9 +665,29 @@ class _ColumnHeader extends StatelessWidget {
           for (final col in _columns(reason: reason))
             _cell(
               col,
-              Text(labels[col]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+              col == _Col.confirm
+                  ? Hoverable(
+                      onTap: onConfirmAll,
+                      tooltip: allConfirmed ? s.t('confirm_none_visible') : s.t('confirm_all_visible', {'n': listed}),
+                      builder: (context, hover, _) => Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GlyphIcon(
+                            Glyph.okCircle,
+                            size: 15,
+                            filled: allConfirmed,
+                            color: allConfirmed || hover ? c.accent : c.textFaint,
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(labels[col]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style.copyWith(color: hover ? c.accent : null)),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Text(labels[col]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
               align: switch (col) {
-                _Col.bom || _Col.smt => Alignment.center,
+                _Col.bom || _Col.smt || _Col.confirm => Alignment.center,
                 _Col.result => Alignment.centerRight,
                 _ => Alignment.centerLeft,
               },
@@ -598,6 +707,8 @@ class _ResultRow extends StatelessWidget {
     required this.cards,
     required this.last,
     required this.onTap,
+    required this.confirmed,
+    required this.onConfirm,
     this.showReason = true,
   });
 
@@ -607,6 +718,8 @@ class _ResultRow extends StatelessWidget {
   final bool cards;
   final bool last;
   final VoidCallback onTap;
+  final bool confirmed;
+  final VoidCallback onConfirm;
 
   /// Whether the table has a reason column.
   final bool showReason;
@@ -657,6 +770,8 @@ class _ResultRow extends StatelessWidget {
                       style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: c.text),
                     ),
                   ),
+                  _ConfirmToggle(confirmed: confirmed, onTap: onConfirm),
+                  const SizedBox(width: 8),
                   _CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
                 ],
               ),
@@ -713,6 +828,7 @@ class _ResultRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 13, color: reasonColor),
               ),
+      _Col.confirm => _ConfirmToggle(confirmed: confirmed, onTap: onConfirm),
       _Col.result => _CategoryBadge(category: row.category, label: categoryLabel(s, row.category)),
     };
     return Hoverable(
@@ -735,11 +851,57 @@ class _ResultRow extends StatelessWidget {
                 col,
                 content(col),
                 align: switch (col) {
-                  _Col.bom || _Col.smt => Alignment.center,
+                  _Col.bom || _Col.smt || _Col.confirm => Alignment.center,
                   _Col.result => Alignment.centerRight,
                   _ => Alignment.centerLeft,
                 },
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Per-row manual confirmation switch.
+class _ConfirmToggle extends StatelessWidget {
+  const _ConfirmToggle({required this.confirmed, required this.onTap});
+
+  final bool confirmed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    return Hoverable(
+      onTap: onTap,
+      tooltip: confirmed ? s.t('confirm_undo') : null,
+      builder: (context, hover, _) => Container(
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: confirmed
+              ? c.accent.withValues(alpha: hover ? 0.2 : 0.13)
+              : hover
+              ? c.hover
+              : null,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: confirmed ? c.accent.withValues(alpha: 0.55) : (hover ? c.borderStrong : c.border)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GlyphIcon(Glyph.okCircle, size: 15, filled: confirmed, color: confirmed ? c.accent : c.textFaint),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                confirmed ? s.t('confirm_done') : s.t('confirm_btn'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: confirmed ? c.accent : c.textDim),
+              ),
+            ),
           ],
         ),
       ),
@@ -784,14 +946,32 @@ class _RefLine extends StatelessWidget {
 }
 
 /// Full designator lists, loaded part numbers and reasons with explanations.
-class _RowDetails extends StatelessWidget {
-  const _RowDetails({required this.row, required this.last});
+class _RowDetails extends StatefulWidget {
+  const _RowDetails({super.key, required this.row, required this.state, required this.last});
 
   final CheckRow row;
+  final AppState state;
   final bool last;
 
   @override
+  State<_RowDetails> createState() => _RowDetailsState();
+}
+
+class _RowDetailsState extends State<_RowDetails> {
+  late final _note = TextEditingController(text: widget.state.confirmationOf(widget.row)?.note ?? '');
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final row = widget.row;
+    final last = widget.last;
+    final state = widget.state;
+    final confirmation = state.confirmationOf(row);
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     Widget label(String t) => Padding(
@@ -904,6 +1084,44 @@ class _RowDetails extends StatelessWidget {
                 ),
               ),
           ],
+          const SizedBox(height: 14),
+          label(s.t('confirm_section')),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            decoration: BoxDecoration(
+              color: c.panel,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: confirmation != null ? c.accent.withValues(alpha: 0.45) : c.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    GlyphIcon(Glyph.okCircle, size: 17, filled: confirmation != null, color: confirmation != null ? c.accent : c.textFaint),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        confirmation != null ? s.t('confirm_at', {'time': formatTime(confirmation.at)}) : s.t('confirm_pending'),
+                        style: TextStyle(fontSize: 12.5, color: confirmation != null ? c.text : c.textDim),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    FlatButton(
+                      label: confirmation != null ? s.t('confirm_undo') : s.t('confirm_btn'),
+                      primary: confirmation == null,
+                      compact: true,
+                      onTap: () => state.setConfirmed([row], confirmation == null),
+                    ),
+                  ],
+                ),
+                if (confirmation != null) ...[
+                  const SizedBox(height: 8),
+                  TextInput(controller: _note, hint: s.t('confirm_note_hint'), onChanged: (v) => state.setConfirmNote(row, v)),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );

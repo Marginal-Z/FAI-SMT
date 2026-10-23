@@ -10,7 +10,7 @@ import 'dart:math' as math;
 enum PartKind { resistor, capacitor, inductor, diode, led, transistor, ic, crystal, connector, testPoint, fiducial, other }
 
 class PartShape {
-  const PartShape(this.kind, this.width, this.height, {this.pins = 0, this.bga = false});
+  const PartShape(this.kind, this.width, this.height, {this.pins = 0, this.bga = false, this.exact = false});
 
   final PartKind kind;
 
@@ -21,6 +21,27 @@ class PartShape {
   /// Pins per long side for ICs (0 = leadless / not drawn).
   final int pins;
   final bool bga;
+
+  /// Size read from a package code or explicit dimensions rather than a
+  /// per-type default; such bodies are the last to be shrunk when they collide.
+  final bool exact;
+
+  PartShape scaled(double fw, double fh) =>
+      fw >= 1 && fh >= 1 ? this : PartShape(kind, width * fw, height * fh, pins: pins, bga: bga, exact: exact);
+
+  /// Typical body height above the board in mm, for the 3D view (0 = flat).
+  double get bodyHeight => switch (kind) {
+        PartKind.resistor => math.min(height * 0.7, 0.6),
+        PartKind.capacitor => math.min(height * 0.9, 1.2),
+        PartKind.inductor => math.min(math.min(width, height) * 0.55, 2.5),
+        PartKind.diode || PartKind.led => math.min(height * 0.8, 1.2),
+        PartKind.transistor => 1.0,
+        PartKind.ic => bga ? 1.2 : (math.min(width, height) * 0.2).clamp(0.6, 1.6),
+        PartKind.crystal => 0.8,
+        PartKind.connector => 2.0,
+        PartKind.testPoint || PartKind.fiducial => 0,
+        PartKind.other => 0.6,
+      };
 }
 
 final _prefix = RegExp(r'^\d*([A-Z]+)');
@@ -99,38 +120,38 @@ PartShape shapeOf(String ref, {String footprint = '', String description = ''}) 
       final n = int.tryParse(pins?.group(2) ?? '') ?? 0;
       final square = (a - b).abs() < 0.01;
       return PartShape(kind == PartKind.other ? PartKind.ic : kind, math.max(a, b), math.min(a, b),
-          pins: kind == PartKind.ic || kind == PartKind.other ? (square ? (n / 4).ceil() : (n / 2).ceil()).clamp(0, 16) : 0);
+          pins: kind == PartKind.ic || kind == PartKind.other ? (square ? (n / 4).ceil() : (n / 2).ceil()).clamp(0, 16) : 0, exact: true);
     }
   }
   // Metric size codes after a leadless package name: DFN1006 = 1.0 × 0.6 mm.
   final sizeCode = RegExp(r'(?:DFN|SOD|CSP)[_\- ]?(\d{2})(\d{2})(?!\d)').firstMatch(text);
   if (sizeCode != null && kind != PartKind.ic) {
-    return PartShape(kind, int.parse(sizeCode.group(1)!) / 10, int.parse(sizeCode.group(2)!) / 10);
+    return PartShape(kind, int.parse(sizeCode.group(1)!) / 10, int.parse(sizeCode.group(2)!) / 10, exact: true);
   }
 
   for (final e in _chips.entries) {
     if (RegExp('(?<!\\d)${e.key}(?!\\d)').hasMatch(text) &&
         (kind == PartKind.resistor || kind == PartKind.capacitor || kind == PartKind.inductor || kind == PartKind.diode || kind == PartKind.led)) {
-      return PartShape(kind, e.value.$1, e.value.$2);
+      return PartShape(kind, e.value.$1, e.value.$2, exact: true);
     }
   }
   final metric = _metric.firstMatch(text);
   if (metric != null && kind != PartKind.ic) {
     final code = metric.group(1)!;
-    return PartShape(kind, int.parse(code.substring(0, 2)) / 10, int.parse(code.substring(2)) / 10);
+    return PartShape(kind, int.parse(code.substring(0, 2)) / 10, int.parse(code.substring(2)) / 10, exact: true);
   }
   if (RegExp(r'BGA').hasMatch(text)) {
     final n = int.tryParse(RegExp(r'BGA[_\- ]?(\d+)').firstMatch(text)?.group(1) ?? '') ?? 96;
     final side = n >= 300 ? 14.0 : n >= 150 ? 10.0 : n >= 100 ? 8.0 : 7.0;
     return PartShape(PartKind.ic, side, n >= 90 && n <= 100 ? side * 1.4 : side, bga: true);
   }
-  if (RegExp(r'SOT-?23-?[56]|SOT-?26|SC-?70|SC70').hasMatch(text)) return PartShape(kind == PartKind.other ? PartKind.ic : kind, 2.9, 1.6, pins: 3);
-  if (RegExp(r'SOT-?563|SOT-?363').hasMatch(text)) return PartShape(kind == PartKind.other ? PartKind.ic : kind, 1.6, 1.2, pins: 3);
-  if (RegExp(r'SOT-?23|SOT23').hasMatch(text)) return PartShape(kind == PartKind.other ? PartKind.transistor : kind, 2.9, 1.3, pins: 0);
-  if (RegExp(r'SOD-?523').hasMatch(text)) return PartShape(kind, 1.2, 0.8);
-  if (RegExp(r'SOD-?323').hasMatch(text)) return PartShape(kind, 1.7, 1.25);
-  if (RegExp(r'SOD-?123').hasMatch(text)) return PartShape(kind, 2.7, 1.6);
-  if (RegExp(r'DO-?214|SMA\b|SMB\b').hasMatch(text)) return PartShape(kind, 4.3, 2.6);
+  if (RegExp(r'SOT-?23-?[56]|SOT-?26|SC-?70|SC70').hasMatch(text)) return PartShape(kind == PartKind.other ? PartKind.ic : kind, 2.9, 1.6, pins: 3, exact: true);
+  if (RegExp(r'SOT-?563|SOT-?363').hasMatch(text)) return PartShape(kind == PartKind.other ? PartKind.ic : kind, 1.6, 1.2, pins: 3, exact: true);
+  if (RegExp(r'SOT-?23|SOT23').hasMatch(text)) return PartShape(kind == PartKind.other ? PartKind.transistor : kind, 2.9, 1.3, pins: 0, exact: true);
+  if (RegExp(r'SOD-?523').hasMatch(text)) return PartShape(kind, 1.2, 0.8, exact: true);
+  if (RegExp(r'SOD-?323').hasMatch(text)) return PartShape(kind, 1.7, 1.25, exact: true);
+  if (RegExp(r'SOD-?123').hasMatch(text)) return PartShape(kind, 2.7, 1.6, exact: true);
+  if (RegExp(r'DO-?214|SMA\b|SMB\b').hasMatch(text)) return PartShape(kind, 4.3, 2.6, exact: true);
   final qfn = RegExp(r'(QFN|DFN|WSON|SON|LGA)[_\- ]?(\d{1,3})?(?!\d)').firstMatch(text);
   if (qfn != null) {
     final n = int.tryParse(qfn.group(2) ?? '') ?? 16;

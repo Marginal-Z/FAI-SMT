@@ -460,6 +460,21 @@ class _BoardColors extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
+          s.t('grp_render'),
+          style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Segmented<bool>(
+              value: style.depth,
+              options: [(false, s.t('render_flat')), (true, s.t('render_3d'))],
+              onChanged: state.setBoardDepth,
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Text(
           s.t('board_bg'),
           style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
         ),

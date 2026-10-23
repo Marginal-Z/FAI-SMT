@@ -28,7 +28,7 @@ class ExportLabels {
   final String sheetMerged;
 
   /// No., part no., description, BOM qty, SMT qty, BOM refs, SMT refs,
-  /// loaded part numbers, side, slot, result, reason.
+  /// loaded part numbers, side, slot, result, reason, confirmed at, note.
   final List<String> checkHeaders;
 
   /// Ref, BOM part no., SMT part no., description, side, slot, result.
@@ -38,8 +38,21 @@ class ExportLabels {
   final String Function(StationSide?) side;
 }
 
+String _stamp(DateTime? t) {
+  if (t == null) return '';
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+}
+
 /// [extraSheets] maps a sheet name to rows whose first row is the header.
-Uint8List exportCheckWorkbook(CheckReport report, ExportLabels l, {Map<String, List<List<String>>> extraSheets = const {}}) {
+/// [confirmations] (by [CheckRow.key]) fill the two columns after the reason:
+/// confirmation time and note.
+Uint8List exportCheckWorkbook(
+  CheckReport report,
+  ExportLabels l, {
+  Map<String, List<List<String>>> extraSheets = const {},
+  Map<String, ManualCheck> confirmations = const {},
+}) {
   final book = Excel.createExcel();
   final defaultSheet = book.getDefaultSheet();
   final check = book[l.sheetCheck];
@@ -80,11 +93,13 @@ Uint8List exportCheckWorkbook(CheckReport report, ExportLabels l, {Map<String, L
       TextCellValue(r.slots.join(',')),
       TextCellValue(l.category(r.category)),
       TextCellValue(r.reasons.map(l.reason).join('; ')),
+      TextCellValue(_stamp(confirmations[r.key]?.at)),
+      TextCellValue(confirmations[r.key]?.note ?? ''),
     ]);
     final style = CellStyle(backgroundColorHex: fills[r.category]!);
     check.cell(CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: i)).cellStyle = style;
   }
-  const widths = [6.0, 22.0, 40.0, 9.0, 9.0, 36.0, 36.0, 22.0, 8.0, 12.0, 10.0, 60.0];
+  const widths = [6.0, 22.0, 40.0, 9.0, 9.0, 36.0, 36.0, 22.0, 8.0, 12.0, 10.0, 60.0, 18.0, 30.0];
   for (var c = 0; c < widths.length; c++) {
     check.setColumnWidth(c, widths[c]);
   }

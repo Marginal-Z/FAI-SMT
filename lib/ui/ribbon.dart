@@ -575,6 +575,18 @@ class Ribbon extends StatelessWidget {
         RibbonButton(glyph: Glyph.palette, label: s.t('btn_colors'), onTap: () => state.openSettings(SettingsSection.board)),
       ],
     ),
+    RibbonGroup(
+      label: s.t('grp_render'),
+      children: [
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RibbonOption(label: s.t('render_flat'), selected: !state.settings.board.depth, onTap: () => state.setBoardDepth(false)),
+            RibbonOption(label: s.t('render_3d'), selected: state.settings.board.depth, onTap: () => state.setBoardDepth(true)),
+          ],
+        ),
+      ],
+    ),
   ];
 }
 

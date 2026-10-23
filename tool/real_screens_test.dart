@@ -113,4 +113,27 @@ void main() {
     s.setBoardBackground(BoardBackground.green);
     await shot(tester, s, 'board_green');
   });
+
+  testWidgets('real board 3d', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    s.settings.board.depth = true;
+    await shot(tester, s, 'board_3d');
+  });
+
+  testWidgets('real board 3d zoom', (tester) async {
+    final s = demoState();
+    s.setModule(Module.board);
+    s.settings.board.depth = true;
+    await shot(tester, s, 'board_3d_zoom', zoomSteps: 12, zoomAt: const Offset(800, 520));
+  });
+
+  testWidgets('real ng confirmed', (tester) async {
+    final s = demoState(dark: false);
+    final ng = s.report!.rows.where((r) => r.category == CheckCategory.ng).toList();
+    s.setConfirmed(ng, true);
+    s.setConfirmNote(ng.first, '已与工程确认 4040 封装可用');
+    s.select(ng.first);
+    await shot(tester, s, 'ng_confirmed');
+  });
 }

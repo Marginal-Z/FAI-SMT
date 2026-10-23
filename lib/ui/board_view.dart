@@ -6,12 +6,15 @@ library;
 
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' show PointMode;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
+import '../core/board_layout.dart';
 import '../core/footprints.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
@@ -48,10 +51,7 @@ class PartPalette {
   static const terminal = Color(0xFFCDD2D8);
   static const copper = Color(0xFFC0844A);
 
-  static const backgrounds = {
-    BoardBackground.green: Color(0xFF1E5E3B),
-    BoardBackground.black: Color(0xFF16181B),
-  };
+  static const backgrounds = {BoardBackground.green: Color(0xFF1E5E3B), BoardBackground.black: Color(0xFF16181B)};
 
   Color body(PartKind k) {
     final o = style.partColors[k.name];
@@ -60,10 +60,10 @@ class PartPalette {
 
   /// Board fill, or null to follow the canvas (outline only).
   Color? get board => switch (style.background) {
-        BoardBackground.canvas => null,
-        BoardBackground.custom => Color(style.customBackground),
-        final b => backgrounds[b],
-      };
+    BoardBackground.canvas => null,
+    BoardBackground.custom => Color(style.customBackground),
+    final b => backgrounds[b],
+  };
 
   /// Text colour readable on the body colour.
   static Color label(Color body) => body.computeLuminance() > 0.45 ? const Color(0xFF15181C) : const Color(0xFFFFFFFF);
@@ -74,8 +74,58 @@ class _Part {
 
   final Placement p;
   final MergedRef? merged;
+
+  /// Body after fitting against its neighbours.
   final PartShape shape;
   final BoardSide side;
+
+  /// Designator width at 10 px, and the last laid-out label.
+  double? probeWidth;
+  TextPainter? label;
+  double labelFont = 0;
+  Color? labelColor;
+}
+
+/// Parts with fitted bodies in drawing order (bottom side first; on each side
+/// unplaced footprints, then larger before smaller), built once per
+/// coordinate file and check result instead of on every frame.
+class _BoardModel {
+  _BoardModel(this.parts) : extents = _View.extents(parts);
+
+  final List<_Part> parts;
+  final (double, double, double, double) extents;
+
+  factory _BoardModel.build(List<Placement> items, Map<String, MergedRef> merged, BoardSide Function(Placement, MergedRef?) sideOf) {
+    final raw = [
+      for (final p in items)
+        (
+          p,
+          merged[p.ref],
+          shapeOf(p.ref, footprint: p.footprint, description: '${merged[p.ref]?.description ?? p.description} ${p.value}'),
+          sideOf(p, merged[p.ref]),
+        ),
+    ];
+    final fit = fitBodies([
+      for (final (p, _, shape, side) in raw)
+        BodyBox(x: p.x, y: p.y, rotation: p.rotation, width: shape.width, height: shape.height, side: side.index, exact: shape.exact),
+    ]);
+    final parts = [for (var i = 0; i < raw.length; i++) _Part(raw[i].$1, raw[i].$2, raw[i].$3.scaled(fit[i].$1, fit[i].$2), raw[i].$4)];
+    int rank(_Part e) => (e.side == BoardSide.bottom ? 0 : 2) + (e.merged == null ? 0 : 1);
+    parts.sort((a, b) {
+      final r = rank(a) - rank(b);
+      if (r != 0) return r;
+      return (b.shape.width * b.shape.height).compareTo(a.shape.width * a.shape.height);
+    });
+    return _BoardModel(parts);
+  }
+}
+
+/// Zoom and pan; changes repaint the drawing without rebuilding the page.
+class _Camera {
+  const _Camera(this.zoom, this.pan);
+
+  final double zoom;
+  final Offset pan;
 }
 
 class BoardView extends StatefulWidget {
@@ -91,12 +141,14 @@ class BoardView extends StatefulWidget {
 }
 
 class _BoardViewState extends State<BoardView> {
-  double _zoom = 1;
-  Offset _pan = Offset.zero;
+  final _cam = ValueNotifier(const _Camera(1, Offset.zero));
+  final _hover = ValueNotifier<(_Part, Offset)?>(null);
   int _fitSeen = 0;
   double _gestureZoom = 1;
-  _Part? _hover;
-  Offset _hoverPos = Offset.zero;
+
+  _BoardModel? _model;
+  Object? _modelCoords;
+  Object? _modelReport;
 
   @override
   void initState() {
@@ -107,13 +159,23 @@ class _BoardViewState extends State<BoardView> {
   @override
   void dispose() {
     if (widget.immersive && Platform.isAndroid) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _cam.dispose();
+    _hover.dispose();
     super.dispose();
   }
 
-  void _fit() => setState(() {
-    _zoom = 1;
-    _pan = Offset.zero;
-  });
+  void _fit() => _cam.value = const _Camera(1, Offset.zero);
+
+  _BoardModel _modelFor(LoadedFile<Placement> coords, CheckReport? report) {
+    if (_model == null || !identical(_modelCoords, coords) || !identical(_modelReport, report)) {
+      final merged = {for (final m in report?.merged ?? const <MergedRef>[]) m.ref: m};
+      _model = _BoardModel.build(coords.result.items, merged, _sideOf);
+      _modelCoords = coords;
+      _modelReport = report;
+      _hover.value = null;
+    }
+    return _model!;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,22 +208,12 @@ class _BoardViewState extends State<BoardView> {
     }
     if (state.boardFitRequest != _fitSeen) {
       _fitSeen = state.boardFitRequest;
-      _zoom = 1;
-      _pan = Offset.zero;
+      _fit();
     }
     final report = fromFile ? null : state.report;
-    final merged = {for (final m in report?.merged ?? const <MergedRef>[]) m.ref: m};
+    final model = _modelFor(coords, report);
     final highlight = <String>{...?state.selected?.bomRefs.map((m) => m.ref), ...?state.selected?.smtRefs.map((m) => m.ref)};
-    final all = [
-      for (final p in coords.result.items)
-        _Part(
-          p,
-          merged[p.ref],
-          shapeOf(p.ref, footprint: p.footprint, description: '${merged[p.ref]?.description ?? p.description} ${p.value}'),
-          _sideOf(p, merged[p.ref]),
-        ),
-    ];
-    final parts = all
+    final parts = model.parts
         .where(
           (e) => switch (state.boardSide) {
             BoardSideFilter.both => true,
@@ -171,6 +223,7 @@ class _BoardViewState extends State<BoardView> {
         )
         .toList();
     final deg = state.boardQuarterTurns * 90;
+    final palette = PartPalette(state.settings.board);
 
     final source = fromFile ? s.t('board_source_file', {'name': coords.name}) : s.t('board_source_check');
     return Column(
@@ -191,76 +244,80 @@ class _BoardViewState extends State<BoardView> {
           child: LayoutBuilder(
             builder: (context, box) {
               final size = Size(box.maxWidth, box.maxHeight);
-              final view = _View.fit(all, size, state.boardQuarterTurns, state.boardMirror, _zoom, _pan);
+              _View view() => _View.fit(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value.zoom, _cam.value.pan);
               return Listener(
                 onPointerSignal: (e) {
-                  if (e is PointerScrollEvent) {
-                    setState(() => _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size));
-                  }
+                  if (e is PointerScrollEvent) _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size);
                 },
                 child: MouseRegion(
                   cursor: SystemMouseCursors.grab,
                   onHover: (e) {
+                    final v = view();
                     _Part? best;
                     var bestD = double.infinity;
                     for (final part in parts) {
-                      final d = (view.toScreen(part.p.x, part.p.y) - e.localPosition).distance;
-                      final reach = math.max(8.0, math.max(part.shape.width, part.shape.height) * view.scale / 2);
-                      if (d < reach && d < bestD) {
+                      final d = (v.toScreen(part.p.x, part.p.y) - e.localPosition).distance;
+                      final reach = math.max(6.0, math.max(part.shape.width, part.shape.height) * v.scale / 2);
+                      // Ties go to the later (upper) part.
+                      if (d < reach && d <= bestD) {
                         bestD = d;
                         best = part;
                       }
                     }
-                    if (best != _hover || best != null) {
-                      setState(() {
-                        _hover = best;
-                        _hoverPos = e.localPosition;
-                      });
-                    }
+                    _hover.value = best == null ? null : (best, e.localPosition);
                   },
-                  onExit: (_) => setState(() => _hover = null),
+                  onExit: (_) => _hover.value = null,
                   child: GestureDetector(
-                    onScaleStart: (_) => _gestureZoom = _zoom,
-                    onScaleUpdate: (d) => setState(() {
+                    onScaleStart: (_) => _gestureZoom = _cam.value.zoom,
+                    onScaleUpdate: (d) {
+                      final cam = _cam.value;
                       final center = Offset(size.width / 2, size.height / 2);
                       final newZoom = (_gestureZoom * d.scale).clamp(0.2, 200.0);
-                      final f = newZoom / _zoom;
-                      _pan = (d.localFocalPoint - center) * (1 - f) + _pan * f + d.focalPointDelta;
-                      _zoom = newZoom;
-                    }),
+                      final f = newZoom / cam.zoom;
+                      _cam.value = _Camera(newZoom, (d.localFocalPoint - center) * (1 - f) + cam.pan * f + d.focalPointDelta);
+                    },
                     onDoubleTap: _fit,
                     child: ClipRect(
                       child: Stack(
                         children: [
                           Positioned.fill(
-                            child: CustomPaint(
-                              painter: _AssemblyPainter(
-                                all: all,
-                                parts: parts,
-                                view: view,
-                                colors: c,
-                                coloring: state.boardColoring,
-                                checked: report != null,
-                                highlight: highlight,
-                                hover: _hover,
-                                dimBottom: state.boardSide == BoardSideFilter.both,
-                                showLabels: _zoom > 1.05,
-                                palette: PartPalette(state.settings.board),
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: _AssemblyPainter(
+                                  model: model,
+                                  parts: parts,
+                                  cam: _cam,
+                                  hover: _hover,
+                                  quarter: state.boardQuarterTurns,
+                                  mirror: state.boardMirror,
+                                  colors: c,
+                                  coloring: state.boardColoring,
+                                  checked: report != null,
+                                  highlight: highlight,
+                                  dimBottom: state.boardSide == BoardSideFilter.both,
+                                  depth: state.settings.board.depth,
+                                  palette: palette,
+                                ),
                               ),
                             ),
                           ),
                           Positioned(
                             left: 14,
                             bottom: 14,
-                            child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: PartPalette(state.settings.board)),
+                            child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
                           ),
                           if (widget.immersive) Positioned(top: 14, right: 14, child: _FloatingControls(state: state)),
-                          if (_hover != null)
-                            Positioned(
-                              left: math.min(_hoverPos.dx + 16, size.width - 250),
-                              top: math.min(_hoverPos.dy + 16, size.height - 120),
-                              child: _HoverCard(part: _hover!),
-                            ),
+                          ValueListenableBuilder(
+                            valueListenable: _hover,
+                            builder: (context, hover, _) => hover == null
+                                ? const SizedBox.shrink()
+                                : Positioned(
+                                    left: math.min(hover.$2.dx + 16, size.width - 250),
+                                    top: math.min(hover.$2.dy + 16, size.height - 120),
+                                    child: _HoverCard(part: hover.$1),
+                                  ),
+                          ),
                         ],
                       ),
                     ),
@@ -275,14 +332,14 @@ class _BoardViewState extends State<BoardView> {
   }
 
   void _zoomAt(Offset at, double factor, Size size) {
-    final newZoom = (_zoom * factor).clamp(0.2, 200.0);
-    final f = newZoom / _zoom;
+    final cam = _cam.value;
+    final newZoom = (cam.zoom * factor).clamp(0.2, 200.0);
+    final f = newZoom / cam.zoom;
     final center = Offset(size.width / 2, size.height / 2);
-    _pan = (at - center) * (1 - f) + _pan * f;
-    _zoom = newZoom;
+    _cam.value = _Camera(newZoom, (at - center) * (1 - f) + cam.pan * f);
   }
 
-  BoardSide _sideOf(Placement p, MergedRef? m) {
+  static BoardSide _sideOf(Placement p, MergedRef? m) {
     if (p.side != BoardSide.unknown) return p.side;
     if (m?.side == StationSide.a) return BoardSide.top;
     if (m?.side == StationSide.b) return BoardSide.bottom;
@@ -332,6 +389,17 @@ class _View {
     canvas.rotate(rotDeg * math.pi / 180);
   }
 
+  /// Screen position of a point given in part coordinates (mm), matching
+  /// [applyPart].
+  Offset partPoint(Offset at, double rotDeg, double lx, double ly) {
+    final a = rotDeg * math.pi / 180;
+    var x = lx * math.cos(a) - ly * math.sin(a);
+    final y = lx * math.sin(a) + ly * math.cos(a);
+    if (mirror) x = -x;
+    final t = quarter * math.pi / 2;
+    return at + Offset((x * math.cos(t) - y * math.sin(t)) * scale, -(x * math.sin(t) + y * math.cos(t)) * scale);
+  }
+
   /// On-screen direction of the part's X axis, in radians (screen, Y down).
   double screenAngle(double rotDeg) {
     final a = rotDeg * math.pi / 180;
@@ -357,9 +425,9 @@ class _View {
     return (minX, minY, maxX, maxY);
   }
 
-  static _View fit(List<_Part> parts, Size size, int quarter, bool mirror, double zoom, Offset pan) {
-    if (parts.isEmpty) return _View(0, 0, quarter, mirror, 1, Offset(size.width / 2, size.height / 2));
-    final (minX, minY, maxX, maxY) = extents(parts);
+  static _View fit((double, double, double, double) ext, Size size, int quarter, bool mirror, double zoom, Offset pan) {
+    final (minX, minY, maxX, maxY) = ext;
+    if (!minX.isFinite) return _View(0, 0, quarter, mirror, 1, Offset(size.width / 2, size.height / 2));
     final cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     final odd = quarter.isOdd;
     final w = math.max((odd ? maxY - minY : maxX - minX) + 4, 2.0);
@@ -370,35 +438,67 @@ class _View {
   }
 }
 
+/// Convex hull (monotone chain) of a few points.
+List<Offset> _hull(List<Offset> pts) {
+  final p = [...pts]..sort((a, b) => a.dx != b.dx ? a.dx.compareTo(b.dx) : a.dy.compareTo(b.dy));
+  double cross(Offset o, Offset a, Offset b) => (a.dx - o.dx) * (b.dy - o.dy) - (a.dy - o.dy) * (b.dx - o.dx);
+  final lower = <Offset>[], upper = <Offset>[];
+  for (final q in p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower.last, q) <= 0) {
+      lower.removeLast();
+    }
+    lower.add(q);
+  }
+  for (final q in p.reversed) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper.last, q) <= 0) {
+      upper.removeLast();
+    }
+    upper.add(q);
+  }
+  return [...lower..removeLast(), ...upper..removeLast()];
+}
+
 class _AssemblyPainter extends CustomPainter {
   _AssemblyPainter({
-    required this.all,
+    required this.model,
     required this.parts,
-    required this.view,
+    required this.cam,
+    required this.hover,
+    required this.quarter,
+    required this.mirror,
     required this.colors,
     required this.coloring,
     required this.checked,
     required this.highlight,
-    required this.hover,
     required this.dimBottom,
-    required this.showLabels,
+    required this.depth,
     required this.palette,
-  });
+  }) : super(repaint: Listenable.merge([cam, hover]));
 
-  final PartPalette palette;
-
-  final List<_Part> all;
+  final _BoardModel model;
   final List<_Part> parts;
-  final _View view;
+  final ValueNotifier<_Camera> cam;
+  final ValueNotifier<(_Part, Offset)?> hover;
+  final int quarter;
+  final bool mirror;
+  final PartPalette palette;
   final AppColors colors;
   final BoardColoring coloring;
   final bool checked;
   final Set<String> highlight;
-  final _Part? hover;
   final bool dimBottom;
 
-  /// Designators are drawn only once the user zooms in.
-  final bool showLabels;
+  /// Raised parts with walls and shadows instead of flat footprints.
+  final bool depth;
+
+  /// Screen direction of a part's top face (up and a little right) and of
+  /// its shadow (down-right), per mm of body height.
+  static const _lift = Offset(0.2, -0.5);
+  static const _shadow = Offset(0.45, 0.4);
+
+  // Canvas dot grid, rebuilt only when the size changes.
+  static Float32List? _dots;
+  static Size? _dotsSize;
 
   Color get _boardFill => palette.board ?? colors.window;
   Color get _boardEdge => palette.board == null
@@ -408,16 +508,26 @@ class _AssemblyPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = colors.window);
-    final dot = Paint()..color = colors.border.withValues(alpha: 0.7);
-    for (var x = 12.0; x < size.width; x += 24) {
-      for (var y = 12.0; y < size.height; y += 24) {
-        canvas.drawCircle(Offset(x, y), 0.8, dot);
-      }
+    if (_dotsSize != size) {
+      _dotsSize = size;
+      _dots = Float32List.fromList([
+        for (var x = 12.0; x < size.width; x += 24)
+          for (var y = 12.0; y < size.height; y += 24) ...[x, y],
+      ]);
     }
-    if (all.isEmpty) return;
+    canvas.drawRawPoints(
+      PointMode.points,
+      _dots!,
+      Paint()
+        ..color = colors.border.withValues(alpha: 0.7)
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round,
+    );
+    if (model.parts.isEmpty) return;
+    final view = _View.fit(model.extents, size, quarter, mirror, cam.value.zoom, cam.value.pan);
 
     // Board outline: extents of all placements plus a margin.
-    final (minX, minY, maxX, maxY) = _View.extents(all);
+    final (minX, minY, maxX, maxY) = model.extents;
     final board = Rect.fromPoints(view.toScreen(minX - 2, minY - 2), view.toScreen(maxX + 2, maxY + 2));
     final rr = RRect.fromRectAndRadius(board, Radius.circular(math.min(12, view.scale * 1.5)));
     canvas.drawRRect(rr, Paint()..color = _boardFill);
@@ -429,20 +539,84 @@ class _AssemblyPainter extends CustomPainter {
         ..strokeWidth = 1.5,
     );
 
-    final px = 1 / view.scale; // one screen pixel in mm
+    // Visible parts with their screen centres, in drawing order.
+    final visible = <(_Part, Offset)>[];
     for (final part in parts) {
       final at = view.toScreen(part.p.x, part.p.y);
-      final r = math.max(part.shape.width, part.shape.height) * view.scale;
+      final r = math.max(part.shape.width, part.shape.height) * view.scale + 40;
       if (at.dx < -r || at.dy < -r || at.dx > size.width + r || at.dy > size.height + r) continue;
-      canvas.save();
-      view.applyPart(canvas, at, part.p.rotation);
-      final dim = dimBottom && part.side == BoardSide.bottom;
-      if (dim) canvas.saveLayer(null, Paint()..color = const Color(0x8C000000));
-      _drawPart(canvas, part, px);
-      if (dim) canvas.restore();
-      canvas.restore();
+      visible.add((part, at));
     }
-    if (showLabels) _drawLabels(canvas, size);
+    final px = 1 / view.scale; // one screen pixel in mm
+    final bottom = visible.where((e) => e.$1.side == BoardSide.bottom).toList();
+    final top = visible.where((e) => e.$1.side != BoardSide.bottom).toList();
+    // Screen bounds of filled bodies in drawing order, for label occlusion.
+    final drawn = <(_Part, Rect)>[];
+    for (final (group, dim) in [(bottom, dimBottom), (top, false)]) {
+      if (group.isEmpty) continue;
+      if (depth) {
+        // Nearer (lower on screen) parts are drawn last so their raised tops
+        // cover what lies behind them.
+        group.sort((a, b) => (a.$2.dy - a.$2.dx * 0.4).compareTo(b.$2.dy - b.$2.dx * 0.4));
+      }
+      if (dim) canvas.saveLayer(Offset.zero & size, Paint()..color = const Color(0x8C000000));
+      if (depth) {
+        for (final (part, at) in group) {
+          _drawShadow(canvas, part, at, view);
+        }
+      }
+      for (final (part, at) in group) {
+        var face = at;
+        final fill = _fill(part);
+        if (depth && fill != null) face = _drawWalls(canvas, part, at, view, fill);
+        canvas.save();
+        view.applyPart(canvas, face, part.p.rotation);
+        _drawPart(canvas, part, px, fill);
+        canvas.restore();
+        if (fill != null) {
+          final pts = [..._corners(part, at, view), if (face != at) ..._corners(part, face, view)];
+          drawn.add((
+            part,
+            Rect.fromPoints(
+              pts.reduce((a, b) => Offset(math.min(a.dx, b.dx), math.min(a.dy, b.dy))),
+              pts.reduce((a, b) => Offset(math.max(a.dx, b.dx), math.max(a.dy, b.dy))),
+            ),
+          ));
+        }
+      }
+      if (dim) canvas.restore();
+    }
+    if (cam.value.zoom > 1.05) _drawLabels(canvas, size, view, visible, drawn);
+  }
+
+  double _liftPx(_Part part, _View view) => part.shape.bodyHeight * view.scale;
+
+  List<Offset> _corners(_Part part, Offset at, _View view) {
+    final w = part.shape.width / 2, h = part.shape.height / 2;
+    return [
+      for (final (x, y) in [(-w, -h), (w, -h), (w, h), (-w, h)]) view.partPoint(at, part.p.rotation, x, y),
+    ];
+  }
+
+  Path _poly(List<Offset> pts) => Path()..addPolygon(pts, true);
+
+  void _drawShadow(Canvas canvas, _Part part, Offset at, _View view) {
+    final lift = _liftPx(part, view);
+    if (lift <= 0 || _fill(part) == null) return;
+    final base = _corners(part, at, view);
+    final off = _shadow * lift;
+    canvas.drawPath(_poly(_hull([...base, for (final p in base) p + off])), Paint()..color = Color.fromRGBO(0, 0, 0, colors.dark ? 0.42 : 0.2));
+  }
+
+  /// Side walls of a raised body; returns the screen centre of its top face.
+  Offset _drawWalls(Canvas canvas, _Part part, Offset at, _View view, Color fill) {
+    final lift = _liftPx(part, view);
+    if (lift <= 0) return at;
+    final off = _lift * lift;
+    final base = _corners(part, at, view);
+    final wall = Color.lerp(fill, const Color(0xFF000000), 0.38)!;
+    canvas.drawPath(_poly(_hull([...base, for (final p in base) p + off])), Paint()..color = wall);
+    return at + off;
   }
 
   /// Fill colour for a part in the current colouring mode, or null to draw
@@ -454,11 +628,10 @@ class _AssemblyPainter extends CustomPainter {
     return palette.body(part.shape.kind);
   }
 
-  void _drawPart(Canvas canvas, _Part part, double px) {
+  void _drawPart(Canvas canvas, _Part part, double px, Color? fill) {
     final sh = part.shape;
     final w = sh.width, h = sh.height;
     final body = Rect.fromCenter(center: Offset.zero, width: w, height: h);
-    final fill = _fill(part);
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = px * 1.2;
@@ -514,17 +687,10 @@ class _AssemblyPainter extends CustomPainter {
         }
         final small = math.min(w, h);
         canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.04)), Paint()..color = fill);
-        canvas.drawCircle(
-          Offset(-w / 2 + small * 0.14, h / 2 - small * 0.14),
-          small * 0.06,
-          Paint()..color = PartPalette.label(fill).withValues(alpha: 0.6),
-        );
+        canvas.drawCircle(Offset(-w / 2 + small * 0.14, h / 2 - small * 0.14), small * 0.06, Paint()..color = PartPalette.label(fill).withValues(alpha: 0.6));
       case PartKind.crystal:
         canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(h * 0.18)), Paint()..color = fill);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(body.deflate(h * 0.12), Radius.circular(h * 0.12)),
-          stroke..color = const Color(0xFF8E959E),
-        );
+        canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(h * 0.12), Radius.circular(h * 0.12)), stroke..color = const Color(0xFF8E959E));
       case PartKind.connector:
         canvas.drawRect(body, Paint()..color = fill);
         final n = (w / 0.8).floor().clamp(2, 40);
@@ -546,6 +712,17 @@ class _AssemblyPainter extends CustomPainter {
         canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(h * 0.1)), Paint()..color = fill);
     }
 
+    // Lit top edge of a raised body.
+    if (depth && sh.bodyHeight > 0) {
+      canvas.drawRect(
+        body.deflate(px * 0.6),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = px * 1.2
+          ..color = Color.lerp(fill, const Color(0xFFFFFFFF), 0.28)!.withValues(alpha: 0.7),
+      );
+    }
+
     // Status outline in part-type mode; selection and hover in both modes.
     final m = part.merged;
     Paint ring(Color c, double width) => Paint()
@@ -556,37 +733,52 @@ class _AssemblyPainter extends CustomPainter {
       canvas.drawRect(body.inflate(px * 2.5), ring(m.category == CheckCategory.ng ? colors.ng : colors.substitute, 2));
     }
     if (highlight.contains(part.p.ref)) canvas.drawRect(body.inflate(px * 5), ring(colors.accent, 2.2));
-    if (identical(hover, part)) canvas.drawRect(body.inflate(px * 3.5), ring(colors.text, 1.2));
+    if (identical(hover.value?.$1, part)) canvas.drawRect(body.inflate(px * 3.5), ring(colors.text, 1.2));
   }
 
   /// Designators inside bodies, along the body's long axis, kept upright.
-  void _drawLabels(Canvas canvas, Size size) {
-    for (final part in parts) {
+  /// Top-side and placed parts come first; a label that would cover one
+  /// already drawn, or sits under a body drawn above its own part, is left out.
+  void _drawLabels(Canvas canvas, Size size, _View view, List<(_Part, Offset)> visible, List<(_Part, Rect)> drawn) {
+    final drawIndex = {for (var i = 0; i < drawn.length; i++) drawn[i].$1: i};
+    final order = [...visible]
+      ..sort((a, b) {
+        int rank(_Part e) => (e.side == BoardSide.bottom ? 0 : 2) + (e.merged == null ? 0 : 1);
+        final r = rank(b.$1) - rank(a.$1);
+        if (r != 0) return r;
+        return (b.$1.shape.width * b.$1.shape.height).compareTo(a.$1.shape.width * a.$1.shape.height);
+      });
+    final placed = <Rect>[];
+    for (final (part, at) in order) {
       final sh = part.shape;
       final long = math.max(sh.width, sh.height) * view.scale;
       final short = math.min(sh.width, sh.height) * view.scale;
       if (short < 7) continue;
-      final at = view.toScreen(part.p.x, part.p.y);
-      if (at.dx < -long || at.dy < -long || at.dx > size.width + long || at.dy > size.height + long) continue;
       final fill = _fill(part);
       final color = fill == null ? colors.textDim : PartPalette.label(fill);
-      // Measure at 10 px, then scale to fit inside the body.
-      final probe = TextPainter(
+      // Width at 10 px, measured once, then scaled to fit inside the body.
+      final probe = part.probeWidth ??= (TextPainter(
         text: TextSpan(
           text: part.p.ref,
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, fontFamily: uiFontFamily),
         ),
         textDirection: TextDirection.ltr,
-      )..layout();
-      final font = math.min(short * 0.62, 10 * (long * 0.84) / probe.width);
+      )..layout()).width;
+      final font = math.min(math.min(short * 0.62, 10 * (long * 0.84) / probe), 22.0);
       if (font < 6.5) continue;
-      final tp = TextPainter(
-        text: TextSpan(
-          text: part.p.ref,
-          style: TextStyle(fontSize: math.min(font, 22), fontWeight: FontWeight.w700, color: color, fontFamily: uiFontFamily, height: 1),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      final rounded = (font * 2).round() / 2;
+      if (part.label == null || part.labelFont != rounded || part.labelColor != color) {
+        part.label = TextPainter(
+          text: TextSpan(
+            text: part.p.ref,
+            style: TextStyle(fontSize: rounded, fontWeight: FontWeight.w700, color: color, fontFamily: uiFontFamily, height: 1),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        part.labelFont = rounded;
+        part.labelColor = color;
+      }
+      final tp = part.label!;
       var angle = view.screenAngle(part.p.rotation);
       if (sh.height > sh.width) angle += math.pi / 2;
       while (angle > math.pi / 2) {
@@ -595,8 +787,22 @@ class _AssemblyPainter extends CustomPainter {
       while (angle <= -math.pi / 2) {
         angle += math.pi;
       }
+      final centre = depth && fill != null ? at + _lift * _liftPx(part, view) : at;
+      final ca = math.cos(angle).abs(), sa = math.sin(angle).abs();
+      final box = Rect.fromCenter(center: centre, width: tp.width * ca + tp.height * sa, height: tp.width * sa + tp.height * ca);
+      if (placed.any((r) => r.overlaps(box.deflate(1)))) continue;
+      final own = drawIndex[part] ?? -1;
+      final inner = box.deflate(2);
+      var covered = false;
+      for (var k = own + 1; k < drawn.length && !covered; k++) {
+        final other = drawn[k].$2;
+        // Covered when a later body hides a good part of the label.
+        if (other.overlaps(inner)) covered = other.intersect(inner).width * other.intersect(inner).height > inner.width * inner.height * 0.25;
+      }
+      if (covered) continue;
+      placed.add(box);
       canvas.save();
-      canvas.translate(at.dx, at.dy);
+      canvas.translate(centre.dx, centre.dy);
       canvas.rotate(angle);
       tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
       canvas.restore();
@@ -619,12 +825,7 @@ class _LegendCard extends StatelessWidget {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final items = coloring == BoardColoring.status && checked
-        ? <(Color?, String)>[
-            (c.pass, s.t('cat_pass')),
-            (c.ng, s.t('cat_ng')),
-            (c.substitute, s.t('cat_substitute')),
-            (null, s.t('board_not_in_bom')),
-          ]
+        ? <(Color?, String)>[(c.pass, s.t('cat_pass')), (c.ng, s.t('cat_ng')), (c.substitute, s.t('cat_substitute')), (null, s.t('board_not_in_bom'))]
         : <(Color?, String)>[
             for (final (k, key) in [
               (PartKind.resistor, 'type_resistor'),
@@ -777,30 +978,16 @@ class _FloatingControls extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          button(
-            Glyph.layersBoth,
-            s.t('side_both'),
-            () => state.setBoardSide(BoardSideFilter.both),
-            active: state.boardSide == BoardSideFilter.both,
-          ),
-          button(
-            Glyph.layerTop,
-            s.t('side_top'),
-            () => state.setBoardSide(BoardSideFilter.top),
-            active: state.boardSide == BoardSideFilter.top,
-          ),
-          button(
-            Glyph.layerBottom,
-            s.t('side_bottom'),
-            () => state.setBoardSide(BoardSideFilter.bottom),
-            active: state.boardSide == BoardSideFilter.bottom,
-          ),
+          button(Glyph.layersBoth, s.t('side_both'), () => state.setBoardSide(BoardSideFilter.both), active: state.boardSide == BoardSideFilter.both),
+          button(Glyph.layerTop, s.t('side_top'), () => state.setBoardSide(BoardSideFilter.top), active: state.boardSide == BoardSideFilter.top),
+          button(Glyph.layerBottom, s.t('side_bottom'), () => state.setBoardSide(BoardSideFilter.bottom), active: state.boardSide == BoardSideFilter.bottom),
           Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
           button(Glyph.mirror, s.t('board_mirror'), state.toggleBoardMirror, active: state.boardMirror),
           button(Glyph.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
           button(Glyph.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
           button(Glyph.fit, s.t('board_fit'), state.fitBoard),
           button(Glyph.reset, s.t('btn_reset_view'), state.resetBoardView),
+          button(Glyph.cube, s.t('render_3d'), () => state.setBoardDepth(!state.settings.board.depth), active: state.settings.board.depth),
           Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.border),
           button(Glyph.exitFullscreen, s.t('btn_exit_fullscreen'), () => state.setBoardFullscreen(false)),
         ],

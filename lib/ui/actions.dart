@@ -61,7 +61,7 @@ ExportLabels exportLabels(Strings s) => ExportLabels(
       checkHeaders: [
         s.t('col_no'), s.t('col_pn'), s.t('col_desc'), s.t('col_bom_qty'), s.t('col_smt_qty'),
         s.t('col_bom_refs'), s.t('col_smt_refs'), s.t('col_smt_pn'), s.t('col_side'), s.t('col_slot'),
-        s.t('col_result'), s.t('col_reason'),
+        s.t('col_result'), s.t('col_reason'), s.t('col_confirmed_at'), s.t('col_confirm_note'),
       ],
       mergedHeaders: [
         s.t('col_ref'), s.t('col_bom_pn'), s.t('col_smt_pn'), s.t('col_desc'), s.t('col_side'),
@@ -91,7 +91,7 @@ Future<void> exportReport(BuildContext context, AppState state) async {
     return;
   }
   final discrepancies = state.discrepancies ?? const [];
-  final bytes = exportCheckWorkbook(report, exportLabels(s), extraSheets: {
+  final bytes = exportCheckWorkbook(report, exportLabels(s), confirmations: state.confirmations, extraSheets: {
     s.t('sheet_discrepancies'): [
       [s.t('col_severity'), s.t('col_source'), s.t('col_subject'), s.t('col_problem'), s.t('col_explain'), s.t('col_ref')],
       for (final d in discrepancies)
@@ -112,7 +112,8 @@ Future<void> exportCad(BuildContext context, AppState state) async {
     await showError(context, UserMessage('msg_need_coord'));
     return;
   }
-  final ng = state.report!.count(CheckCategory.ng);
+  // NG rows an operator has confirmed no longer hold up the CAD output.
+  final ng = state.report!.count(CheckCategory.ng) - state.confirmedCount(CheckCategory.ng);
   if (ng > 0) {
     final go = await showMessage(context,
         title: s.t('msg_warning'),

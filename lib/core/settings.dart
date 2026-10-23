@@ -235,23 +235,28 @@ enum BoardBackground { canvas, green, black, custom }
 /// Navigator colours: per-part-type overrides (ARGB, keyed by PartKind name)
 /// and the board background.
 class BoardStyle {
-  BoardStyle({Map<String, int>? partColors, this.background = BoardBackground.canvas, this.customBackground = 0xFF1E5E3B})
+  BoardStyle({Map<String, int>? partColors, this.background = BoardBackground.canvas, this.customBackground = 0xFF1E5E3B, this.depth = false})
       : partColors = partColors ?? {};
 
   Map<String, int> partColors;
   BoardBackground background;
   int customBackground;
 
+  /// Draw parts raised with side walls and shadows instead of flat.
+  bool depth;
+
   Map<String, dynamic> toJson() => {
         'partColors': partColors,
         'background': background.name,
         'customBackground': customBackground,
+        'depth': depth,
       };
 
   factory BoardStyle.fromJson(Map<String, dynamic> j) => BoardStyle(
         partColors: (j['partColors'] as Map?)?.map((k, v) => MapEntry(k as String, (v as num).toInt())),
         background: BoardBackground.values.firstWhere((b) => b.name == j['background'], orElse: () => BoardBackground.canvas),
         customBackground: (j['customBackground'] as num?)?.toInt() ?? 0xFF1E5E3B,
+        depth: j['depth'] == true,
       );
 }
 

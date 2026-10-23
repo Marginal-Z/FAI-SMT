@@ -77,6 +77,10 @@ class AppState extends ChangeNotifier {
 
   CheckReport? report;
   DateTime? checkedAt;
+
+  /// Manual sign-offs by [CheckRow.key]; they survive a re-check as long as
+  /// the row's result and designators are unchanged.
+  final Map<String, ManualCheck> confirmations = {};
   CadResult? _cad;
   List<Discrepancy>? _discrepancies;
 
@@ -246,8 +250,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setBoardDepth(bool v) {
+    settings.board.depth = v;
+    persist();
+    notifyListeners();
+  }
+
+  /// Restores the default colours; the flat / 3D choice is kept.
   void resetBoardStyle() {
-    settings.board = BoardStyle();
+    settings.board = BoardStyle(depth: settings.board.depth);
     persist();
     notifyListeners();
   }
@@ -387,7 +398,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  ManualCheck? confirmationOf(CheckRow r) => confirmations[r.key];
+
+  void setConfirmed(Iterable<CheckRow> rows, bool confirmed) {
+    final now = DateTime.now();
+    for (final r in rows) {
+      if (!confirmed) {
+        confirmations.remove(r.key);
+      } else {
+        confirmations.putIfAbsent(r.key, () => ManualCheck(now));
+      }
+    }
+    notifyListeners();
+  }
+
+  void setConfirmNote(CheckRow r, String note) {
+    final old = confirmations[r.key];
+    confirmations[r.key] = ManualCheck(old?.at ?? DateTime.now(), note: note);
+    notifyListeners();
+  }
+
+  /// Confirmed rows of the current report, optionally of one category.
+  int confirmedCount([CheckCategory? category]) =>
+      report?.rows.where((r) => (category == null || r.category == category) && confirmations.containsKey(r.key)).length ?? 0;
+
   void clearAll() {
+    confirmations.clear();
     bom = stationA = stationB = null;
     coords = null;
     _coordBytes = null;
