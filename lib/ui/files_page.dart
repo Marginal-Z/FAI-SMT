@@ -86,27 +86,15 @@ class FilesPage extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: wide ? 32 : 16),
                 child: Column(
                   children: [
-                    SizedBox(height: wide ? 60 : 28),
+                    SizedBox(height: wide ? 48 : 24),
                     Text(
                       s.t('app_subtitle'),
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.04, color: c.blueTx),
                     ),
                     const SizedBox(height: 14),
-                    Text(
-                      s.t('mod_files'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: wide ? 64 : 44,
-                        height: 1.05,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: (wide ? 64 : 44) * -0.035,
-                        color: c.tx,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
+                      constraints: const BoxConstraints(maxWidth: 760),
                       child: Text(
                         s.t('files_hero_sub'),
                         textAlign: TextAlign.center,

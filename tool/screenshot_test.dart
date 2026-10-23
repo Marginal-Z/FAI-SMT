@@ -6,8 +6,8 @@
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/rendering.dart' show debugDisableShadows;
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
 import 'package:smt_fai/core/models.dart';
@@ -66,6 +66,9 @@ void main() {
     // Real blurred shadows, as the app draws them.
     debugDisableShadows = false;
     await tester.pumpWidget(SmtFaiApp(state: state, touch: touch));
+    await tester.pumpAndSettle();
+    // Asset images decode outside the fake clock; load the logo first.
+    await tester.runAsync(() => precacheImage(const AssetImage('assets/icon/app_icon.png'), tester.element(find.byType(SmtFaiApp))));
     await tester.pumpAndSettle();
     for (var i = 0; i < zoomSteps; i++) {
       tester.binding.handlePointerEvent(PointerScrollEvent(position: zoomAt, scrollDelta: const Offset(0, -50)));
@@ -273,4 +276,46 @@ void main() {
     s.setBoardBackground(BoardBackground.black);
     await shot(tester, s, 'board_black_dark');
   });
+
+  // Screens for the website (light, Chinese, demo data only).
+  group('site', () {
+    const size = Size(1440, 900);
+    testWidgets('site files', (tester) async {
+      final s = demoState(dark: false);
+      s.setModule(Module.files);
+      await shot(tester, s, 'site_files', size: const Size(1440, 1000));
+    });
+    testWidgets('site check', (tester) async {
+      final s = demoState(dark: false);
+      s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
+      await shot(tester, s, 'site_check', size: size);
+    });
+    testWidgets('site check dark', (tester) async {
+      final s = demoState();
+      s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
+      await shot(tester, s, 'site_check_dark', size: size);
+    });
+    testWidgets('site cad', (tester) async {
+      final s = demoState(dark: false);
+      s.setModule(Module.cad);
+      await shot(tester, s, 'site_cad', size: size);
+    });
+    testWidgets('site board', (tester) async {
+      final s = demoState(dark: false);
+      s.setModule(Module.board);
+      await shot(tester, s, 'site_board', size: const Size(1440, 1000));
+    });
+    testWidgets('site board zoom', (tester) async {
+      final s = demoState(dark: false);
+      s.setModule(Module.board);
+      s.settings.board.depth = true;
+      await shot(tester, s, 'site_board_3d', size: const Size(1440, 1000), zoomSteps: 3, zoomAt: const Offset(720, 640));
+    });
+    testWidgets('site library', (tester) async {
+      final s = demoState(dark: false);
+      s.openSettings(SettingsSection.library);
+      await shot(tester, s, 'site_library', size: size);
+    });
+  });
+
 }

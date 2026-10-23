@@ -212,10 +212,10 @@ class _CheckViewState extends State<CheckView> {
       key: tourTargets.checkCards,
       builder: (context, box) {
         final perRow = box.maxWidth >= 1100 ? 5 : (box.maxWidth >= 640 ? 3 : 2);
-        final w = (box.maxWidth - (perRow - 1) * 20) / perRow;
+        final w = (box.maxWidth - (perRow - 1) * 16) / perRow;
         return Wrap(
-          spacing: 20,
-          runSpacing: 20,
+          spacing: 16,
+          runSpacing: 16,
           children: [for (final card in statCards) SizedBox(width: w, child: card)],
         );
       },
@@ -466,11 +466,10 @@ class _StatCard extends StatelessWidget {
       onTap: onTap,
       builder: (context, hover, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 250),
-        transform: Matrix4.translationValues(0, selected ? -3 : 0, 0),
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: selected
               ? [BoxShadow(color: glow, offset: const Offset(0, 2), blurRadius: 4), BoxShadow(color: glow, offset: const Offset(0, 24), blurRadius: 56)]
               : c.shadow,
@@ -481,25 +480,25 @@ class _StatCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 32,
+                  height: 32,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-                  child: LucideIcon(icon, size: 20, color: fg, stroke: 2.3),
+                  child: LucideIcon(icon, size: 16, color: fg, stroke: 2.3),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: -0.15, color: c.tx),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: -0.15, color: c.tx),
                   ),
                 ),
                 if (chevron) LucideIcon(Lucide.chevronRight, size: 16, color: c.tx2, stroke: 2.2),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -507,10 +506,10 @@ class _StatCard extends StatelessWidget {
                 Text(
                   '$value',
                   style: TextStyle(
-                    fontSize: 42,
+                    fontSize: 32,
                     height: 1,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -1.47,
+                    letterSpacing: -1.1,
                     color: c.tx,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
@@ -535,7 +534,9 @@ class _StatCard extends StatelessWidget {
                 ],
               ],
             ),
-            if (share != null) ...[const SizedBox(height: 16), TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar)],
+            const SizedBox(height: 12),
+            // Cards without a share keep the bar's space so all are one size.
+            share != null ? TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar) : const SizedBox(height: 6),
           ],
         ),
       ),

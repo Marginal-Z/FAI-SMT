@@ -5,8 +5,8 @@
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/rendering.dart' show debugDisableShadows;
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
 import 'package:smt_fai/core/models.dart';
@@ -69,6 +69,9 @@ void main() {
     // Real blurred shadows, as the app draws them.
     debugDisableShadows = false;
     await tester.pumpWidget(SmtFaiApp(state: state, touch: touch));
+    await tester.pumpAndSettle();
+    // Asset images decode outside the fake clock; load the logo first.
+    await tester.runAsync(() => precacheImage(const AssetImage('assets/icon/app_icon.png'), tester.element(find.byType(SmtFaiApp))));
     await tester.pumpAndSettle();
     for (var i = 0; i < zoomSteps; i++) {
       tester.binding.handlePointerEvent(PointerScrollEvent(position: zoomAt, scrollDelta: const Offset(0, -50)));

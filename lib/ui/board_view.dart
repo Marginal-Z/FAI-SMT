@@ -164,13 +164,14 @@ String _partNo(Placement p, MergedRef? m) {
   return p.partNo;
 }
 
-/// Default tilt of the 3D view, degrees from straight down.
+/// Tilt of the oblique 3D view, degrees from straight down. The 3D view
+/// opens looking straight down; the oblique button tilts it to this.
 const _defaultPitch = 50.0;
 
 /// Zoom, pan and the 3D viewing angle; changes repaint the drawing without
 /// rebuilding the page.
 class _Camera {
-  const _Camera(this.zoom, this.pan, {this.yaw = 0, this.pitch = _defaultPitch});
+  const _Camera(this.zoom, this.pan, {this.yaw = 0, this.pitch = 0});
 
   final double zoom;
   final Offset pan;

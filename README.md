@@ -1,5 +1,7 @@
 # SMT-FAI
 
+官网与使用教程：https://marginal-z.github.io/FAI-SMT/
+
 SMT 首件核对桌面工具（Windows / Linux，后续可出 Android）：
 
 1. 导入 **T100 BOM** 与 **站位表 A / B**，按料号核对插件位置与站位表位号；

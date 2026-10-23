@@ -30,7 +30,7 @@ class AppHeader extends StatelessWidget {
     final logo = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const GradientTile(icon: Lucide.cpu, colors: GradientTile.graphite, glow: Color(0x38000000), size: 34, radius: 10, iconSize: 18),
+        Image.asset('assets/icon/app_icon.png', width: 32, height: 32, filterQuality: FilterQuality.medium),
         const SizedBox(width: 11),
         Text(
           'SMT-FAI',
