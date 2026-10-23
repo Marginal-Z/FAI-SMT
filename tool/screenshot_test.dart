@@ -63,6 +63,35 @@ void main() {
     await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens/$name.png'));
   }
 
+  testWidgets('files page empty, large window', (tester) async {
+    final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
+    await shot(tester, s, 'files_empty_light', size: const Size(1920, 1130));
+  });
+
+  testWidgets('part library', (tester) async {
+    final s = demoState(dark: false);
+    s.openSettings(SettingsSection.library);
+    await shot(tester, s, 'library_light', size: const Size(1600, 1000));
+  });
+
+  testWidgets('part library dark', (tester) async {
+    final s = demoState();
+    s.openSettings(SettingsSection.library);
+    await shot(tester, s, 'library_dark', size: const Size(1600, 1000));
+  });
+
+  testWidgets('user guide', (tester) async {
+    final s = demoState(dark: false);
+    s.openSettings(SettingsSection.guide);
+    await shot(tester, s, 'guide_light', size: const Size(1600, 1000));
+  });
+
+  testWidgets('tour step', (tester) async {
+    final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
+    s.tourStep = 2;
+    await shot(tester, s, 'tour_light', size: const Size(1600, 1000));
+  });
+
   testWidgets('files page dark', (tester) async {
     final s = demoState();
     s.setModule(Module.files);

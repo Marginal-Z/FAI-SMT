@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'part_library.dart';
 import 'parsers.dart';
 
 class CheckRules {
@@ -270,9 +271,12 @@ class AppSettings {
     this.autoUpdate = true,
     this.coordUnit = CoordUnit.auto,
     this.uiScale = 0,
+    this.tourDone = false,
+    List<PartModelRule>? partRules,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate(),
-       board = board ?? BoardStyle();
+       board = board ?? BoardStyle(),
+       partRules = partRules ?? [];
 
   BoardStyle board;
   CheckRules rules;
@@ -287,6 +291,12 @@ class AppSettings {
   /// Interface zoom factor; 0 follows the display (see [autoUiScale]).
   double uiScale;
 
+  /// The first-run guided tour has been finished or skipped.
+  bool tourDone;
+
+  /// Part library models chosen by the user for specific parts.
+  List<PartModelRule> partRules;
+
   Map<String, dynamic> toJson() => {
     'rules': rules.toJson(),
     'board': board.toJson(),
@@ -296,6 +306,8 @@ class AppSettings {
     'autoUpdate': autoUpdate,
     'coordUnit': coordUnit.name,
     'uiScale': uiScale,
+    'tourDone': tourDone,
+    'partRules': [for (final r in partRules) r.toJson()],
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -315,6 +327,8 @@ class AppSettings {
     autoUpdate: j['autoUpdate'] as bool? ?? true,
     coordUnit: CoordUnit.values.firstWhere((u) => u.name == j['coordUnit'], orElse: () => CoordUnit.auto),
     uiScale: (j['uiScale'] as num?)?.toDouble() ?? 0,
+    tourDone: j['tourDone'] == true,
+    partRules: [for (final r in (j['partRules'] as List?) ?? const []) if (r is Map) PartModelRule.fromJson(r.cast())],
   );
 
   static Future<AppSettings> load(String dir) async {

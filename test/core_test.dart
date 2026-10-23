@@ -7,6 +7,7 @@ import 'package:smt_fai/core/board_layout.dart';
 import 'package:smt_fai/core/checker.dart';
 import 'package:smt_fai/core/discrepancies.dart';
 import 'package:smt_fai/core/footprints.dart';
+import 'package:smt_fai/core/part_library.dart';
 import 'package:smt_fai/core/updater.dart';
 import 'package:smt_fai/version.dart';
 import 'package:smt_fai/core/exporters.dart';
@@ -324,6 +325,50 @@ void main() {
       expect(shapeOf('1Q2', footprint: 'SOT23').kind, PartKind.transistor);
       expect(shapeOf('MARK1').kind, PartKind.fiducial);
       expect(shapeOf('TP10_1').kind, PartKind.testPoint);
+    });
+  });
+
+  group('part library', () {
+    test('recognises common component families', () {
+      String m(String ref, {String fp = '', String d = ''}) => shapeOf(ref, footprint: fp, description: d).model;
+      expect(m('R5', d: '贴片电阻 RT0402 10K'), 'chip_resistor');
+      expect(m('RN1', d: '排阻 0402X4 22R'), 'res_array');
+      expect(m('C3', d: '贴片电容 CC0603 22UF'), 'mlcc');
+      expect(m('EC1', d: '贴片铝电解 220UF 16V 6.3X5.4'), 'elcap');
+      expect(m('C9', d: '钽电容 TAJ 3528 10UF'), 'tantalum');
+      expect(m('FB2', d: '磁珠 0402 600R'), 'bead');
+      expect(m('L1', d: '绕线工字电感 CD54 10UH'), 'drum_inductor');
+      expect(m('D4', fp: 'SMA'), 'diode_sma');
+      expect(m('LED1', d: 'LED 5050 RGB'), 'led_plcc');
+      expect(m('Q1', fp: 'SOT-223'), 'sot223');
+      expect(m('U2', fp: 'LQFP48_7X7'), 'qfp');
+      expect(m('U3', fp: 'QFN24_4X4'), 'qfn');
+      expect(m('U5', fp: 'AML_C3_C308L_BGA_PACKAGE_1'), 'bga');
+      expect(m('Y1', d: '有源晶振 25MHZ 3225'), 'oscillator');
+      expect(m('J1', d: 'USB TYPE-C 16P'), 'usb_c');
+      expect(m('J2', fp: 'FPC-CON24'), 'fpc');
+      expect(m('SW1', d: '轻触按键 6X6'), 'tact_switch');
+      expect(m('BZ1', d: '蜂鸣器'), 'buzzer');
+      expect(m('9R2', d: '291A主板BOT屏蔽框材料'), 'shield');
+      expect(m('MARK1'), 'fiducial');
+      expect(m('TP3'), 'test_point');
+    });
+
+    test('a user rule overrides recognition, most specific first', () {
+      final rules = [const PartModelRule('footprint', 'SOT23', 'sot23_6'), const PartModelRule('ref', 'Q7', 'dpak')];
+      expect(ruleModel(rules, ref: 'Q1', partNo: 'X', footprint: 'SOT23'), 'sot23_6');
+      expect(ruleModel(rules, ref: 'Q7', partNo: 'X', footprint: 'SOT23'), 'dpak');
+      expect(ruleModel(rules, ref: 'Q2', partNo: 'X', footprint: 'SOT89'), isNull);
+      final forced = shapeOf('Q7', footprint: 'SOT23', model: 'dpak');
+      expect(forced.model, 'dpak');
+      expect(forced.width, greaterThan(2.9));
+    });
+
+    test('every library model has a name and a positive size', () {
+      for (final m in partLibrary) {
+        expect(Texts.has('pm_${m.id}'), isTrue, reason: m.id);
+        expect(m.width > 0 && m.height > 0, isTrue, reason: m.id);
+      }
     });
   });
 

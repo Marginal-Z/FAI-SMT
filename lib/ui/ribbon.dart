@@ -14,6 +14,7 @@ import 'dialogs.dart';
 import 'glyphs.dart';
 import 'icons.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 const moduleLabels = {Module.files: 'mod_files', Module.check: 'mod_check', Module.cad: 'mod_cad', Module.board: 'mod_board'};
@@ -54,9 +55,11 @@ class TitleBar extends StatelessWidget {
                 children: [
                   for (final mod in Module.values)
                     _ModuleTab(
+                      key: tourTargets.module(mod),
                       glyph: moduleGlyphs[mod]!,
                       label: s.t(moduleLabels[mod]!),
                       active: state.module == mod,
+                      showLabel: width >= 1000,
                       onTap: () => state.setModule(mod),
                     ),
                 ],
@@ -101,6 +104,10 @@ class TitleBar extends StatelessWidget {
             tooltip: s.t('theme_now_${state.theme.name}'),
             onTap: state.cycleTheme,
           ),
+          KeyedSubtree(
+            key: tourTargets.help,
+            child: _TitleIcon(glyph: Glyph.help, tooltip: s.t('set_guide'), onTap: () => state.openSettings(SettingsSection.guide)),
+          ),
           _TitleIcon(glyph: Glyph.settings, tooltip: s.t('mod_settings'), onTap: state.openSettings),
           const SizedBox(width: 8),
         ],
@@ -111,12 +118,15 @@ class TitleBar extends StatelessWidget {
 
 /// Module tab: icon only; the active tab opens into icon + name.
 class _ModuleTab extends StatelessWidget {
-  const _ModuleTab({required this.glyph, required this.label, required this.active, required this.onTap});
+  const _ModuleTab({super.key, required this.glyph, required this.label, required this.active, required this.onTap, this.showLabel = false});
 
   final Glyph glyph;
   final String label;
   final bool active;
   final VoidCallback onTap;
+
+  /// Wide windows name every tab; otherwise only the active one.
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +141,7 @@ class _ModuleTab extends StatelessWidget {
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
           height: m.iconButton + 6,
-          padding: EdgeInsets.symmetric(horizontal: active ? 14 : 10),
+          padding: EdgeInsets.symmetric(horizontal: active || showLabel ? 14 : 10),
           decoration: BoxDecoration(
             color: active
                 ? c.accent.withValues(alpha: c.dark ? 0.18 : 0.1)
@@ -140,17 +150,37 @@ class _ModuleTab extends StatelessWidget {
                 : null,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              GlyphIcon(glyph, size: 20, filled: active, color: active ? c.accent : (hover ? c.text : c.textDim)),
-              if (active) ...[
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.accent, letterSpacing: 0.2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GlyphIcon(glyph, size: 20, filled: active, color: active ? c.accent : (hover ? c.text : c.textDim)),
+                  if (active || showLabel) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                        color: active ? c.accent : (hover ? c.text : c.textDim),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (active)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    height: 2,
+                    decoration: BoxDecoration(color: c.accent, borderRadius: BorderRadius.circular(1)),
+                  ),
                 ),
-              ],
             ],
           ),
         ),
@@ -560,6 +590,11 @@ class Ribbon extends StatelessWidget {
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            RibbonOption(
+              label: s.t('color_real'),
+              selected: state.boardColoring == BoardColoring.real,
+              onTap: () => state.setBoardColoring(BoardColoring.real),
+            ),
             RibbonOption(
               label: s.t('color_type'),
               selected: state.boardColoring == BoardColoring.type,

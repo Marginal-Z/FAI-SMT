@@ -46,6 +46,21 @@ Future<void> importFile(BuildContext context, AppState state, InputKind kind) as
   }
 }
 
+/// Desktop platforms accept files dropped onto the import cards.
+bool get dropSupported => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+/// Loads a file dropped onto an import card, checking its extension first.
+Future<void> loadDropped(BuildContext context, AppState state, InputKind kind, String name, Uint8List bytes) async {
+  final ext = name.split('.').last.toLowerCase();
+  final allowed = kind == InputKind.coords || kind == InputKind.boardCad ? _coordExts : _tableExts;
+  try {
+    if (!allowed.contains(ext)) throw UserMessage('msg_bad_drop', {'ext': '.$ext', 'allowed': allowed.map((e) => '.$e').join(' / ')});
+    state.load(kind, name, bytes);
+  } catch (e) {
+    if (context.mounted) await showError(context, e);
+  }
+}
+
 void runCheck(BuildContext context, AppState state) {
   try {
     state.runCheckNow();

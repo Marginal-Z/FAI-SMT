@@ -16,6 +16,7 @@ import 'package:flutter/widgets.dart';
 import '../app_state.dart';
 import '../core/board_layout.dart';
 import '../core/footprints.dart';
+import '../core/part_library.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
 import '../l10n/strings.dart';
@@ -23,6 +24,8 @@ import 'actions.dart';
 import 'check_view.dart';
 import 'glyphs.dart';
 import 'icons.dart';
+import 'library_page.dart';
+import 'part_render.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -43,12 +46,17 @@ class PartPalette {
     PartKind.ic: Color(0xFF3D78D8),
     PartKind.crystal: Color(0xFFB4BAC2),
     PartKind.connector: Color(0xFFCDC4B1),
+    PartKind.electromech: Color(0xFF3E8E8A),
+    PartKind.mechanical: Color(0xFFAAB0B7),
     PartKind.testPoint: Color(0xFFB59D6B),
     PartKind.fiducial: Color(0xFFBF8A57),
     PartKind.other: Color(0xFF98A0A9),
   };
 
   static const terminal = Color(0xFFCDD2D8);
+
+  /// Green solder mask, the board under real colours.
+  static const solderMask = Color(0xFF1F5A3B);
   static const copper = Color(0xFFC0844A);
 
   static const backgrounds = {BoardBackground.green: Color(0xFF1E5E3B), BoardBackground.black: Color(0xFF16181B)};
@@ -79,6 +87,10 @@ class _Part {
   final PartShape shape;
   final BoardSide side;
 
+  /// The drawing built from its library model, for [buildColor].
+  PartBuild? build;
+  Color? buildColor;
+
   /// Designator width at 10 px, and the last laid-out label.
   double? probeWidth;
   TextPainter? label;
@@ -90,7 +102,7 @@ class _Part {
 /// unplaced footprints, then larger before smaller), built once per
 /// coordinate file, check result and side filter instead of on every frame.
 class _BoardModel {
-  _BoardModel(this.parts) : extents = _View.extents(parts);
+  _BoardModel(this.parts) : extents = _extents(parts);
 
   final List<_Part> parts;
   final (double, double, double, double) extents;
@@ -103,13 +115,19 @@ class _BoardModel {
     BoardSide Function(Placement, MergedRef?) sideOf, {
     required bool allSides,
     required bool checked,
+    List<PartModelRule> rules = const [],
   }) {
     final raw = [
       for (final p in items)
         (
           p,
           merged[p.ref],
-          shapeOf(p.ref, footprint: p.footprint, description: '${merged[p.ref]?.description ?? p.description} ${p.value}'),
+          shapeOf(
+            p.ref,
+            footprint: p.footprint,
+            description: '${merged[p.ref]?.description ?? p.description} ${p.value}',
+            model: ruleModel(rules, ref: p.ref, partNo: _partNo(p, merged[p.ref]), footprint: p.footprint),
+          ),
           sideOf(p, merged[p.ref]),
         ),
     ];
@@ -135,6 +153,14 @@ class _BoardModel {
     });
     return _BoardModel(parts);
   }
+}
+
+/// Part number shown for a placement: what is loaded on the line, else the
+/// BOM's, else the coordinate file's.
+String _partNo(Placement p, MergedRef? m) {
+  if (m != null && m.smtPartNo.isNotEmpty) return m.smtPartNo;
+  if (m != null && m.bomPartNo.isNotEmpty) return m.bomPartNo;
+  return p.partNo;
 }
 
 /// Default tilt of the 3D view, degrees from straight down.
@@ -180,6 +206,28 @@ class _BoardViewState extends State<BoardView> {
   Object? _modelCoords;
   Object? _modelReport;
   bool? _modelAllSides;
+  int? _modelRules;
+
+  /// Part under a screen point, preferring the one drawn on top.
+  _Part? _partAt(Offset pos, List<_Part> parts, _View v, bool depth, BoardSide raisedSide) {
+    _Part? best;
+    var bestD = double.infinity;
+    for (final part in parts) {
+      final h = depth && (part.side == BoardSide.bottom) == (raisedSide == BoardSide.bottom) ? part.shape.bodyHeight : 0.0;
+      final d = (v.project(part.p.x, part.p.y, h) - pos).distance;
+      final reach = math.max(6.0, math.max(part.shape.width, part.shape.height) * v.scale / 2);
+      if (d < reach && d <= bestD) {
+        bestD = d;
+        best = part;
+      }
+    }
+    return best;
+  }
+
+  void _pickModel(BuildContext context, _Part part) {
+    _hover.value = null;
+    showPartModelPicker(context, widget.state, ref: part.p.ref, partNo: _partNo(part.p, part.merged), footprint: part.p.footprint, current: part.shape.model);
+  }
 
   @override
   void initState() {
@@ -203,12 +251,14 @@ class _BoardViewState extends State<BoardView> {
   }
 
   _BoardModel _modelFor(LoadedFile<Placement> coords, CheckReport? report, bool allSides) {
-    if (_model == null || !identical(_modelCoords, coords) || !identical(_modelReport, report) || _modelAllSides != allSides) {
+    final rules = widget.state.partRulesVersion;
+    if (_model == null || !identical(_modelCoords, coords) || !identical(_modelReport, report) || _modelAllSides != allSides || _modelRules != rules) {
       final merged = {for (final m in report?.merged ?? const <MergedRef>[]) m.ref: m};
-      _model = _BoardModel.build(coords.result.items, merged, _sideOf, allSides: allSides, checked: report != null);
+      _model = _BoardModel.build(coords.result.items, merged, _sideOf, allSides: allSides, checked: report != null, rules: widget.state.settings.partRules);
       _modelCoords = coords;
       _modelReport = report;
       _modelAllSides = allSides;
+      _modelRules = rules;
       _hover.value = null;
     }
     return _model!;
@@ -289,7 +339,7 @@ class _BoardViewState extends State<BoardView> {
           child: LayoutBuilder(
             builder: (context, box) {
               final size = Size(box.maxWidth, box.maxHeight);
-              _View view() => _View.fit(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
+              _View view() => _fitView(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
               return Listener(
                 onPointerSignal: (e) {
                   if (e is PointerScrollEvent) _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size);
@@ -303,23 +353,20 @@ class _BoardViewState extends State<BoardView> {
                 child: MouseRegion(
                   cursor: SystemMouseCursors.grab,
                   onHover: (e) {
-                    final v = view();
-                    _Part? best;
-                    var bestD = double.infinity;
-                    for (final part in parts) {
-                      final h = depth && part.side == raisedSide ? part.shape.bodyHeight : 0.0;
-                      final d = (v.project(part.p.x, part.p.y, h) - e.localPosition).distance;
-                      final reach = math.max(6.0, math.max(part.shape.width, part.shape.height) * v.scale / 2);
-                      // Ties go to the later (upper) part.
-                      if (d < reach && d <= bestD) {
-                        bestD = d;
-                        best = part;
-                      }
-                    }
+                    final best = _partAt(e.localPosition, parts, view(), depth, raisedSide);
                     _hover.value = best == null ? null : (best, e.localPosition);
                   },
                   onExit: (_) => _hover.value = null,
                   child: GestureDetector(
+                    // Right-click or long-press a part to choose its model.
+                    onSecondaryTapUp: (d) {
+                      final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
+                      if (part != null) _pickModel(context, part);
+                    },
+                    onLongPressStart: (d) {
+                      final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
+                      if (part != null) _pickModel(context, part);
+                    },
                     onScaleStart: (d) {
                       _gestureStart = _cam.value;
                       _gestureFocal = d.localFocalPoint;
@@ -425,124 +472,37 @@ class _BoardViewState extends State<BoardView> {
   }
 }
 
-/// Board (mm, Y up, Z out of the board) → screen. An orthographic camera:
-/// mirror, rotation about the board normal, then a tilt that tips the far
-/// edge away from the viewer. Without tilt it is the plain top view.
-class _View {
-  _View(this.cx, this.cy, this.theta, this.mirror, this.pitch, this.scale, this.origin)
-    : _cosT = math.cos(theta),
-      _sinT = math.sin(theta),
-      cosP = math.cos(pitch),
-      sinP = math.sin(pitch);
+typedef _View = BoardProjection;
 
-  final double cx;
-  final double cy;
-
-  /// View rotation and tilt in radians.
-  final double theta;
-  final bool mirror;
-  final double pitch;
-  final double _cosT, _sinT;
-  final double cosP, sinP;
-
-  /// Pixels per mm.
-  final double scale;
-
-  /// Screen position of the board centre.
-  final Offset origin;
-
-  bool get tilted => pitch > 1e-4;
-
-  /// Board-plane direction after mirror and rotation (X right, Y away).
-  Offset plane(double x, double y) {
-    final vx = mirror ? -x : x;
-    return Offset(vx * _cosT - y * _sinT, vx * _sinT + y * _cosT);
+/// Board extents including each part's body (half its longest side).
+(double, double, double, double) _extents(List<_Part> parts) {
+  var minX = double.infinity, minY = double.infinity, maxX = -double.infinity, maxY = -double.infinity;
+  for (final e in parts) {
+    final r = math.max(e.shape.width, e.shape.height) / 2;
+    minX = math.min(minX, e.p.x - r);
+    minY = math.min(minY, e.p.y - r);
+    maxX = math.max(maxX, e.p.x + r);
+    maxY = math.max(maxY, e.p.y + r);
   }
-
-  Offset project(double x, double y, [double z = 0]) {
-    final v = plane(x - cx, y - cy);
-    return origin + Offset(v.dx * scale, -(v.dy * cosP + z * sinP) * scale);
-  }
-
-  /// Larger is farther from the viewer.
-  double depthOf(double x, double y) => plane(x - cx, y - cy).dy;
-
-  /// Screen offset of a part-local vector (mm) for a part rotated [rotDeg].
-  Offset localDelta(double rotDeg, double lx, double ly) {
-    final a = rotDeg * math.pi / 180;
-    final v = plane(lx * math.cos(a) - ly * math.sin(a), lx * math.sin(a) + ly * math.cos(a));
-    return Offset(v.dx * scale, -v.dy * cosP * scale);
-  }
-
-  /// Board-plane direction of a part-local vector, for face normals.
-  Offset localPlane(double rotDeg, double lx, double ly) {
-    final a = rotDeg * math.pi / 180;
-    return plane(lx * math.cos(a) - ly * math.sin(a), lx * math.sin(a) + ly * math.cos(a));
-  }
-
-  /// Puts the canvas into the part's frame (mm, Y up) on the plane through
-  /// [at], parallel to the board.
-  void applyPart(Canvas canvas, Offset at, double rotDeg) {
-    final ex = localDelta(rotDeg, 1, 0), ey = localDelta(rotDeg, 0, 1);
-    canvas.translate(at.dx, at.dy);
-    canvas.transform(Float64List.fromList([ex.dx, ex.dy, 0, 0, ey.dx, ey.dy, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
-  }
-
-  /// Board extents including each part's body (half its longest side).
-  static (double, double, double, double) extents(List<_Part> parts) {
-    var minX = double.infinity, minY = double.infinity, maxX = -double.infinity, maxY = -double.infinity;
-    for (final e in parts) {
-      final r = math.max(e.shape.width, e.shape.height) / 2;
-      minX = math.min(minX, e.p.x - r);
-      minY = math.min(minY, e.p.y - r);
-      maxX = math.max(maxX, e.p.x + r);
-      maxY = math.max(maxY, e.p.y + r);
-    }
-    return (minX, minY, maxX, maxY);
-  }
-
-  static _View fit((double, double, double, double) ext, Size size, int quarter, bool mirror, _Camera cam, {required bool tilt}) {
-    final pitch = tilt ? cam.pitch * math.pi / 180 : 0.0;
-    final theta = quarter * math.pi / 2 + (tilt ? cam.yaw * math.pi / 180 : 0.0);
-    final (minX, minY, maxX, maxY) = ext;
-    final centre = Offset(size.width / 2, size.height / 2);
-    if (!minX.isFinite) return _View(0, 0, theta, mirror, pitch, 1, centre);
-    final cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    // Fit the quarter-turned board; turning it further keeps the scale so
-    // the board does not pulse while it is orbited.
-    final odd = quarter.isOdd;
-    final w = math.max((odd ? maxY - minY : maxX - minX) + 4, 2.0);
-    final h = math.max((odd ? maxX - minX : maxY - minY) * math.cos(pitch) + 4, 2.0);
-    const margin = 56.0;
-    final base = math.max(math.min((size.width - 2 * margin) / w, (size.height - 2 * margin) / h), 0.01);
-    return _View(cx, cy, theta, mirror, pitch, base * cam.zoom, centre + cam.pan);
-  }
+  return (minX, minY, maxX, maxY);
 }
 
-/// Convex hull (monotone chain) of a few points.
-List<Offset> _hull(List<Offset> pts) {
-  final p = [...pts]..sort((a, b) => a.dx != b.dx ? a.dx.compareTo(b.dx) : a.dy.compareTo(b.dy));
-  double cross(Offset o, Offset a, Offset b) => (a.dx - o.dx) * (b.dy - o.dy) - (a.dy - o.dy) * (b.dx - o.dx);
-  final lower = <Offset>[], upper = <Offset>[];
-  for (final q in p) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower.last, q) <= 0) {
-      lower.removeLast();
-    }
-    lower.add(q);
-  }
-  for (final q in p.reversed) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper.last, q) <= 0) {
-      upper.removeLast();
-    }
-    upper.add(q);
-  }
-  return [...lower..removeLast(), ...upper..removeLast()];
+_View _fitView((double, double, double, double) ext, Size size, int quarter, bool mirror, _Camera cam, {required bool tilt}) {
+  final pitch = tilt ? cam.pitch * math.pi / 180 : 0.0;
+  final theta = quarter * math.pi / 2 + (tilt ? cam.yaw * math.pi / 180 : 0.0);
+  final (minX, minY, maxX, maxY) = ext;
+  final centre = Offset(size.width / 2, size.height / 2);
+  if (!minX.isFinite) return _View(0, 0, theta, mirror, pitch, 1, centre);
+  final cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  // Fit the quarter-turned board; turning it further keeps the scale so
+  // the board does not pulse while it is orbited.
+  final odd = quarter.isOdd;
+  final w = math.max((odd ? maxY - minY : maxX - minX) + 4, 2.0);
+  final h = math.max((odd ? maxX - minX : maxY - minY) * math.cos(pitch) + 4, 2.0);
+  const margin = 56.0;
+  final base = math.max(math.min((size.width - 2 * margin) / w, (size.height - 2 * margin) / h), 0.01);
+  return _View(cx, cy, theta, mirror, pitch, base * cam.zoom, centre + cam.pan);
 }
-
-/// Metal and plating colours shared by all parts.
-const _tin = Color(0xFFD5DAE0);
-const _tinShade = Color(0xFF9AA2AB);
-const _gold = Color(0xFFD9B35A);
 
 class _AssemblyPainter extends CustomPainter {
   _AssemblyPainter({
@@ -581,10 +541,6 @@ class _AssemblyPainter extends CustomPainter {
   /// 3D view: tilted camera, raised bodies with lit faces and shadows.
   final bool depth;
 
-  /// Light direction in view space (X right, Y away, Z up): from the upper
-  /// left and slightly in front, so shadows fall back and to the right.
-  static const _light = (-0.5, -0.3, 0.81);
-
   /// Board thickness drawn as the slab edge in 3D, mm.
   static const _boardThickness = 1.6;
 
@@ -592,22 +548,18 @@ class _AssemblyPainter extends CustomPainter {
   static Float32List? _dots;
   static Size? _dotsSize;
 
-  Color get _boardFill => palette.board ?? colors.window;
-  Color get _boardEdge => palette.board == null
+  /// Board colour: the user's choice; real colours put parts on green solder
+  /// mask; otherwise the canvas.
+  Color? get _board => palette.board ?? (coloring == BoardColoring.real ? PartPalette.solderMask : null);
+  Color get _boardFill => _board ?? colors.window;
+  Color get _boardEdge => _board == null
       ? colors.borderStrong
-      : Color.lerp(palette.board, palette.board!.computeLuminance() > 0.3 ? const Color(0xFF000000) : const Color(0xFFFFFFFF), 0.25)!;
+      : Color.lerp(_board, _board!.computeLuminance() > 0.3 ? const Color(0xFF000000) : const Color(0xFFFFFFFF), 0.25)!;
 
   /// Parts of the side being looked at stand up in 3D (unknown counts as top).
   bool _raised(_Part part) => depth && (part.side == BoardSide.bottom) == (raisedSide == BoardSide.bottom);
 
   double _height(_Part part) => _raised(part) && _fill(part) != null ? part.shape.bodyHeight : 0;
-
-  /// Brightness of a face with view-space normal (nx, ny, nz) relative to a
-  /// part's top face.
-  static double _shade(double nx, double ny, double nz) {
-    double k(double x, double y, double z) => 0.35 + 0.65 * math.max(0, x * _light.$1 + y * _light.$2 + z * _light.$3);
-    return (k(nx, ny, nz) / k(0, 0, 1)).clamp(0.25, 1.0);
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -628,7 +580,7 @@ class _AssemblyPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
     if (model.parts.isEmpty) return;
-    final view = _View.fit(model.extents, size, quarter, mirror, cam.value, tilt: depth);
+    final view = _fitView(model.extents, size, quarter, mirror, cam.value, tilt: depth);
     _drawBoard(canvas, view);
 
     // Visible parts with their screen centres on the board.
@@ -655,12 +607,13 @@ class _AssemblyPainter extends CustomPainter {
         if (dim) canvas.saveLayer(Offset.zero & size, Paint()..color = const Color(0x8C000000));
         for (final (part, at) in group) {
           final fill = _fill(part);
-          canvas.save();
-          view.applyPart(canvas, at, part.p.rotation);
-          _drawLeads(canvas, part, px, fill);
-          _drawBody(canvas, part, px, fill);
-          canvas.restore();
-          if (fill != null) drawn.add((part, _bounds(_corners(part, at, view))));
+          if (fill == null) {
+            _drawEmpty(canvas, part, at, view, px);
+          } else {
+            renderPart(canvas, view, at, part.p.rotation, _build(part, fill), raised: false, px: px);
+            drawn.add((part, _bounds(_corners(part, at, view))));
+          }
+          _drawRings(canvas, part, at, view, px);
         }
         if (dim) canvas.restore();
       }
@@ -671,10 +624,8 @@ class _AssemblyPainter extends CustomPainter {
       raised.sort((a, b) => view.depthOf(b.$1.p.x, b.$1.p.y).compareTo(view.depthOf(a.$1.p.x, a.$1.p.y)));
       for (final (part, at) in raised) {
         if (_fill(part) != null) continue;
-        canvas.save();
-        view.applyPart(canvas, at, part.p.rotation);
-        _drawBody(canvas, part, px, null);
-        canvas.restore();
+        _drawEmpty(canvas, part, at, view, px);
+        _drawRings(canvas, part, at, view, px);
       }
       final shadow = Paint()..color = Color.fromRGBO(0, 0, 0, colors.dark ? 0.4 : 0.18);
       for (final (part, at) in raised) {
@@ -682,22 +633,15 @@ class _AssemblyPainter extends CustomPainter {
         if (h <= 0) continue;
         final base = _corners(part, at, view);
         final off = _shadowOffset(view, h);
-        canvas.drawPath(Path()..addPolygon(_hull([...base, for (final p in base) p + off]), true), shadow);
+        canvas.drawPath(Path()..addPolygon(convexHull([...base, for (final p in base) p + off]), true), shadow);
       }
       for (final (part, at) in raised) {
         final fill = _fill(part);
         if (fill == null) continue;
-        final h = _height(part);
-        final top = at + Offset(0, -h * view.sinP * view.scale);
-        canvas.save();
-        view.applyPart(canvas, at, part.p.rotation);
-        _drawLeads(canvas, part, px, fill);
-        canvas.restore();
-        if (h > 0 && view.tilted) _drawWalls(canvas, part, at, top, view, fill);
-        canvas.save();
-        view.applyPart(canvas, top, part.p.rotation);
-        _drawBody(canvas, part, px, fill);
-        canvas.restore();
+        final b = _build(part, fill);
+        renderPart(canvas, view, at, part.p.rotation, b, raised: true, px: px);
+        final top = at + view.lift(b.top);
+        _drawRings(canvas, part, top, view, px);
         drawn.add((part, _bounds([..._corners(part, at, view), ..._corners(part, top, view)])));
       }
     }
@@ -707,7 +651,7 @@ class _AssemblyPainter extends CustomPainter {
   /// Where a point [h] mm above the board casts its shadow, relative to its
   /// foot, on screen.
   Offset _shadowOffset(_View view, double h) {
-    final dx = -h * _light.$1 / _light.$3, dy = -h * _light.$2 / _light.$3;
+    final dx = -h * lightDir.$1 / lightDir.$3, dy = -h * lightDir.$2 / lightDir.$3;
     return Offset(dx * view.scale, -dy * view.cosP * view.scale);
   }
 
@@ -747,7 +691,7 @@ class _AssemblyPainter extends CustomPainter {
     }
     final top = [for (final (x, y) in pts) view.project(x, y)];
     if (view.tilted) {
-      final side = Color.lerp(palette.board ?? colors.borderStrong, const Color(0xFF000000), 0.35)!;
+      final side = Color.lerp(_board ?? colors.borderStrong, const Color(0xFF000000), 0.35)!;
       for (var i = 0; i < 4; i++) {
         final j = (i + 1) % 4;
         // Outward normal of edge i→j in board coordinates, then on the plane.
@@ -763,202 +707,58 @@ class _AssemblyPainter extends CustomPainter {
     canvas.drawPath(path, edge);
   }
 
-  /// Side faces of a raised body that face the viewer, lit by face angle.
-  void _drawWalls(Canvas canvas, _Part part, Offset at, Offset top, _View view, Color fill) {
-    final base = _corners(part, at, view);
-    final lid = _corners(part, top, view);
-    const normals = [(0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)];
-    for (var i = 0; i < 4; i++) {
-      final n = view.localPlane(part.p.rotation, normals[i].$1, normals[i].$2);
-      if (n.dy >= -1e-3) continue;
-      final j = (i + 1) % 4;
-      final f = _shade(n.dx, n.dy, 0);
-      canvas.drawPath(Path()..addPolygon([base[i], base[j], lid[j], lid[i]], true), Paint()..color = Color.lerp(const Color(0xFF000000), fill, f)!);
-    }
-  }
-
   /// Fill colour for a part in the current colouring mode, or null to draw
   /// it as an empty footprint (not placed / not in the BOM).
   Color? _fill(_Part part) {
     final m = part.merged;
     if (checked && m == null) return null;
     if (coloring == BoardColoring.status && checked) return colors.category(m!.category);
+    if (coloring == BoardColoring.real) return Color(partModel(part.shape.model).realColor);
     return palette.body(part.shape.kind);
   }
 
-  /// Leads and terminals outside the body, on the board surface.
-  void _drawLeads(Canvas canvas, _Part part, double px, Color? fill) {
-    if (fill == null) return;
-    final sh = part.shape;
-    final w = sh.width, h = sh.height;
-    // Gull-wing lead: shoulder next to the body, solder foot outside.
-    void lead(Offset from, Offset dir, double length, double width) {
-      final foot = from + dir * length;
-      final mid = from + dir * (length * 0.45);
-      final across = Offset(dir.dy, -dir.dx) * (width / 2);
-      canvas.drawPath(Path()..addPolygon([from + across, mid + across, mid - across, from - across], true), Paint()..color = _tinShade);
-      canvas.drawPath(Path()..addPolygon([mid + across, foot + across, foot - across, mid - across], true), Paint()..color = _tin);
+  /// The part's model, built once per body colour.
+  PartBuild _build(_Part part, Color fill) {
+    if (part.build == null || part.buildColor != fill) {
+      part.build = buildPart(part.shape, fill, real: coloring == BoardColoring.real);
+      part.buildColor = fill;
     }
-
-    switch (sh.kind) {
-      case PartKind.transistor:
-        final lw = math.min(0.42, w * 0.15), ll = h * 0.45;
-        for (final x in [-w * 0.33, w * 0.33]) {
-          lead(Offset(x, -h / 2), const Offset(0, -1), ll, lw);
-        }
-        lead(Offset(0, h / 2), const Offset(0, 1), ll, lw);
-      case PartKind.ic when sh.pins > 0 && !sh.bga:
-        final square = (w - h).abs() < 0.2;
-        final pitch = w / (sh.pins + 1);
-        final lw = math.min(pitch * 0.55, 0.45), ll = math.min(w, h) * 0.13;
-        for (var i = 1; i <= sh.pins; i++) {
-          final x = -w / 2 + pitch * i;
-          lead(Offset(x, h / 2), const Offset(0, 1), ll, lw);
-          lead(Offset(x, -h / 2), const Offset(0, -1), ll, lw);
-          if (square) {
-            final y = -h / 2 + (h / (sh.pins + 1)) * i;
-            lead(Offset(w / 2, y), const Offset(1, 0), ll, lw);
-            lead(Offset(-w / 2, y), const Offset(-1, 0), ll, lw);
-          }
-        }
-      case PartKind.crystal:
-        // Corner pads peeking out under the can.
-        final pw = w * 0.22, ph = h * 0.3;
-        for (final (sx, sy) in [(-1, -1), (1, -1), (1, 1), (-1, 1)]) {
-          canvas.drawRect(Rect.fromCenter(center: Offset(sx * (w / 2 - pw * 0.3), sy * (h / 2 - ph * 0.3)), width: pw, height: ph), Paint()..color = _tin);
-        }
-      default:
-        break;
-    }
+    return part.build!;
   }
 
-  /// The body as seen from above: its top face with plating, marks and
-  /// moulding, then the status / selection rings.
-  void _drawBody(Canvas canvas, _Part part, double px, Color? fill) {
-    final sh = part.shape;
-    final w = sh.width, h = sh.height;
-    final body = Rect.fromCenter(center: Offset.zero, width: w, height: h);
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = px * 1.2;
+  /// Empty footprint: outline only.
+  void _drawEmpty(Canvas canvas, _Part part, Offset at, _View view, double px) {
+    canvas.save();
+    view.applyPart(canvas, at, part.p.rotation);
+    canvas.drawRect(
+      Rect.fromCenter(center: Offset.zero, width: part.shape.width, height: part.shape.height),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = px * 1.2
+        ..color = colors.textFaint,
+    );
+    canvas.restore();
+  }
 
-    if (fill == null) {
-      // Empty footprint: outline only.
-      canvas.drawRect(body, stroke..color = colors.textFaint);
-      return;
-    }
-    Color dark(double t) => Color.lerp(fill, const Color(0xFF000000), t)!;
-    Color light(double t) => Color.lerp(fill, const Color(0xFFFFFFFF), t)!;
-    final small = math.min(w, h);
-    // End terminals of chip parts, with a darker band where solder wets.
-    void caps(double t, Color metal) {
-      for (final x in [-w / 2, w / 2 - t]) {
-        canvas.drawRect(Rect.fromLTWH(x, -h / 2, t, h), Paint()..color = metal);
-      }
-      for (final x in [-w / 2 + t, w / 2 - t]) {
-        canvas.drawRect(Rect.fromLTWH(x - px * 0.6, -h / 2, px * 1.2, h), Paint()..color = _tinShade);
-      }
-    }
-
-    switch (sh.kind) {
-      case PartKind.resistor:
-        final t = w * 0.18;
-        canvas.drawRect(body, Paint()..color = fill);
-        caps(t, _tin);
-        // Resistive film under the glaze.
-        canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: (w - 2 * t) * 0.78, height: h * 0.6), Paint()..color = dark(0.28));
-      case PartKind.capacitor:
-        final t = w * 0.2;
-        canvas.drawRect(body, Paint()..color = fill);
-        canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: w - 2 * t, height: h * 0.86), Paint()..color = light(0.08));
-        caps(t, _tin);
-      case PartKind.inductor:
-        if (small >= 1.6) {
-          // Moulded power inductor: rounded block, copper ends, coil mark.
-          canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.12)), Paint()..color = fill);
-          final t = w * 0.16;
-          for (final x in [-w / 2, w / 2 - t]) {
-            canvas.drawRect(Rect.fromLTWH(x, -h / 2 + h * 0.12, t, h * 0.76), Paint()..color = PartPalette.copper);
-          }
-          canvas.drawCircle(Offset.zero, small * 0.26, Paint()..color = dark(0.2));
-          canvas.drawCircle(Offset.zero, small * 0.26, stroke..color = light(0.18));
-        } else {
-          final t = w * 0.2;
-          canvas.drawRect(body, Paint()..color = fill);
-          caps(t, _tin);
-        }
-      case PartKind.diode:
-        canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.08)), Paint()..color = fill);
-        caps(w * 0.12, _tin);
-        // Cathode band.
-        canvas.drawRect(Rect.fromLTWH(-w / 2 + w * 0.16, -h / 2, w * 0.1, h), Paint()..color = const Color(0xFFD9DCE0));
-      case PartKind.led:
-        canvas.drawRect(body, Paint()..color = fill);
-        caps(w * 0.12, _tin);
-        canvas.drawCircle(Offset.zero, small * 0.36, Paint()..color = const Color(0xFFF2E6A6));
-        canvas.drawCircle(Offset.zero, small * 0.36, stroke..color = const Color(0xFFC9B95E));
-        canvas.drawRect(Rect.fromLTWH(-w / 2 + w * 0.12, -h / 2, w * 0.08, h * 0.3), Paint()..color = colors.pass);
-      case PartKind.transistor:
-        canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.08)), Paint()..color = fill);
-        canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.08), Radius.circular(small * 0.06)), Paint()..color = light(0.06));
-      case PartKind.ic:
-        if (sh.bga) {
-          // Substrate with the moulded cap on it.
-          canvas.drawRect(body, Paint()..color = const Color(0xFF3C4A3A));
-          canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.05), Radius.circular(small * 0.02)), Paint()..color = fill);
-        } else {
-          canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.04)), Paint()..color = dark(0.16));
-          canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.05), Radius.circular(small * 0.03)), Paint()..color = fill);
-        }
-        // Pin-1 dimple.
-        final pin1 = Offset(-w / 2 + small * 0.16, h / 2 - small * 0.16);
-        canvas.drawCircle(pin1, small * 0.07, Paint()..color = dark(0.32));
-        canvas.drawCircle(pin1 + Offset(px * 0.6, -px * 0.6), small * 0.07, stroke..color = light(0.3));
-      case PartKind.crystal:
-        // Seam-welded metal lid.
-        canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.14)), Paint()..color = dark(0.12));
-        canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.1), Radius.circular(small * 0.1)), Paint()..color = fill);
-        canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.1), Radius.circular(small * 0.1)), stroke..color = light(0.35));
-      case PartKind.connector:
-        canvas.drawRect(body, Paint()..color = fill);
-        canvas.drawRect(body.deflate(small * 0.08), Paint()..color = dark(0.1));
-        final n = (w / 0.8).floor().clamp(2, 40);
-        for (var i = 0; i < n; i++) {
-          canvas.drawRect(Rect.fromCenter(center: Offset(-w / 2 + w * (i + 0.5) / n, 0), width: w / n * 0.42, height: h * 0.42), Paint()..color = _gold);
-        }
-        // Latch slots at both ends.
-        for (final x in [-w / 2 + small * 0.12, w / 2 - small * 0.28]) {
-          canvas.drawRect(Rect.fromLTWH(x, -h * 0.18, small * 0.16, h * 0.36), Paint()..color = dark(0.45));
-        }
-      case PartKind.testPoint:
-        if ((w - h).abs() < 0.05) {
-          canvas.drawCircle(Offset.zero, w / 2, Paint()..color = fill);
-          canvas.drawCircle(Offset.zero, w / 2, stroke..color = dark(0.3));
-          canvas.drawCircle(Offset.zero, w / 4, Paint()..color = light(0.25));
-        } else {
-          canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.25)), Paint()..color = fill);
-          canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.18), Radius.circular(small * 0.15)), Paint()..color = light(0.18));
-        }
-      case PartKind.fiducial:
-        canvas.drawCircle(Offset.zero, w * 0.9, Paint()..color = Color.lerp(_boardFill, const Color(0xFF000000), 0.18)!);
-        canvas.drawCircle(Offset.zero, w / 2, Paint()..color = fill);
-        canvas.drawCircle(Offset.zero, w * 0.22, Paint()..color = light(0.35));
-      case PartKind.other:
-        canvas.drawRRect(RRect.fromRectAndRadius(body, Radius.circular(small * 0.1)), Paint()..color = fill);
-        canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(small * 0.07), Radius.circular(small * 0.08)), Paint()..color = light(0.07));
-    }
-
-    // Status outline in part-type mode; selection and hover in both modes.
+  /// Status outline in part-type and real-colour modes; selection and hover
+  /// in every mode. [at] is the screen point of the body's top.
+  void _drawRings(Canvas canvas, _Part part, Offset at, _View view, double px) {
     final m = part.merged;
+    final status = checked && m != null && coloring != BoardColoring.status && m.category != CheckCategory.pass;
+    final selected = highlight.contains(part.p.ref);
+    final hovered = identical(hover.value?.$1, part);
+    if (!status && !selected && !hovered) return;
+    final body = Rect.fromCenter(center: Offset.zero, width: part.shape.width, height: part.shape.height);
     Paint ring(Color c, double width) => Paint()
       ..color = c
       ..style = PaintingStyle.stroke
       ..strokeWidth = px * width;
-    if (checked && m != null && coloring == BoardColoring.type && m.category != CheckCategory.pass) {
-      canvas.drawRect(body.inflate(px * 2.5), ring(m.category == CheckCategory.ng ? colors.ng : colors.substitute, 2));
-    }
-    if (highlight.contains(part.p.ref)) canvas.drawRect(body.inflate(px * 5), ring(colors.accent, 2.2));
-    if (identical(hover.value?.$1, part)) canvas.drawRect(body.inflate(px * 3.5), ring(colors.text, 1.2));
+    canvas.save();
+    view.applyPart(canvas, at, part.p.rotation);
+    if (status) canvas.drawRect(body.inflate(px * 2.5), ring(m.category == CheckCategory.ng ? colors.ng : colors.substitute, 2));
+    if (selected) canvas.drawRect(body.inflate(px * 5), ring(colors.accent, 2.2));
+    if (hovered) canvas.drawRect(body.inflate(px * 3.5), ring(colors.text, 1.2));
+    canvas.restore();
   }
 
   /// Designators on the top face, along the body's long axis and kept
@@ -1129,6 +929,45 @@ class _LegendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
+    if (coloring == BoardColoring.real) {
+      return IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: c.panel.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                s.t('color_real'),
+                style: TextStyle(fontSize: 11.5, color: c.textDim, fontWeight: FontWeight.w600),
+              ),
+              if (checked) ...[
+                const SizedBox(width: 14),
+                Container(
+                  width: 14,
+                  height: 8,
+                  decoration: BoxDecoration(border: Border.all(color: c.ng, width: 1.5)),
+                ),
+                const SizedBox(width: 6),
+                Text(s.t('cat_ng'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
+                const SizedBox(width: 14),
+                Container(
+                  width: 14,
+                  height: 8,
+                  decoration: BoxDecoration(border: Border.all(color: c.textFaint)),
+                ),
+                const SizedBox(width: 6),
+                Text(s.t('board_not_in_bom'), style: TextStyle(fontSize: 11.5, color: c.textDim)),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
     final items = coloring == BoardColoring.status && checked
         ? <(Color?, String)>[(c.pass, s.t('cat_pass')), (c.ng, s.t('cat_ng')), (c.substitute, s.t('cat_substitute')), (null, s.t('board_not_in_bom'))]
         : <(Color?, String)>[
@@ -1141,6 +980,7 @@ class _LegendCard extends StatelessWidget {
               (PartKind.ic, 'type_ic'),
               (PartKind.crystal, 'type_crystal'),
               (PartKind.connector, 'type_connector'),
+              (PartKind.electromech, 'type_electromech'),
             ])
               (palette.body(k), s.t(key)),
             (null, s.t('type_other')),
@@ -1175,7 +1015,7 @@ class _LegendCard extends StatelessWidget {
                   Text(label, style: TextStyle(fontSize: 11.5, color: c.textDim)),
                 ],
               ),
-            if (coloring == BoardColoring.type && checked)
+            if (coloring != BoardColoring.status && checked)
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1237,6 +1077,12 @@ class _HoverCard extends StatelessWidget {
             if (m == null && p.partNo.isNotEmpty) Text('${s.t('col_pn')}: ${p.partNo}', style: style),
             if (m == null && p.description.isNotEmpty) Text(p.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: style),
             if (m == null && p.footprint.isNotEmpty) Text(p.footprint, style: style),
+            const SizedBox(height: 4),
+            Text(
+              s.t('hover_model', {'m': s.t('pm_${part.shape.model}')}),
+              style: style.copyWith(color: c.text, fontWeight: FontWeight.w600),
+            ),
+            Text(s.t('hover_model_hint'), style: style.copyWith(fontSize: 11, color: c.textFaint)),
           ],
         ),
       ),

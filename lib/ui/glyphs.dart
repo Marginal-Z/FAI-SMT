@@ -62,6 +62,11 @@ enum Glyph {
   search,
   chevronDown,
   chevronUp,
+  help,
+  circle,
+  guide,
+  library,
+  tip,
   chevronRight,
   fileCheck,
 }
@@ -124,6 +129,11 @@ const Map<Glyph, (IconData, IconData)> _glyphs = {
   Glyph.search: (IconData(63120, fontFamily: _regular), IconData(63130, fontFamily: _filled)), // search
   Glyph.chevronDown: (IconData(62116, fontFamily: _regular), IconData(62116, fontFamily: _filled)), // chevron_down
   Glyph.chevronUp: (IconData(62135, fontFamily: _regular), IconData(62135, fontFamily: _filled)), // chevron_up
+  Glyph.help: (IconData(63038, fontFamily: _regular), IconData(63048, fontFamily: _filled)), // question_circle
+  Glyph.circle: (IconData(62140, fontFamily: _regular), IconData(62140, fontFamily: _filled)), // circle
+  Glyph.guide: (IconData(57721, fontFamily: _regular), IconData(57741, fontFamily: _filled)), // book_open
+  Glyph.library: (IconData(62675, fontFamily: _regular), IconData(62685, fontFamily: _filled)), // library
+  Glyph.tip: (IconData(62679, fontFamily: _regular), IconData(62689, fontFamily: _filled)), // lightbulb
   Glyph.chevronRight: (IconData(62129, fontFamily: _regular), IconData(62129, fontFamily: _filled)), // chevron_right
   Glyph.fileCheck: (IconData(58610, fontFamily: _regular), IconData(58622, fontFamily: _filled)), // document_checkmark
 };

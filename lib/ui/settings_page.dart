@@ -13,6 +13,8 @@ import '../l10n/strings.dart';
 import '../version.dart';
 import 'board_view.dart';
 import 'glyphs.dart';
+import 'guide_page.dart';
+import 'library_page.dart';
 import 'rules_page.dart';
 import 'theme.dart';
 import 'ui_scale.dart';
@@ -32,7 +34,9 @@ class SettingsScreen extends StatelessWidget {
     final sections = [
       (SettingsSection.appearance, Glyph.appearance, s.t('set_appearance')),
       (SettingsSection.board, Glyph.palette, s.t('set_board_colors')),
+      (SettingsSection.library, Glyph.library, s.t('set_library')),
       (SettingsSection.rules, Glyph.rules, s.t('set_rules')),
+      (SettingsSection.guide, Glyph.guide, s.t('set_guide')),
       (SettingsSection.update, Glyph.update, s.t('set_update')),
       (SettingsSection.about, Glyph.info, s.t('set_about')),
     ];
@@ -74,6 +78,8 @@ class SettingsScreen extends StatelessWidget {
 
     final content = switch (state.settingsSection) {
       SettingsSection.rules => RulesPage(state: state),
+      SettingsSection.library => PartLibraryPage(state: state),
+      SettingsSection.guide => GuidePage(state: state),
       SettingsSection.appearance => _Section(
         title: s.t('set_appearance'),
         child: _Appearance(state: state),
@@ -450,6 +456,8 @@ const _kindLabels = [
   (PartKind.ic, 'type_ic'),
   (PartKind.crystal, 'type_crystal'),
   (PartKind.connector, 'type_connector'),
+  (PartKind.electromech, 'type_electromech'),
+  (PartKind.mechanical, 'type_mechanical'),
   (PartKind.testPoint, 'type_testpoint'),
   (PartKind.fiducial, 'type_fiducial'),
   (PartKind.other, 'type_others'),

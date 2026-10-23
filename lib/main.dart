@@ -17,6 +17,8 @@ Future<void> main() async {
   final dir = (await getApplicationSupportDirectory()).path;
   final settings = await AppSettings.load(dir);
   final state = AppState(settings, dir);
+  // First launch: walk the user through the main steps.
+  if (!settings.tourDone) state.tourStep = 0;
   runApp(SmtFaiApp(state: state));
   if (settings.autoUpdate) state.checkForUpdates(silent: true);
 }

@@ -12,6 +12,7 @@ import 'core/discrepancies.dart';
 import 'core/exporters.dart';
 import 'core/models.dart';
 import 'core/parsers.dart';
+import 'core/part_library.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/updater.dart';
@@ -44,7 +45,7 @@ class UserMessage implements Exception {
 enum Module { files, check, cad, board }
 
 /// Sections of the full-screen settings page.
-enum SettingsSection { appearance, board, rules, update, about }
+enum SettingsSection { appearance, board, library, rules, guide, update, about }
 
 /// Sections of the rules editor inside settings.
 enum RulesSection { exclusion, alternates, general }
@@ -58,7 +59,7 @@ enum UpdateStatus { idle, checking, upToDate, available, downloading, installing
 enum BoardSideFilter { both, top, bottom }
 
 /// What the assembly drawing colours components by.
-enum BoardColoring { type, status }
+enum BoardColoring { real, type, status }
 
 /// Check page view: per-part results or the full discrepancy list.
 enum CheckPageView { materials, discrepancies }
@@ -104,7 +105,7 @@ class AppState extends ChangeNotifier {
   /// View rotation in quarter turns (counter-clockwise) and mirror flag.
   int boardQuarterTurns = 0;
   bool boardMirror = false;
-  BoardColoring boardColoring = BoardColoring.type;
+  BoardColoring boardColoring = BoardColoring.real;
   CheckPageView checkView = CheckPageView.materials;
 
   // Updates
@@ -132,6 +133,42 @@ class AppState extends ChangeNotifier {
 
   void setLanguage(String lang) {
     settings.language = lang;
+    persist();
+    notifyListeners();
+  }
+
+  /// Bumped when a part model rule changes, to rebuild the navigator.
+  int partRulesVersion = 0;
+
+  /// Open step of the guided tour, or null when it is not running.
+  int? tourStep;
+
+  void startTour() {
+    settingsOpen = false;
+    boardFullscreen = false;
+    module = Module.files;
+    tourStep = 0;
+    notifyListeners();
+  }
+
+  void setTourStep(int step) {
+    tourStep = step;
+    notifyListeners();
+  }
+
+  void endTour() {
+    tourStep = null;
+    settings.tourDone = true;
+    persist();
+    notifyListeners();
+  }
+
+  /// Draws parts matching [field] = [value] as library model [model]
+  /// (null removes the rule).
+  void setPartRule(String field, String value, String? model) {
+    settings.partRules.removeWhere((r) => r.field == field && r.value == value);
+    if (model != null) settings.partRules.add(PartModelRule(field, value, model));
+    partRulesVersion++;
     persist();
     notifyListeners();
   }

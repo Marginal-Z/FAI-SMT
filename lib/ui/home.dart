@@ -16,6 +16,7 @@ import 'files_page.dart';
 import 'ribbon.dart';
 import 'settings_page.dart';
 import 'theme.dart';
+import 'tour.dart';
 
 class HomeWindow extends StatelessWidget {
   const HomeWindow({super.key, required this.state});
@@ -43,7 +44,18 @@ class HomeWindow extends StatelessWidget {
       },
       child: Focus(
         autofocus: true,
-        child: state.settingsOpen
+        child: Stack(
+          children: [
+            Positioned.fill(child: _body(c)),
+            if (state.tourStep != null) Positioned.fill(child: TourOverlay(state: state)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _body(AppColors c) {
+    return state.settingsOpen
             ? SettingsScreen(state: state)
             : state.module == Module.board && state.boardFullscreen
             ? BoardView(state: state, immersive: true)
@@ -70,9 +82,7 @@ class HomeWindow extends StatelessWidget {
                     _StatusBar(state: state),
                   ],
                 ),
-              ),
-      ),
-    );
+              );
   }
 }
 
