@@ -237,7 +237,9 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
     );
   }
 
+  // Total pins recognised from the package; 0 leaves each model its usual.
   final pins = shape.pins;
+  int count(int recognised, int usual, int lo, int hi) => recognised > 0 ? recognised.clamp(lo, hi) : usual;
   switch (shape.model) {
     case 'chip_resistor':
       return chip(
@@ -259,7 +261,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
     case 'antenna':
       return chip(caps: _silver, cap: 0.14, decor: (c, px) => c.drawRect(r(-w * 0.05, 0, w * 0.5, h * 0.08), fill(_silver)));
     case 'res_array':
-      final n = math.max(2, (w / 0.5).round().clamp(2, 8));
+      final n = count((pins / 2).ceil(), math.max(2, (w / 0.5).round().clamp(2, 8)), 2, 16);
       return PartBuild(
         const [],
         [
@@ -359,7 +361,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
       );
     case 'transformer':
       return PartBuild(
-        edgeLeads(4, h * 0.1),
+        edgeLeads(count((pins / 2).ceil(), 4, 1, 12), h * 0.1),
         [Tier(full, 0, hh * 0.25, _beige), Tier(r(0, 0, w * 0.86, h * 0.7), hh * 0.25, hh, body)],
         decor: (c, px) => c.drawRect(r(0, 0, w * 0.86, math.max(px, h * 0.02)), fill(_dark(body, 0.4))),
         decorZ: hh,
@@ -395,7 +397,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'led_plcc':
-      final per = w > 4.5 ? 3 : 2;
+      final per = count((pins / 2).ceil(), w > 4.5 ? 3 : 2, 1, 4);
       return PartBuild(
         [
           for (var i = 0; i < per; i++)
@@ -421,12 +423,16 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'sot23' || 'sot23_6':
-      final lw = math.min(0.42, w * 0.15), ll = h * 0.45;
       final six = shape.model == 'sot23_6';
+      // 3 pins: 2 + 1; 5: 3 + 2; 6: 3 + 3; 8: 4 + 4.
+      final total = count(pins, six ? 6 : 3, 3, 10);
+      final low = (total / 2).ceil(), high = total - low;
+      final lw = math.min(0.42, w * 0.6 / (low + 1)), ll = h * 0.45;
+      List<double> spread(int k) => k == 1 ? [0.0] : [for (var i = 0; i < k; i++) -w * 0.33 + w * 0.66 * i / (k - 1)];
       return PartBuild(
         [
-          for (final x in six ? [-w * 0.33, 0.0, w * 0.33] : [-w * 0.33, w * 0.33]) ...gull(Offset(x, -h / 2), const Offset(0, -1), ll, lw),
-          for (final x in six ? [-w * 0.33, 0.0, w * 0.33] : [0.0]) ...gull(Offset(x, h / 2), const Offset(0, 1), ll, lw),
+          for (final x in spread(low)) ...gull(Offset(x, -h / 2), const Offset(0, -1), ll, lw),
+          for (final x in spread(high)) ...gull(Offset(x, h / 2), const Offset(0, 1), ll, lw),
         ],
         [Tier(full, 0, hh, body, shape: TierShape.round, radius: small * 0.06)],
         decor: (c, px) {
@@ -450,7 +456,10 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
       final front = h * 0.72;
       return PartBuild(
         [
-          for (final x in shape.model == 'dpak' ? [-w * 0.3, w * 0.3] : [-w * 0.33, 0.0, w * 0.33])
+          for (final x in switch (count(pins - 1, shape.model == 'dpak' ? 2 : 3, 2, 7)) {
+            2 => [-w * 0.3, w * 0.3],
+            final k => [for (var i = 0; i < k; i++) -w * 0.33 + w * 0.66 * i / (k - 1)],
+          })
             ...gull(Offset(x, -h / 2), const Offset(0, -1), h * 0.22, w * 0.1),
           Lead(Rect.fromLTRB(-w * 0.42, h / 2 - h * 0.3, w * 0.42, h / 2 + h * 0.04), _tin),
         ],
@@ -472,7 +481,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'soic':
-      final n = pins > 0 ? pins : math.max(3, ((w - 0.4) / 1.27).round());
+      final n = count((pins / 2).ceil(), math.max(3, ((w - 0.4) / 1.27).round()), 1, 40);
       return PartBuild(
         edgeLeads(n, h * 0.27),
         [
@@ -486,7 +495,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'qfp':
-      final n = pins > 0 ? pins : math.max(4, ((w - 1) / 0.5).round().clamp(4, 36));
+      final n = count((pins / 4).ceil(), math.max(4, ((w - 1) / 0.5).round().clamp(4, 36)), 2, 60);
       return PartBuild(
         edgeLeads(n, w * 0.12, four: true),
         [Tier(full, 0, hh, body, shape: TierShape.round, radius: small * 0.02)],
@@ -499,7 +508,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
       );
     case 'qfn':
       final square = (w - h).abs() < 0.2;
-      final n = pins > 0 ? pins : math.max(2, (w / 0.5).floor() - 1);
+      final n = count((pins / (square ? 4 : 2)).floor(), math.max(2, (w / 0.5).floor() - 1), 1, 40);
       return PartBuild(
         edgeLeads(n, small * 0.1, four: square, flat: true),
         [Tier(full, 0, hh, body)],
@@ -534,7 +543,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'module':
-      final pads = math.max(4, (w / 1.5).round());
+      final pads = count((pins / 2).ceil(), math.max(4, (w / 1.5).round()), 2, 60);
       return PartBuild(
         [
           for (var i = 0; i < pads; i++)
@@ -555,7 +564,11 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
       final pw = w * 0.24, ph = h * 0.3;
       return PartBuild(
         [
-          for (final (sx, sy) in [(-1, -1), (1, -1), (1, 1), (-1, 1)]) Lead(r(sx * (w / 2 - pw * 0.35), sy * (h / 2 - ph * 0.35), pw, ph), _tin),
+          // Two-pad crystals have end terminals, four-pad ones corner pads.
+          if (pins == 2)
+            for (final sx in [-1.0, 1.0]) Lead(r(sx * (w / 2 - pw * 0.35), 0, pw, h * 0.8), _tin)
+          else
+            for (final (sx, sy) in [(-1, -1), (1, -1), (1, 1), (-1, 1)]) Lead(r(sx * (w / 2 - pw * 0.35), sy * (h / 2 - ph * 0.35), pw, ph), _tin),
         ],
         [Tier(full, 0, hh * 0.45, _ceramic), Tier(full.deflate(small * 0.08), hh * 0.45, hh, body, shape: TierShape.round, radius: small * 0.1)],
         decor: (c, px) {
@@ -579,7 +592,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'fpc':
-      final n = ((w - 2) / 0.5).round().clamp(4, 60);
+      final n = count(pins, ((w - 2) / 0.5).round().clamp(4, 60), 2, 120);
       return PartBuild(
         [
           for (var i = 0; i < n; i++) Lead(r(-w / 2 + 1 + (w - 2) * (i + 0.5) / n, -h / 2 - h * 0.04, (w - 2) / n * 0.5, h * 0.18), _gold),
@@ -598,7 +611,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh * 0.8,
       );
     case 'btb':
-      final n = ((w - 1.2) / 0.4).round().clamp(4, 80);
+      final n = count((pins / 2).ceil(), ((w - 1.2) / 0.4).round().clamp(4, 80), 2, 120);
       return PartBuild(
         [
           for (var i = 0; i < n; i++)
@@ -619,7 +632,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'wire_to_board':
-      final n = ((w - 2) / 1.25).round().clamp(2, 40);
+      final n = count((pins / math.max(shape.rows, 1)).ceil(), ((w - 2) / 1.25).round().clamp(2, 40), 1, 60);
       return PartBuild(
         [
           for (var i = 0; i < n; i++) Lead(r(-w / 2 + 1 + (w - 2) * (i + 0.5) / n, -h / 2 - h * 0.05, (w - 2) / n * 0.35, h * 0.16), _tin),
@@ -636,8 +649,8 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'pin_header':
-      final rows = h > 3.6 ? 2 : 1;
-      final cols = math.max(1, (w / 2.54).round());
+      final rows = shape.rows > 0 ? shape.rows.clamp(1, 4) : (h > 3.6 ? 2 : 1);
+      final cols = count((pins / rows).ceil(), math.max(1, (w / 2.54).round()), 1, 80);
       return PartBuild(const [], [
         Tier(full, 0, hh, body),
         for (var i = 0; i < cols; i++)
@@ -668,7 +681,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'sim' || 'sd_card':
-      final n = shape.model == 'sim' ? 6 : 8;
+      final n = count(pins, shape.model == 'sim' ? 6 : 8, 4, 12);
       return PartBuild(
         [
           for (final sx in [-1.0, 1.0])
@@ -709,6 +722,24 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         },
         decorZ: hh,
       );
+    case 'rf_connector':
+      // Square base with the round coaxial socket and its centre pin.
+      return PartBuild(
+        [
+          Lead(r(-w / 2 - w * 0.04, 0, w * 0.16, h * 0.34), _tin),
+          Lead(r(w / 2 + w * 0.04, 0, w * 0.16, h * 0.34), _tin),
+          Lead(r(0, h / 2 + h * 0.04, w * 0.26, h * 0.16), _tin),
+        ],
+        [
+          Tier(full, 0, hh * 0.35, _plastic),
+          Tier(r(0, 0, small * 0.8, small * 0.8), hh * 0.35, hh, body, shape: TierShape.circle),
+        ],
+        decor: (c, px) {
+          c.drawCircle(Offset.zero, small * 0.26, fill(_dark(body, 0.45)));
+          c.drawCircle(Offset.zero, small * 0.08, fill(_gold));
+        },
+        decorZ: hh,
+      );
     case 'spring':
       return PartBuild(
         const [],
@@ -720,7 +751,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
       return PartBuild(
         [
           for (final sx in [-1.0, 1.0])
-            for (final sy in [-1.0, 1.0]) Lead(r(sx * (w / 2 + w * 0.06), sy * h * 0.33, w * 0.16, h * 0.12), _tin),
+            for (final sy in pins == 2 ? [0.0] : [-1.0, 1.0]) Lead(r(sx * (w / 2 + w * 0.06), sy * h * 0.33, w * 0.16, h * 0.12), _tin),
         ],
         [
           Tier(full, 0, hh * 0.45, _plastic),
@@ -736,7 +767,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         [Tier(full, 0, hh, body), Tier(r(0, -h / 2 - h * 0.12, w * 0.4, h * 0.26), hh * 0.2, hh * 0.85, _plastic)],
       );
     case 'slide_switch':
-      return PartBuild(edgeLeads(3, h * 0.25), [
+      return PartBuild(edgeLeads(count((pins / 2).ceil(), 3, 1, 12), h * 0.25), [
         Tier(full, 0, hh * 0.6, _plastic),
         Tier(full.deflate(small * 0.04), hh * 0.6, hh * 0.7, body == _plastic ? _silver : body),
         Tier(r(-w * 0.1, 0, w * 0.18, h * 0.45), hh * 0.7, hh * 1.4, _white),
@@ -763,7 +794,7 @@ PartBuild buildPart(PartShape shape, Color body, {required bool real}) {
         decorZ: hh,
       );
     case 'relay':
-      return PartBuild(edgeLeads(4, h * 0.12), [Tier(full, 0, hh, body)], decor: (c, px) => marking(c, px, lines: 3, scale: 0.8), decorZ: hh);
+      return PartBuild(edgeLeads(count((pins / 2).ceil(), 4, 1, 12), h * 0.12), [Tier(full, 0, hh, body)], decor: (c, px) => marking(c, px, lines: 3, scale: 0.8), decorZ: hh);
     case 'coin_cell':
       final d = small * 0.9;
       return PartBuild(

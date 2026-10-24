@@ -272,15 +272,16 @@ class _BoardViewState extends State<BoardView> {
     final s = Strings.of(context);
     final m = Metrics.of(context);
     final state = widget.state;
+    final phone = isPhoneLayout(context);
     final fromFile = state.boardSource == BoardSource.file && state.boardFile != null;
     final coords = fromFile ? state.boardFile : state.coords;
     if (coords == null) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+        padding: phone ? const EdgeInsets.fromLTRB(12, 4, 12, 0) : const EdgeInsets.fromLTRB(32, 12, 32, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _BoardToolbar(state: state),
+            _BoardToolbar(state: state, compact: phone),
             const SizedBox(height: 20),
             Expanded(
               child: DCard(
@@ -331,12 +332,19 @@ class _BoardViewState extends State<BoardView> {
     final source = fromFile ? s.t('board_source_file', {'name': coords.name}) : s.t('board_source_check');
     final immersive = widget.immersive;
     return Padding(
-      padding: immersive ? const EdgeInsets.all(20) : const EdgeInsets.fromLTRB(32, 12, 32, 0),
+      padding: immersive
+          ? EdgeInsets.all(phone ? 8 : 20)
+          : phone
+          ? const EdgeInsets.fromLTRB(12, 4, 12, 0)
+          : const EdgeInsets.fromLTRB(32, 12, 32, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!immersive) ...[
-            _BoardToolbar(state: state),
+          if (!immersive && phone) ...[_BoardToolbar(state: state, compact: true), const SizedBox(height: 10)],
+          if (!immersive && !phone) ...[
+            // Tablets and narrow windows: the icon row fits where the
+            // captioned groups (about 1300 px wide) do not.
+            _BoardToolbar(state: state, compact: MediaQuery.sizeOf(context).width < 1360),
             const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
@@ -365,7 +373,7 @@ class _BoardViewState extends State<BoardView> {
           ],
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: BorderRadius.circular(phone ? 24 : 32),
               child: ColoredBox(
                 color: c.hover,
                 child: LayoutBuilder(
@@ -449,15 +457,22 @@ class _BoardViewState extends State<BoardView> {
                                     ),
                                   ),
                                 ),
+                                // Phones: the legend sits at the top so the zoom and
+                                // 3D controls keep the bottom edge.
                                 Positioned(
-                                  left: 20,
-                                  bottom: 20,
-                                  child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
+                                  left: phone ? 10 : 20,
+                                  right: phone ? 10 : null,
+                                  top: phone ? 10 : null,
+                                  bottom: phone ? null : 20,
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
+                                  ),
                                 ),
                                 if (immersive) Positioned(top: 20, right: 20, child: _FloatingControls(state: state)),
                                 Positioned(
-                                  right: 20,
-                                  bottom: 20,
+                                  right: phone ? 10 : 20,
+                                  bottom: phone ? 10 : 20,
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -479,15 +494,22 @@ class _BoardViewState extends State<BoardView> {
                                 ),
                                 if (depth)
                                   Positioned(
-                                    right: 80,
-                                    bottom: 20,
-                                    child: ValueListenableBuilder(
-                                      valueListenable: _cam,
-                                      builder: (context, cam, _) => _OrbitControls(
-                                        cam: cam,
-                                        onOrbit: _orbit,
-                                        onTop: () => _cam.value = cam.copyWith(yaw: 0, pitch: 0),
-                                        onDefault: () => _cam.value = cam.copyWith(yaw: 0, pitch: _defaultPitch),
+                                    left: phone ? 10 : 20,
+                                    right: phone ? 60 : 80,
+                                    bottom: phone ? 10 : 20,
+                                    child: Align(
+                                      alignment: phone ? Alignment.bottomLeft : Alignment.bottomRight,
+                                      child: SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: ValueListenableBuilder(
+                                          valueListenable: _cam,
+                                          builder: (context, cam, _) => _OrbitControls(
+                                            cam: cam,
+                                            onOrbit: _orbit,
+                                            onTop: () => _cam.value = cam.copyWith(yaw: 0, pitch: 0),
+                                            onDefault: () => _cam.value = cam.copyWith(yaw: 0, pitch: _defaultPitch),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -997,13 +1019,17 @@ class _OrbitControls extends StatelessWidget {
 /// The navigator's toolbar card: data source, side, view, colours and the
 /// 2D / 3D switch, each group of tiles over its caption.
 class _BoardToolbar extends StatelessWidget {
-  const _BoardToolbar({required this.state});
+  const _BoardToolbar({required this.state, this.compact = false});
 
   final AppState state;
+
+  /// Phones: one sideways-scrolling row of round icon toggles.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context);
+    if (compact) return _compact(context);
     Widget group(String caption, List<Widget> tiles, {Key? key}) => Column(
       key: key,
       mainAxisSize: MainAxisSize.min,
@@ -1095,6 +1121,96 @@ class _BoardToolbar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (var i = 0; i < groups.length; i++) ...[if (i > 0) const SizedBox(width: 36), groups[i]],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _compact(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    Widget tool(Lucide icon, String tip, VoidCallback onTap, {bool on = false, Key? key}) => Hoverable(
+      key: key,
+      onTap: onTap,
+      tooltip: tip,
+      builder: (context, hover, _) => Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: on
+              ? c.blueTint
+              : hover
+              ? c.hover
+              : null,
+          shape: BoxShape.circle,
+        ),
+        child: LucideIcon(icon, size: 19, color: on ? c.blueTx : c.tx),
+      ),
+    );
+    Widget chip(String label, VoidCallback onTap, {Key? key}) => Hoverable(
+      key: key,
+      onTap: onTap,
+      builder: (context, hover, _) => Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: hover ? c.hover : c.well, borderRadius: BorderRadius.circular(999)),
+        child: Text(
+          label,
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
+        ),
+      ),
+    );
+    Widget gap() => Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 6), color: c.line);
+    const modes = [BoardColoring.real, BoardColoring.type, BoardColoring.status];
+    final colorKey = switch (state.boardColoring) {
+      BoardColoring.real => 'color_real',
+      BoardColoring.type => 'color_type',
+      BoardColoring.status => 'color_status',
+    };
+    final depth = state.settings.board.depth;
+    return DCard(
+      radius: 22,
+      padding: const EdgeInsets.all(5),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            tool(Lucide.clipboardCheck, s.t('btn_check_data'), () => state.setBoardSource(BoardSource.check), on: state.boardSource == BoardSource.check),
+            tool(
+              Lucide.folderOpen,
+              s.t('btn_open_cad'),
+              () => state.boardFile != null && state.boardSource != BoardSource.file
+                  ? state.setBoardSource(BoardSource.file)
+                  : importFile(context, state, InputKind.boardCad),
+              on: state.boardSource == BoardSource.file,
+            ),
+            gap(),
+            tool(Lucide.layers, s.t('side_both'), () => state.setBoardSide(BoardSideFilter.both), on: state.boardSide == BoardSideFilter.both),
+            tool(Lucide.faceTop, s.t('side_top'), () => state.setBoardSide(BoardSideFilter.top), on: state.boardSide == BoardSideFilter.top),
+            tool(Lucide.faceBottom, s.t('side_bottom'), () => state.setBoardSide(BoardSideFilter.bottom), on: state.boardSide == BoardSideFilter.bottom),
+            gap(),
+            KeyedSubtree(
+              key: tourTargets.boardView,
+              child: Row(
+                children: [
+                  tool(Lucide.mirror, s.t('board_mirror'), state.toggleBoardMirror, on: state.boardMirror),
+                  tool(Lucide.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
+                  tool(Lucide.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
+                  tool(Lucide.fit, s.t('board_fit'), state.fitBoard),
+                  tool(Lucide.fullscreen, s.t('btn_fullscreen'), () => state.setBoardFullscreen(true)),
+                ],
+              ),
+            ),
+            gap(),
+            // Colouring cycles through its three modes; 2D / 3D toggles.
+            chip(s.t(colorKey), () => state.setBoardColoring(modes[(modes.indexOf(state.boardColoring) + 1) % modes.length]), key: tourTargets.boardColoring),
+            const SizedBox(width: 6),
+            chip(s.t(depth ? 'render_3d' : 'render_flat'), () => state.setBoardDepth(!depth), key: tourTargets.boardRender),
+            const SizedBox(width: 2),
+            tool(Lucide.palette, s.t('btn_colors'), () => state.openSettings(SettingsSection.board)),
           ],
         ),
       ),

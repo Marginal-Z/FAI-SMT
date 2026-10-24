@@ -318,4 +318,42 @@ void main() {
     });
   });
 
+
+  // Phones: their own layout, not the desktop one scaled down.
+  group('phone', () {
+    const size = Size(390, 844);
+    for (final (name, mod) in [('files', Module.files), ('check', Module.check), ('cad', Module.cad), ('board', Module.board)]) {
+      testWidgets('phone $name', (tester) async {
+        final s = demoState(dark: false);
+        s.setModule(mod);
+        await shot(tester, s, 'phone_$name', size: size, touch: true);
+      });
+    }
+    testWidgets('phone check selected', (tester) async {
+      final s = demoState(dark: false);
+      s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
+      await shot(tester, s, 'phone_check_selected', size: size, touch: true);
+    });
+    testWidgets('phone settings', (tester) async {
+      final s = demoState(dark: false);
+      s.openSettings(SettingsSection.appearance);
+      await shot(tester, s, 'phone_settings', size: size, touch: true);
+    });
+  });
+
+  group('tablet', () {
+    for (final (name, mod) in [('files', Module.files), ('cad', Module.cad), ('board', Module.board)]) {
+      testWidgets('tablet portrait $name', (tester) async {
+        final s = demoState(dark: false);
+        s.setModule(mod);
+        await shot(tester, s, 'tablet_portrait_$name', size: const Size(800, 1280), touch: true);
+      });
+      testWidgets('tablet landscape $name', (tester) async {
+        final s = demoState(dark: false);
+        s.setModule(mod);
+        await shot(tester, s, 'tablet_landscape_$name', size: const Size(1280, 800), touch: true);
+      });
+    }
+  });
+
 }

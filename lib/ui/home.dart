@@ -57,29 +57,41 @@ class HomeWindow extends StatelessWidget {
     if (state.module == Module.board && state.boardFullscreen && !state.settingsOpen) {
       return MeshBackground(child: BoardView(state: state, immersive: true));
     }
-    return MeshBackground(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppHeader(state: state),
-          Expanded(
-            child: state.settingsOpen
-                ? SettingsScreen(state: state)
-                : LayoutBuilder(
-                    builder: (context, box) {
-                      final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
-                      return switch (state.module) {
-                        Module.files => FilesPage(state: state),
-                        Module.check => CheckView(state: state, cards: compact),
-                        Module.cad => CadView(state: state, compact: compact),
-                        Module.board => BoardView(state: state),
-                      };
-                    },
-                  ),
-          ),
-          AppFooter(state: state),
-        ],
-      ),
+    return MeshBackground(child: LayoutBuilder(builder: (context, box) => box.maxWidth < 600 ? _phone() : _desktop()));
+  }
+
+  Widget _page() => state.settingsOpen
+      ? SettingsScreen(state: state)
+      : LayoutBuilder(
+          builder: (context, box) {
+            final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
+            return switch (state.module) {
+              Module.files => FilesPage(state: state),
+              Module.check => CheckView(state: state, cards: compact),
+              Module.cad => CadView(state: state, compact: compact),
+              Module.board => BoardView(state: state),
+            };
+          },
+        );
+
+  /// Phones: compact top bar, the page, bottom navigation.
+  Widget _phone() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      PhoneHeader(state: state),
+      Expanded(child: _page()),
+      PhoneNavBar(state: state),
+    ],
+  );
+
+  Widget _desktop() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppHeader(state: state),
+        Expanded(child: _page()),
+        AppFooter(state: state),
+      ],
     );
   }
 }

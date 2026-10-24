@@ -7,13 +7,14 @@ library;
 
 import 'dart:math' as math;
 
+import 'package_parser.dart';
 import 'part_library.dart';
 
 /// Colour groups of the navigator legend and palette.
 enum PartKind { resistor, capacitor, inductor, diode, led, transistor, ic, crystal, connector, electromech, mechanical, testPoint, fiducial, other }
 
 class PartShape {
-  const PartShape(this.kind, this.width, this.height, {this.pins = 0, this.bga = false, this.exact = false, this.model = 'generic'});
+  const PartShape(this.kind, this.width, this.height, {this.pins = 0, this.rows = 0, this.bga = false, this.exact = false, this.model = 'generic'});
 
   final PartKind kind;
 
@@ -21,8 +22,12 @@ class PartShape {
   final double width;
   final double height;
 
-  /// Pins per long side for ICs (0 = leadless / not drawn).
+  /// Total pin / contact count read from the package (0 = not known; the
+  /// model then draws its usual number).
   final int pins;
+
+  /// Contact rows of a connector (0 = the model's usual).
+  final int rows;
   final bool bga;
 
   /// Size read from a package code or explicit dimensions rather than a
@@ -32,8 +37,9 @@ class PartShape {
   /// Id of the library model it is drawn as (see part_library.dart).
   final String model;
 
+  /// The same part drawn [fw] × [fh] times its size; pins stay.
   PartShape scaled(double fw, double fh) =>
-      fw >= 1 && fh >= 1 ? this : PartShape(kind, width * fw, height * fh, pins: pins, bga: bga, exact: exact, model: model);
+      fw >= 1 && fh >= 1 ? this : PartShape(kind, width * fw, height * fh, pins: pins, rows: rows, bga: bga, exact: exact, model: model);
 
   /// Typical body height above the board in mm, for the 3D view (0 = flat):
   /// the model's height, scaled with the body for smaller or larger sizes.
@@ -68,10 +74,14 @@ PartKind kindOf(String ref, [String hint = '', String footprint = '']) {
   final m = _prefix.firstMatch(ref.toUpperCase());
   final p = m?.group(1) ?? '';
   final h = hint.toUpperCase();
-  final strong = _footprintKind(footprint.toUpperCase());
+  // Words in the description that neither footprint nor prefix overrides.
+  if (RegExp(r'屏蔽[框罩盖]|散热片|螺柱|铜柱|螺母|STANDOFF').hasMatch(h)) return PartKind.mechanical;
+  var strong = _footprintKind(footprint.toUpperCase());
+  // MARK in a footprint name means a fiducial only when nothing names a part.
+  if (strong == PartKind.fiducial && (RegExp(r'电阻|电容|电感|二极管|晶振|芯片|IC').hasMatch(h) || const {'R', 'C', 'L', 'D', 'Q', 'U'}.contains(p))) {
+    strong = null;
+  }
   if (strong != null) return strong;
-  // Words in the description that no designator prefix overrides.
-  if (h.contains('屏蔽') || h.contains('散热片')) return PartKind.mechanical;
   if (h.contains('蜂鸣') || h.contains('继电器') || h.contains('轻触') || h.contains('麦克')) return PartKind.electromech;
   if (p.startsWith('MARK') || p.startsWith('FID') || p == 'FM') return PartKind.fiducial;
   if (p.startsWith('TP')) return PartKind.testPoint;
@@ -118,37 +128,6 @@ final _metric = RegExp(r'(?<!\d)(1608|2012|2016|2520|3215|3225|4020|4030|5032|60
 /// Power inductor size-and-height codes (4020 = 4.0 × 4.0 mm, 2.0 mm high).
 final _powerInductor = RegExp(r'(?<!\d)(30(?:12|15|20)|40(?:12|18|20|25|30)|50(?:20|40)|60(?:20|28|45)|80(?:40|50))(?!\d)');
 
-/// Contact pitch written in a connector description: `0.5MM`, `P0.4`, `间距1.25`.
-final _pitch = RegExp(r'(?:P|PITCH|间距)\s*[:=]?\s*(\d\.\d{1,2})|(?<![\d.])(0\.35|0\.4|0\.5|0\.6|0\.8|1\.0|1\.25|1\.27|1\.5|2\.0|2\.54)\s*MM');
-
-/// Connector body from its pin count and pitch: the contacts set the length,
-/// the connector family the depth.
-PartShape _connector(String text, RegExpMatch pin) {
-  final perRowGiven = pin.group(1) != null;
-  var rows = int.tryParse(pin.group(1) ?? '') ?? 1;
-  final count = int.tryParse(pin.group(2) ?? pin.group(3) ?? '') ?? 4;
-  final m = _pitch.firstMatch(text);
-  final written = double.tryParse(m?.group(1) ?? m?.group(2) ?? '');
-  final btb = RegExp(r'BTB|板对板|BOARD TO BOARD').hasMatch(text);
-  final fpc = RegExp(r'FPC|FFC|翻盖').hasMatch(text);
-  final header = RegExp(r'HEADER|排针|排母').hasMatch(text);
-  if (btb || text.contains('双排')) rows = math.max(rows, 2);
-  final pitch = (written ?? (btb ? 0.4 : fpc ? 0.5 : header ? 2.54 : text.contains('SH') ? 1.0 : text.contains('PH') ? 2.0 : 1.25)).clamp(0.3, 2.54);
-  final perRow = perRowGiven ? count : (count / rows).ceil();
-  final contacts = math.max(perRow - 1, 1) * pitch;
-  final (extra, depth) = btb
-      ? (1.8, 1.2 + rows * 0.7)
-      : fpc
-      ? (3.6, 4.2)
-      : header
-      ? (pitch, rows * pitch)
-      : (3.0, 4.5);
-  return PartShape(PartKind.connector, (contacts + extra).clamp(2.0, 60.0), depth.clamp(1.5, 12.0), exact: written != null);
-}
-
-/// Explicit body size in a footprint name: `QFN24_4X4`, `PAD_1X4MM`, `TP_1.4X2.9`.
-final _dims = RegExp(r'(?<![\d.])(\d{1,2}(?:\.\d+)?)\s*X\s*(\d{1,2}(?:\.\d+)?)(?![\d.])');
-
 /// Body of a placement: colour group, size and library model. [model]
 /// forces a library model (a user rule); otherwise it is recognised from the
 /// designator, footprint and description.
@@ -168,6 +147,7 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
     useModelSize ? m.width : base.width,
     useModelSize ? m.height : base.height,
     pins: base.pins,
+    rows: base.rows,
     bga: id == 'bga',
     exact: base.exact,
     model: id,
@@ -179,32 +159,28 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
 (PartShape, bool) _baseShape(String ref, String footprint, String description) {
   final fp = footprint.toUpperCase();
   final text = '$fp $description'.toUpperCase();
-  final kind = kindOf(ref, text, fp);
+  var kind = kindOf(ref, text, fp);
+  final info = parsePackage(footprint, description);
+  final isIcFamily = const {'SOIC', 'TSSOP', 'MSOP', 'SSOP', 'QFN', 'DFN', 'QFP', 'BGA', 'CSP', 'LGA'}.contains(info.family);
+  if (kind == PartKind.other && isIcFamily) kind = PartKind.ic;
+  if (kind == PartKind.other && info.family.startsWith('SOT') || kind == PartKind.other && info.family == 'SC70') kind = PartKind.transistor;
+  final pins = info.pins;
+  PartShape sized(double a, double b, {bool exact = true, bool bga = false}) =>
+      PartShape(kind, math.max(a, b), math.min(a, b), pins: pins, rows: info.rows, exact: exact, bga: bga);
 
-  final dims = _dims.firstMatch(fp);
-  if (dims != null) {
-    final a = double.parse(dims.group(1)!), b = double.parse(dims.group(2)!);
-    if (a >= 0.3 && b >= 0.3 && a <= 40 && b <= 40) {
-      final pins = RegExp(r'(QFN|DFN|SON|SOP|SOIC)[_\- ]?(\d{1,3})(?!\d)').firstMatch(fp);
-      final n = int.tryParse(pins?.group(2) ?? '') ?? 0;
-      final square = (a - b).abs() < 0.01;
-      return (
-        PartShape(kind == PartKind.other ? PartKind.ic : kind, math.max(a, b), math.min(a, b),
-            pins: kind == PartKind.ic || kind == PartKind.other ? (square ? (n / 4).ceil() : (n / 2).ceil()).clamp(0, 16) : 0, exact: true),
-        false,
-      );
-    }
-  }
+  // A written-out body size wins.
+  if (info.hasBody && !RegExp(r'螺柱|铜柱|螺母|STANDOFF').hasMatch(text)) return (sized(info.length, info.width, bga: info.family == 'BGA'), false);
+
   // Metric size codes after a leadless package name: DFN1006 = 1.0 × 0.6 mm.
   final sizeCode = RegExp(r'(?:DFN|SOD|CSP)[_\- ]?(\d{2})(\d{2})(?!\d)').firstMatch(text);
   if (sizeCode != null && kind != PartKind.ic) {
-    return (PartShape(kind, int.parse(sizeCode.group(1)!) / 10, int.parse(sizeCode.group(2)!) / 10, exact: true), false);
+    return (PartShape(kind, int.parse(sizeCode.group(1)!) / 10, int.parse(sizeCode.group(2)!) / 10, pins: pins, exact: true), false);
   }
 
   for (final e in _chips.entries) {
     if (RegExp('(?<!\\d)${e.key}(?!\\d)').hasMatch(text) &&
         (kind == PartKind.resistor || kind == PartKind.capacitor || kind == PartKind.inductor || kind == PartKind.diode || kind == PartKind.led)) {
-      return (PartShape(kind, e.value.$1, e.value.$2, exact: true), false);
+      return (PartShape(kind, e.value.$1, e.value.$2, pins: pins, exact: true), false);
     }
   }
   // Power inductor codes give the square side and the height: 4020 is
@@ -215,41 +191,49 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
       final side = int.parse(power.group(1)!.substring(0, 2)) / 10;
       return (PartShape(kind, side, side, exact: true), false);
     }
+    // Length, width and height codes: 252012 = 2.5 × 2.0 × 1.2 mm.
+    final lwh = RegExp(r'(?<!\d)(\d{2})(\d{2})(\d{2})(?!\d)').firstMatch(text);
+    if (lwh != null) {
+      final a = int.parse(lwh.group(1)!) / 10, b = int.parse(lwh.group(2)!) / 10;
+      if (a >= 1 && b >= 0.5 && a <= 15 && b <= 15) return (PartShape(kind, math.max(a, b), math.min(a, b), exact: true), false);
+    }
+    // Molded power inductors written 0420, 0530: 4.0 / 5.0 mm square.
+    final molded = RegExp(r'(?<!\d)0([3-9])([1-6]\d)(?!\d)').firstMatch(text);
+    if (molded != null) {
+      final side = int.parse(molded.group(1)!).toDouble();
+      return (PartShape(kind, side, side, exact: true), false);
+    }
   }
   final metric = _metric.firstMatch(text);
-  if (metric != null && kind != PartKind.ic) {
+  if (metric != null && kind != PartKind.ic && kind != PartKind.connector) {
     final code = metric.group(1)!;
-    return (PartShape(kind, int.parse(code.substring(0, 2)) / 10, int.parse(code.substring(2)) / 10, exact: true), false);
+    return (PartShape(kind, int.parse(code.substring(0, 2)) / 10, int.parse(code.substring(2)) / 10, pins: pins, exact: true), false);
   }
-  if (RegExp(r'BGA').hasMatch(text)) {
-    final n = int.tryParse(RegExp(r'BGA[_\- ]?(\d+)').firstMatch(text)?.group(1) ?? '') ?? 96;
-    final side = n >= 300 ? 14.0 : n >= 150 ? 10.0 : n >= 100 ? 8.0 : 7.0;
-    return (PartShape(PartKind.ic, side, n >= 90 && n <= 100 ? side * 1.4 : side, bga: true), false);
+
+  // Package families sized from their pin count and standard pitch.
+  final semiconductor = const {PartKind.ic, PartKind.transistor, PartKind.diode, PartKind.led, PartKind.other}.contains(kind);
+  final family = semiconductor ? _familySize(info) : null;
+  if (family != null) return (sized(family.$1, family.$2, bga: info.family == 'BGA'), false);
+
+  // Standoffs and nuts: M2 is about 3.5 mm across.
+  if (kind == PartKind.mechanical) {
+    final thread = RegExp(r'(?<![A-Z])M(\d(?:\.\d)?)(?![\d.])').firstMatch(text);
+    if (thread != null && RegExp(r'螺柱|铜柱|螺母|STANDOFF').hasMatch(text)) {
+      final d = double.parse(thread.group(1)!) * 1.75;
+      return (PartShape(kind, d, d, exact: true), false);
+    }
   }
-  if (RegExp(r'SOT-?23-?[56]|SOT-?26|SC-?70|SC70').hasMatch(text)) return (PartShape(kind == PartKind.other ? PartKind.ic : kind, 2.9, 1.6, pins: 3, exact: true), false);
-  if (RegExp(r'SOT-?563|SOT-?363').hasMatch(text)) return (PartShape(kind == PartKind.other ? PartKind.ic : kind, 1.6, 1.2, pins: 3, exact: true), false);
-  if (RegExp(r'SOT-?23|SOT23').hasMatch(text)) return (PartShape(kind == PartKind.other ? PartKind.transistor : kind, 2.9, 1.3, pins: 0, exact: true), false);
+
   if (RegExp(r'SOD-?523').hasMatch(text)) return (PartShape(kind, 1.2, 0.8, exact: true), false);
   if (RegExp(r'SOD-?323').hasMatch(text)) return (PartShape(kind, 1.7, 1.25, exact: true), false);
   if (RegExp(r'SOD-?123').hasMatch(text)) return (PartShape(kind, 2.7, 1.6, exact: true), false);
   if (RegExp(r'DO-?214|SMA\b|SMB\b').hasMatch(text)) return (PartShape(kind, 4.3, 2.6, exact: true), false);
-  final qfn = RegExp(r'(QFN|DFN|WSON|SON|LGA)[_\- ]?(\d{1,3})?(?!\d)').firstMatch(text);
-  if (qfn != null) {
-    final n = int.tryParse(qfn.group(2) ?? '') ?? 16;
-    final side = n <= 8 ? 3.0 : n <= 16 ? 3.0 : n <= 24 ? 4.0 : n <= 32 ? 5.0 : n <= 48 ? 7.0 : 9.0;
-    return (PartShape(PartKind.ic, side, side, pins: (n / 4).ceil().clamp(2, 16)), false);
-  }
-  final so = RegExp(r'(MSOP|TSSOP|SSOP|SOIC|SOP|ESOP)[_\- ]?(\d{1,3})?(?!\d)').firstMatch(text);
-  if (so != null) {
-    final n = int.tryParse(so.group(2) ?? '') ?? 8;
-    final narrow = so.group(1)!.contains('SSOP') || so.group(1) == 'MSOP';
-    return (PartShape(PartKind.ic, narrow ? 3.0 + (n - 8) * 0.33 : 4.9 + (n - 8) * 0.64, narrow ? 3.0 : 3.9, pins: (n / 2).ceil()), false);
-  }
-  final pin = RegExp(r'(\d+)\s*\*\s*(\d+)\s*PIN|(\d+)\s*PIN').firstMatch(text);
 
-  if (kind == PartKind.connector && pin != null) {
-    return (_connector(text, pin), false);
-  }
+  // RF coaxial sockets have a fixed small body whatever their pin count.
+  if (kind == PartKind.connector && RegExp(r'IPEX|U\.FL|UFL|MHF|射频|同轴').hasMatch(text)) return (const PartShape(PartKind.connector, 3.0, 3.0), true);
+  // Connectors: contacts × pitch set the length, the family the depth.
+  if (kind == PartKind.connector && pins > 0) return (_connector(text, info), false);
+
   final shape = switch (kind) {
     PartKind.resistor => const PartShape(PartKind.resistor, 1.0, 0.5),
     PartKind.capacitor => const PartShape(PartKind.capacitor, 1.0, 0.5),
@@ -257,7 +241,7 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
     PartKind.diode => const PartShape(PartKind.diode, 1.6, 0.8),
     PartKind.led => const PartShape(PartKind.led, 1.6, 0.8),
     PartKind.transistor => const PartShape(PartKind.transistor, 2.9, 1.3),
-    PartKind.ic => const PartShape(PartKind.ic, 4.0, 4.0, pins: 4),
+    PartKind.ic => const PartShape(PartKind.ic, 4.0, 4.0),
     PartKind.crystal => const PartShape(PartKind.crystal, 3.2, 2.5),
     PartKind.connector => const PartShape(PartKind.connector, 3.2, 2.5),
     PartKind.electromech => const PartShape(PartKind.electromech, 6.0, 6.0),
@@ -266,5 +250,91 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
     PartKind.fiducial => const PartShape(PartKind.fiducial, 1.0, 1.0),
     PartKind.other => const PartShape(PartKind.other, 2.0, 1.2),
   };
-  return (shape, true);
+  return (PartShape(shape.kind, shape.width, shape.height, pins: pins, rows: info.rows), true);
+}
+
+/// Common LQFP / TQFP body sides by pin count.
+const _qfpSide = {32: 7.0, 44: 10.0, 48: 7.0, 52: 10.0, 64: 10.0, 80: 12.0, 100: 14.0, 128: 14.0, 144: 20.0, 176: 24.0, 208: 28.0};
+
+/// Body length × width of a package family from its pin count, standard
+/// pitch and standard body widths; null when the family is not known.
+(double, double)? _familySize(PackageInfo info) {
+  // A stray "5MM" is not an IC pitch.
+  final p = info.pitch > 1.27 ? PackageInfo(family: info.family, pins: info.pins) : info;
+  final n = p.pins;
+  double run(int perSide, double pitch, double ends) => math.max(perSide - 1, 0) * pitch + ends;
+  switch (p.family) {
+    case 'SOT23':
+      return n <= 3 ? (2.9, 1.3) : (2.9, 1.6);
+    case 'SOT523':
+      return (1.6, 0.8);
+    case 'SC70':
+      return n <= 3 ? (2.0, 1.25) : (2.0, 1.25);
+    case 'SOT363':
+      return (1.6, 1.2);
+    case 'SOT89':
+      return (4.5, 2.5);
+    case 'SOT223':
+      return (6.5, 3.5);
+    case 'SOIC':
+      if (n == 0) return (4.9, 3.9);
+      final pitch = p.pitch > 0 ? p.pitch : 1.27;
+      return (run(n ~/ 2, pitch, 1.1), n > 16 ? 7.5 : 3.9);
+    case 'TSSOP':
+      if (n == 0) return (5.0, 4.4);
+      return (math.max(3.0, run(n ~/ 2, p.pitch > 0 ? p.pitch : 0.65, 0.65)), n > 28 ? 6.1 : 4.4);
+    case 'MSOP':
+      if (n <= 10) return (3.0, 3.0);
+      return (run(n ~/ 2, p.pitch > 0 ? p.pitch : 0.5, 0.5), 3.0);
+    case 'SSOP':
+      return (run(math.max(n, 8) ~/ 2, p.pitch > 0 ? p.pitch : 0.65, 1.3), 5.3);
+    case 'QFN' || 'LGA':
+      if (n == 0) return null;
+      final side = (n / 4).ceil() * (p.pitch > 0 ? p.pitch : (n > 48 ? 0.4 : 0.5)) + 1.0;
+      return (side, side);
+    case 'DFN':
+      if (n == 0) return null;
+      final len = math.max(2.0, (n / 2).ceil() * (p.pitch > 0 ? p.pitch : 0.5) + 1.0);
+      return (len, math.max(2.0, len * 0.66));
+    case 'QFP':
+      if (_qfpSide[n] case final side?) return (side, side);
+      if (n == 0) return null;
+      final side = (n / 4).ceil() * (p.pitch > 0 ? p.pitch : 0.5) + 1.5;
+      return (side, side);
+    case 'BGA':
+      final side = n >= 300 ? 14.0 : n >= 150 ? 11.5 : n >= 100 ? 8.0 : 7.0;
+      return (side, n >= 90 && n <= 100 ? side * 1.4 : side);
+    case 'CSP':
+      if (n == 0) return null;
+      // Balls on a 0.4 mm grid.
+      final side = math.sqrt(n) * 0.4 + 0.4;
+      return (side, side);
+  }
+  return null;
+}
+
+/// Connector body from its contacts, rows and pitch.
+PartShape _connector(String text, PackageInfo info) {
+  final btb = RegExp(r'BTB|板对板|BOARD TO BOARD').hasMatch(text);
+  final fpc = RegExp(r'FPC|FFC|翻盖|抽屉').hasMatch(text);
+  final header = RegExp(r'HEADER|排针|排母|PINHEADER|PIN_HEADER').hasMatch(text);
+  final rows = info.rows > 0 ? info.rows : (btb ? 2 : 1);
+  final pitch = info.pitch > 0 ? info.pitch : (btb ? 0.4 : fpc ? 0.5 : header ? 2.54 : 1.25);
+  final perRow = (info.pins / rows).ceil();
+  final contacts = math.max(perRow - 1, 0) * pitch;
+  final (extra, depth) = btb
+      ? (1.8, 1.2 + rows * 0.7)
+      : fpc
+      ? (3.6, 4.2)
+      : header
+      ? (pitch, rows * pitch)
+      : (math.max(3.0, pitch * 2.4), math.max(3.5, pitch * 3.4));
+  return PartShape(
+    PartKind.connector,
+    (contacts + extra).clamp(1.5, 80.0),
+    depth.clamp(1.2, 15.0),
+    pins: info.pins,
+    rows: rows,
+    exact: info.pitch > 0,
+  );
 }

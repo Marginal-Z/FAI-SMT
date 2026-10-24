@@ -128,48 +128,67 @@ class _CheckViewState extends State<CheckView> {
     final showDiscrepancies = state.checkView == CheckPageView.discrepancies;
     final total = report.rows.length;
     final narrow = widget.cards;
+    final phone = isPhoneLayout(context);
 
     // File header.
     final header = DCard(
-      padding: EdgeInsets.symmetric(horizontal: narrow ? 20 : 28, vertical: 22),
+      radius: phone ? 24 : 32,
+      padding: EdgeInsets.symmetric(horizontal: phone ? 16 : (narrow ? 20 : 28), vertical: phone ? 14 : 22),
       child: Row(
         children: [
-          const GradientTile(icon: Lucide.clipboardCheck, colors: GradientTile.blue, glow: GradientTile.blueGlow, size: 56, radius: 17, iconSize: 26),
-          const SizedBox(width: 18),
+          GradientTile(
+            icon: Lucide.clipboardCheck,
+            colors: GradientTile.blue,
+            glow: GradientTile.blueGlow,
+            size: phone ? 42 : 56,
+            radius: phone ? 13 : 17,
+            iconSize: phone ? 20 : 26,
+          ),
+          SizedBox(width: phone ? 12 : 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   state.bom?.name ?? '-',
-                  maxLines: 2,
+                  maxLines: phone ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: narrow ? 20 : 26, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.65, color: c.tx),
+                  style: TextStyle(fontSize: phone ? 17 : (narrow ? 20 : 26), height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: c.tx),
                 ),
-                const SizedBox(height: 5),
+                SizedBox(height: phone ? 3 : 5),
                 Text(
                   [
                     s.t('hdr_stations', {'n': stations}),
                     if (state.checkedAt != null) formatTime(state.checkedAt!),
                     s.t('hdr_total', {'n': total}),
                   ].join(' · '),
-                  style: TextStyle(fontSize: 14, color: c.tx2),
+                  maxLines: phone ? 2 : null,
+                  style: TextStyle(fontSize: phone ? 12.5 : 14, color: c.tx2),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 16),
-          PillButton(
-            key: tourTargets.checkExport,
-            label: s.t('btn_export_excel'),
-            icon: Lucide.download,
-            kind: PillKind.glass,
-            height: 44,
-            fontSize: 15,
-            iconSize: 17,
-            color: c.blueTx,
-            onTap: () => exportReport(context, state),
-          ),
+          SizedBox(width: phone ? 8 : 16),
+          if (phone)
+            GlassButton(
+              key: tourTargets.checkExport,
+              icon: Lucide.download,
+              size: 42,
+              tooltip: s.t('btn_export_excel'),
+              onTap: () => exportReport(context, state),
+            )
+          else
+            PillButton(
+              key: tourTargets.checkExport,
+              label: s.t('btn_export_excel'),
+              icon: Lucide.download,
+              kind: PillKind.glass,
+              height: 44,
+              fontSize: 15,
+              iconSize: 17,
+              color: c.blueTx,
+              onTap: () => exportReport(context, state),
+            ),
         ],
       ),
     );
@@ -208,21 +227,43 @@ class _CheckViewState extends State<CheckView> {
         onTap: () => state.setCheckView(showDiscrepancies ? CheckPageView.materials : CheckPageView.discrepancies),
       ),
     ];
-    final stats = LayoutBuilder(
-      key: tourTargets.checkCards,
-      builder: (context, box) {
-        final perRow = box.maxWidth >= 1100 ? 5 : (box.maxWidth >= 640 ? 3 : 2);
-        final w = (box.maxWidth - (perRow - 1) * 16) / perRow;
-        return Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: [for (final card in statCards) SizedBox(width: w, child: card)],
-        );
-      },
-    );
+    // Phones: one row of compact cards that scrolls sideways.
+    final stats = phone
+        ? SizedBox(
+            key: tourTargets.checkCards,
+            height: 126,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              itemCount: statCards.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, i) => SizedBox(width: 148, child: statCards[i]),
+            ),
+          )
+        : LayoutBuilder(
+            key: tourTargets.checkCards,
+            builder: (context, box) {
+              final perRow = box.maxWidth >= 1100 ? 5 : (box.maxWidth >= 640 ? 3 : 2);
+              final w = (box.maxWidth - (perRow - 1) * 16) / perRow;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [for (final card in statCards) SizedBox(width: w, child: card)],
+              );
+            },
+          );
 
-    final top = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 20), stats, const SizedBox(height: 20)]);
-    final pad = EdgeInsets.fromLTRB(narrow ? 16 : 32, 12, narrow ? 16 : 32, 0);
+    final gap = phone ? 14.0 : 20.0;
+    final top = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        SizedBox(height: gap),
+        stats,
+        SizedBox(height: gap),
+      ],
+    );
+    final pad = EdgeInsets.fromLTRB(narrow ? 16 : 32, phone ? 4 : 12, narrow ? 16 : 32, 0);
 
     if (showDiscrepancies) {
       return Padding(
@@ -371,7 +412,19 @@ class _CheckViewState extends State<CheckView> {
               children: [
                 search,
                 const SizedBox(height: 12),
-                Wrap(spacing: 16, runSpacing: 12, children: selects),
+                if (phone)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    clipBehavior: Clip.none,
+                    child: Row(
+                      children: [
+                        for (final w in selects) ...[w, const SizedBox(width: 14)],
+                        count,
+                      ],
+                    ),
+                  )
+                else
+                  Wrap(spacing: 16, runSpacing: 12, children: selects),
               ],
             )
           : Row(
@@ -385,6 +438,7 @@ class _CheckViewState extends State<CheckView> {
               ],
             ),
     );
+    if (phone) return _phonePage(context, top, filters, visible, pad);
     final keyedTable = KeyedSubtree(key: tourTargets.checkTable, child: table);
     return LayoutBuilder(
       builder: (context, box) {
@@ -406,6 +460,66 @@ class _CheckViewState extends State<CheckView> {
           child: short ? SingleChildScrollView(controller: _page, child: column) : column,
         );
       },
+    );
+  }
+
+  /// Phones: the whole page scrolls as one list of row cards; the selected
+  /// part opens in a sheet over the bottom of the screen.
+  Widget _phonePage(BuildContext context, Widget top, Widget filters, List<CheckRow> visible, EdgeInsets pad) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final state = widget.state;
+    final selected = state.selected;
+    return Stack(
+      children: [
+        ListView.builder(
+          controller: _page,
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, selected == null ? 16 : 280),
+          itemCount: visible.length + 2,
+          itemBuilder: (context, i) {
+            if (i == 0) return top;
+            if (i == 1) return Padding(padding: const EdgeInsets.only(bottom: 14), child: filters);
+            final row = visible[i - 2];
+            final card = Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: DCard(
+                radius: 22,
+                padding: EdgeInsets.zero,
+                child: _RowCard(state: state, row: row),
+              ),
+            );
+            return i == 2 ? KeyedSubtree(key: tourTargets.checkTable, child: card) : card;
+          },
+        ),
+        if (visible.isEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 40,
+            child: Center(
+              child: Text(s.t('no_rows'), style: TextStyle(fontSize: 15, color: c.tx2)),
+            ),
+          ),
+        if (selected != null)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.55),
+              child: Stack(
+                children: [
+                  SingleChildScrollView(child: _Detail(state: state)),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: GlassButton(icon: Lucide.x, size: 34, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 

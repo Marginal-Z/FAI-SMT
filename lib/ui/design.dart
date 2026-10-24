@@ -685,3 +685,7 @@ class _PillSearchState extends State<PillSearch> {
     );
   }
 }
+
+/// Phone layout: narrow screens get a compact top bar, bottom navigation,
+/// one column and sheets instead of side panels.
+bool isPhoneLayout(BuildContext context) => MediaQuery.sizeOf(context).width < 600;

@@ -1,10 +1,10 @@
-/// Interface zoom. On Android the automatic factor follows the display, so a
-/// large tablet gets larger controls and a small screen still fits the full
-/// layout; desktop stays at 100 % unless the user picks a size.
+/// Interface zoom. On Android the automatic factor only evens out screen
+/// density; the layout itself adapts to the width (phone, tablet portrait,
+/// tablet landscape) instead of shrinking the desktop layout. Desktop stays
+/// at 100 % unless the user picks a size.
 library;
 
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
@@ -15,13 +15,11 @@ const uiScaleSteps = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
 double autoUiScale(Size logical) {
   if (!Platform.isAndroid) return 1;
   final short = logical.shortestSide;
-  // Phones: keep the designed size, a little smaller on narrow screens.
-  if (short < 600) return (short / 420).clamp(0.85, 1.1);
-  // Tablets: the layout is designed for 1280 × 800 (landscape) and
-  // 800 × 1280 (portrait); scale so it fills the display the same way.
-  final landscape = logical.width >= logical.height;
-  final w = landscape ? 1280.0 : 800.0, h = landscape ? 800.0 : 1280.0;
-  return math.min(logical.width / w, logical.height / h).clamp(0.75, 1.6);
+  // Phones: the designed size, a little smaller on very narrow screens.
+  if (short < 600) return (short / 400).clamp(0.9, 1.1);
+  // Tablets: their own layout at their own size, slightly larger controls
+  // on big displays.
+  return (short / 800).clamp(1.0, 1.3);
 }
 
 /// Lays [child] out in a smaller or larger logical space and scales it to

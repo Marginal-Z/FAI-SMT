@@ -197,6 +197,7 @@ const Map<String, List<String>> _t = {
   'pm_sd_card': ['TF/SD 卡座', 'TF/SD card holder', 'ช่องใส่การ์ด TF/SD'],
   'pm_rj45': ['RJ45 网口', 'RJ45 jack', 'ช่อง RJ45'],
   'pm_dc_jack': ['DC 电源座', 'DC power jack', 'แจ็คไฟ DC'],
+  'pm_rf_connector': ['射频同轴座 IPEX', 'RF coaxial (IPEX / U.FL)', 'ขั้วต่อ RF (IPEX)'],
   'pm_spring': ['弹片 / 顶针', 'Spring contact / pogo pin', 'หน้าสัมผัสสปริง'],
   'pm_tact_switch': ['轻触按键', 'Tactile switch', 'สวิตช์กดสัมผัส'],
   'pm_side_switch': ['侧按按键', 'Side-push switch', 'สวิตช์กดด้านข้าง'],

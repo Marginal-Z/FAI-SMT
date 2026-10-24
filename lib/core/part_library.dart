@@ -85,6 +85,7 @@ const partLibrary = <PartModel>[
   PartModel('sd_card', PartKind.connector, 14.0, 15.0, 1.8, 0xFFC3C8CE, keywords: 'TF SD MICROSD 卡座'),
   PartModel('rj45', PartKind.connector, 16.0, 21.0, 13.0, 0xFFC3C8CE, keywords: 'RJ45 网口'),
   PartModel('dc_jack', PartKind.connector, 9.0, 14.0, 6.5, 0xFF1F2023, keywords: 'DC 电源座 DC-005'),
+  PartModel('rf_connector', PartKind.connector, 3.0, 3.0, 1.25, 0xFFD2B562, keywords: 'IPEX U.FL MHF 射频座 RF 同轴'),
   PartModel('spring', PartKind.connector, 2.0, 1.5, 1.5, 0xFFD9B35A, keywords: '弹片 SPRING POGO 顶针'),
   // Switches, acoustics, relays, batteries
   PartModel('tact_switch', PartKind.electromech, 6.0, 6.0, 3.5, 0xFFC3C8CE, keywords: 'SW KEY 轻触 按键 TACT'),
@@ -149,14 +150,14 @@ String modelIdFor(PartKind kind, String prefix, String text, {double width = 0, 
       if (RegExp(r'TO-?263|D2PAK').hasMatch(text)) return 'd2pak';
       if (RegExp(r'TO-?252|DPAK').hasMatch(text)) return 'dpak';
       if (RegExp(r'PDFN|DFN5|POWERPAK|SO-?8FL|QFN').hasMatch(text)) return 'power_dfn';
-      if (RegExp(r'SOT-?23-?[56]|SOT-?26|SOT-?363|SOT-?563|SC-?70-?6').hasMatch(text)) return 'sot23_6';
+      if (RegExp(r'SOT-?23-?[4-8]|SOT-?26|SOT-?[35]63|SOT-?666|SOT-?143|SC-?70-?[4-6]|SC-?88').hasMatch(text)) return 'sot23_6';
       return 'sot23';
     case PartKind.ic:
       if (_any(text, ['模块', 'MODULE', 'WIFI', 'ESP32', 'ESP8266'])) return 'module';
       if (_any(text, ['WLCSP', 'CSP'])) return 'wlcsp';
       if (_any(text, ['BGA', 'EMMC', 'DDR', 'UFS'])) return 'bga';
       if (RegExp(r'[LT]?QFP').hasMatch(text)) return 'qfp';
-      if (RegExp(r'SOT-?23-?[56]|SOT-?26|SC-?70').hasMatch(text)) return 'sot23_6';
+      if (RegExp(r'SOT-?23-?[4-8]|SOT-?26|SOT-?[35]63|SOT-?666|SOT-?143|SC-?70|SC-?88').hasMatch(text)) return 'sot23_6';
       if (RegExp(r'QFN|DFN|SON|LGA').hasMatch(text)) return 'qfn';
       if (RegExp(r'SOIC|SOP|SSOP|MSOP|ESOP').hasMatch(text)) return 'soic';
       return (width - height).abs() < 0.2 ? 'qfn' : 'soic';
@@ -174,6 +175,7 @@ String modelIdFor(PartKind kind, String prefix, String text, {double width = 0, 
       if (_any(text, ['FPC', 'FFC', '翻盖'])) return 'fpc';
       if (_any(text, ['BTB', '板对板', 'BOARD TO BOARD'])) return 'btb';
       if (_any(text, ['DC-0', '电源座', 'DC JACK'])) return 'dc_jack';
+      if (_any(text, ['IPEX', 'U.FL', 'UFL', 'MHF', '射频', '同轴'])) return 'rf_connector';
       if (_any(text, ['弹片', 'SPRING', 'POGO', '顶针'])) return 'spring';
       if (_any(text, ['HEADER', '排针', '排母', '2.54'])) return 'pin_header';
       return 'wire_to_board';

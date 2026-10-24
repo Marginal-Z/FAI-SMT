@@ -78,7 +78,9 @@ class FilesPage extends StatelessWidget {
               next: i.kind == next,
             ),
         ];
-        return SingleChildScrollView(
+        // Phones and portrait tablets keep the run bar pinned at the bottom.
+        final phone = MediaQuery.sizeOf(context).width < 900;
+        final page = SingleChildScrollView(
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1200),
@@ -122,14 +124,21 @@ class FilesPage extends StatelessWidget {
                               ],
                             ),
                     ),
-                    const SizedBox(height: 48),
-                    _ActionBar(state: state, ready: ready),
+                    if (!phone) ...[const SizedBox(height: 48), _ActionBar(state: state, ready: ready)],
                     const SizedBox(height: 24),
                   ],
                 ),
               ),
             ),
           ),
+        );
+        if (!phone) return page;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: page),
+            Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 0), child: _ActionBar(state: state, ready: ready, compact: true)),
+          ],
         );
       },
     );
@@ -474,10 +483,11 @@ String _formatName(String ext) => switch (ext) {
 
 /// Floating pill with the import progress, Clear and Run Check.
 class _ActionBar extends StatelessWidget {
-  const _ActionBar({required this.state, required this.ready});
+  const _ActionBar({required this.state, required this.ready, this.compact = false});
 
   final AppState state;
   final bool ready;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -491,6 +501,37 @@ class _ActionBar extends StatelessWidget {
         : !ready
         ? (s.t('bar_need_station'), s.t('bar_optional_b'))
         : (s.t('bar_ready'), state.stationB != null && state.stationA != null ? s.t('bar_all_loaded') : s.t('bar_optional_b'));
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
+        decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(26), boxShadow: c.shadow),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(headline, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx)),
+                  Text(subline, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.tx2)),
+                ],
+              ),
+            ),
+            GlassButton(icon: Lucide.trash, size: 40, tooltip: s.t('btn_clear'), onTap: state.clearAll),
+            const SizedBox(width: 6),
+            PillButton(
+              key: tourTargets.runButton,
+              label: s.t('btn_run'),
+              kind: PillKind.primary,
+              height: 44,
+              fontSize: 15,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              onTap: ready ? () => runCheck(context, state) : null,
+            ),
+          ],
+        ),
+      );
+    }
     final buttons = Row(
       mainAxisSize: MainAxisSize.min,
       children: [

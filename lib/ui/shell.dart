@@ -265,3 +265,105 @@ class AppFooter extends StatelessWidget {
     );
   }
 }
+
+const _moduleIcons = {Module.files: Lucide.folderOpen, Module.check: Lucide.clipboardCheck, Module.cad: Lucide.fileText, Module.board: Lucide.cpu};
+
+/// Phone top bar: icon, the page title and round actions; language and the
+/// rest live in Settings.
+class PhoneHeader extends StatelessWidget {
+  const PhoneHeader({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final title = state.settingsOpen ? s.t('mod_settings') : s.t(moduleLabels[state.module]!);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset('assets/icon/app_icon.png', width: 30, height: 30, filterQuality: FilterQuality.medium),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: c.tx),
+            ),
+          ),
+          if (state.updateAvailable) ...[
+            GlassButton(
+              icon: Lucide.download,
+              size: 38,
+              tooltip: s.t('upd_available', {'v': state.latestRelease!.version}),
+              onTap: () => state.openSettings(SettingsSection.update),
+            ),
+            const SizedBox(width: 6),
+          ],
+          GlassButton(icon: Lucide.theme, size: 38, tooltip: s.t('theme_now_${state.theme.name}'), onTap: state.cycleTheme),
+          const SizedBox(width: 6),
+          GlassButton(key: tourTargets.help, icon: Lucide.help, size: 38, tooltip: s.t('set_guide'), onTap: () => state.openSettings(SettingsSection.guide)),
+          const SizedBox(width: 6),
+          GlassButton(icon: Lucide.settings, size: 38, tooltip: s.t('mod_settings'), onTap: () => state.openSettings()),
+        ],
+      ),
+    );
+  }
+}
+
+/// Phone bottom navigation: the four pages as icon tabs.
+class PhoneNavBar extends StatelessWidget {
+  const PhoneNavBar({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    return Container(
+      key: tourTargets.tabs,
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(26), boxShadow: c.shadow),
+      child: Row(
+        children: [
+          for (final mod in Module.values)
+            Expanded(
+              child: Hoverable(
+                key: tourTargets.module(mod),
+                onTap: () => state.setModule(mod),
+                builder: (context, hover, _) {
+                  final on = state.module == mod && !state.settingsOpen;
+                  final color = on ? c.blueTx : c.tx2;
+                  return Container(
+                    height: 54,
+                    decoration: BoxDecoration(color: on ? c.blueTint : (hover ? c.hover : null), borderRadius: BorderRadius.circular(21)),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        LucideIcon(_moduleIcons[mod]!, size: 21, color: color, stroke: on ? 2.2 : 1.8),
+                        const SizedBox(height: 3),
+                        Text(
+                          s.t(moduleLabels[mod]!),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: color),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

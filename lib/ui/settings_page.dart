@@ -70,7 +70,8 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 2, 8, 8),
-                  child: Row(children: [back, const SizedBox(width: 14), title, const Spacer(), version]),
+                  // The phone top bar already names the page.
+                  child: Row(children: isPhoneLayout(context) ? [back] : [back, const SizedBox(width: 14), title, const Spacer(), version]),
                 ),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -125,7 +126,7 @@ class SettingsScreen extends StatelessWidget {
     };
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(narrow ? 16 : 32, 12, narrow ? 16 : 32, 0),
+      padding: EdgeInsets.fromLTRB(narrow ? 12 : 32, isPhoneLayout(context) ? 4 : 12, narrow ? 12 : 32, 0),
       child: narrow
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -201,8 +202,9 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
+    final phone = isPhoneLayout(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 32),
+      padding: phone ? const EdgeInsets.fromLTRB(18, 18, 18, 24) : const EdgeInsets.fromLTRB(32, 28, 32, 32),
       child: Align(
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
@@ -233,19 +235,30 @@ class _Appearance extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
+    // Phones put the label above its control.
+    final phone = isPhoneLayout(context);
     Widget row(String label, Widget control) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(label, style: TextStyle(fontSize: 13, color: c.textDim)),
-          ),
-          Flexible(
-            child: Align(alignment: Alignment.centerLeft, child: control),
-          ),
-        ],
-      ),
+      child: phone
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 13, color: c.textDim)),
+                const SizedBox(height: 8),
+                control,
+              ],
+            )
+          : Row(
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: Text(label, style: TextStyle(fontSize: 13, color: c.textDim)),
+                ),
+                Flexible(
+                  child: Align(alignment: Alignment.centerLeft, child: control),
+                ),
+              ],
+            ),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -8,6 +8,7 @@ import 'package:smt_fai/core/board_layout.dart';
 import 'package:smt_fai/core/checker.dart';
 import 'package:smt_fai/core/discrepancies.dart';
 import 'package:smt_fai/core/footprints.dart';
+import 'package:smt_fai/core/package_parser.dart';
 import 'package:smt_fai/core/part_library.dart';
 import 'package:smt_fai/core/updater.dart';
 import 'package:smt_fai/version.dart';
@@ -335,7 +336,7 @@ void main() {
       expect(btb.width, closeTo(19 * 0.4 + 1.8, 1e-9));
       expect(shapeOf('J2', description: 'FPC 翻盖 24PIN 0.5MM').width, closeTo(23 * 0.5 + 3.6, 1e-9));
       expect(shapeOf('U5', footprint: 'AML_C3_C308L_BGA_PACKAGE_1').bga, isTrue);
-      expect(shapeOf('8U1', description: 'MSOP_8').pins, 4);
+      expect(shapeOf('8U1', description: 'MSOP_8').pins, 8);
       expect(shapeOf('1Q2', footprint: 'SOT23').kind, PartKind.transistor);
       expect(shapeOf('MARK1').kind, PartKind.fiducial);
       expect(shapeOf('TP10_1').kind, PartKind.testPoint);
@@ -383,6 +384,63 @@ void main() {
         expect(Texts.has('pm_${m.id}'), isTrue, reason: m.id);
         expect(m.width > 0 && m.height > 0, isTrue, reason: m.id);
       }
+    });
+  });
+
+  group('package recognition', () {
+    test('pins, rows, pitch and body from EDA names and BOM text', () {
+      PackageInfo p(String fp, [String d = '']) => parsePackage(fp, d);
+      final soic = p('SOIC-8_3.9x4.9mm_P1.27mm');
+      expect((soic.family, soic.pins, soic.pitch, soic.length, soic.width), ('SOIC', 8, 1.27, 4.9, 3.9));
+      final qfn = p('QFN-32-1EP_5x5mm_P0.5mm');
+      expect((qfn.family, qfn.pins, qfn.length), ('QFN', 32, 5.0));
+      expect(p('SOT-23-5').pins, 5);
+      expect(p('SOT-23').pins, 3);
+      expect(p('', 'LDO稳压IC SOT-23-6').pins, 6);
+      expect(p('TSSOP20').pins, 20);
+      expect(p('LQFP-64').family, 'QFP');
+      final header = p('PinHeader_2x05_P2.54mm_Vertical');
+      expect((header.rows, header.pins, header.pitch), (2, 10, 2.54));
+      final jst = p('JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal');
+      expect((jst.pins, jst.pitch), (4, 1.0));
+      final fpc = p('', '连接器 FPC 0.5MM 24P 翻盖下接');
+      expect((fpc.pins, fpc.pitch), (24, 0.5));
+      final btb = p('', '板对板连接器 40PIN 0.4mm 母座');
+      expect((btb.pins, btb.pitch), (40, 0.4));
+      expect(p('', '排针 2*20PIN 2.54MM').pins, 40);
+      expect(p('', 'PH2.0 4P 立贴').pitch, 2.0);
+      // A 10P capacitor value is not a pin count for packages with a family.
+      expect(p('QFN24_4X4').length, 4.0);
+    });
+
+    test('shapes follow the recognised package for any product', () {
+      final sop16 = shapeOf('U9', footprint: 'SOIC-16_3.9x9.9mm_P1.27mm');
+      expect((sop16.width, sop16.height, sop16.pins), (9.9, 3.9, 16));
+      final tssop = shapeOf('U2', description: '运放 TSSOP-14');
+      expect(tssop.pins, 14);
+      expect(tssop.height, 4.4);
+      final qfp = shapeOf('U1', description: 'MCU LQFP-100');
+      expect((qfp.width, qfp.pins), (14.0, 100));
+      final sot5 = shapeOf('U4', footprint: 'SOT-23-5');
+      expect((sot5.pins, sot5.model), (5, 'sot23_6'));
+      final header = shapeOf('J5', footprint: 'PinHeader_2x05_P2.54mm_Vertical');
+      expect((header.pins, header.rows, header.model), (10, 2, 'pin_header'));
+      expect(header.width, closeTo(4 * 2.54 + 2.54, 1e-9));
+      final fpc = shapeOf('J3', description: 'FPC连接器 0.5MM 30P 翻盖');
+      expect((fpc.pins, fpc.model), (30, 'fpc'));
+      expect(fpc.width, closeTo(29 * 0.5 + 3.6, 1e-9));
+      // General rules learnt from real boards.
+      expect(shapeOf('1U1', footprint: 'MP1495_1', description: '贴片IC DC-DC SOT563').model, 'sot23_6');
+      expect(shapeOf('9R1', footprint: 'PBG-BGA-EMMC', description: '主板屏蔽框 洋白铜').model, 'shield');
+      expect(shapeOf('2R59', footprint: 'R-PIN-MARK', description: '贴片热敏电阻 RT0402 10K').model, 'thermistor');
+      final l = shapeOf('1L2', description: '贴片电感 一体252012 6.8UH');
+      expect((l.width, l.height), (2.5, 2.0));
+      expect(shapeOf('9U1', description: '图像传感器 OS04C10-A43A-1B 43pin CSP').pins, 43);
+      expect(shapeOf('10J1', description: 'IPEX公座 射频座一代 3PIN').model, 'rf_connector');
+      expect(shapeOf('J2', footprint: 'CONNEC4_125MM_DIP').pins, 4);
+      // Coordinates are never part of the shape: only size and pins change.
+      final plain = shapeOf('R1', description: '贴片电阻 0402 10K');
+      expect((plain.width, plain.height), (1.0, 0.5));
     });
   });
 

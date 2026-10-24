@@ -127,6 +127,7 @@ class _CadViewState extends State<CadView> {
         ),
       );
       final aside = _Checks(state: state, cad: cad, fileName: fileName);
+      if (isPhoneLayout(context)) return _phonePage(context, cad, indices, fileName);
       body = widget.compact
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -156,6 +157,93 @@ class _CadViewState extends State<CadView> {
           Expanded(child: body),
         ],
       ),
+    );
+  }
+
+  /// Phones: one scrolling column with the controls, the checks and the
+  /// output rows as cards (every template column, labelled).
+  Widget _phonePage(BuildContext context, CadResult cad, List<int> indices, String fileName) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final state = widget.state;
+    final t = cad.template;
+    final header = cad.header ?? [for (final f in t.fields) t.headerOf(f)];
+    String fmt(Object o) => o is double ? o.toStringAsFixed(t.decimals) : '$o';
+    final head = <Widget>[
+      _Controls(state: state),
+      const SizedBox(height: 14),
+      _Checks(state: state, cad: cad, fileName: fileName, embedded: true),
+      const SizedBox(height: 14),
+      KeyedSubtree(
+        key: tourTargets.cadPreview,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              fileName,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: c.tx),
+            ),
+            const SizedBox(height: 4),
+            Text(s.t('cad_rows', {'n': cad.rows.length}), style: TextStyle(fontSize: 13, color: c.tx2)),
+            const SizedBox(height: 10),
+            PillSearch(controller: _search, hint: s.t('cad_search_hint'), onChanged: (_) => setState(() {})),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    ];
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      itemCount: head.length + indices.length,
+      itemBuilder: (context, i) {
+        if (i < head.length) return head[i];
+        final k = indices[i - head.length];
+        final cells = cad.cells[k];
+        final row = cad.rows[k];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: DCard(
+            radius: 18,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        cells.isEmpty ? row.placement.ref : fmt(cells.first),
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.tx),
+                      ),
+                    ),
+                    if (row.merged?.slot case final slot?) DotChip(text: slot, color: c.okTx, background: c.okTint),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 4,
+                  children: [
+                    for (var j = 1; j < cells.length && j < header.length; j++)
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${header[j]} ',
+                              style: TextStyle(color: c.tx3),
+                            ),
+                            TextSpan(text: fmt(cells[j])),
+                          ],
+                        ),
+                        style: TextStyle(fontSize: 12.5, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -403,9 +491,14 @@ class _Controls extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             fileCard,
-            const SizedBox(height: 20),
-            SingleChildScrollView(scrollDirection: Axis.horizontal, child: formats),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
+            if (box.maxWidth < 600) ...[
+              unitCard,
+              const SizedBox(height: 14),
+              KeyedSubtree(key: tourTargets.cadFormat, child: formatCard),
+            ] else
+              SingleChildScrollView(scrollDirection: Axis.horizontal, child: formats),
+            const SizedBox(height: 14),
             Align(alignment: Alignment.centerLeft, child: actionsCard),
           ],
         );
@@ -575,11 +668,14 @@ class _CadGrid extends StatelessWidget {
 
 /// Build checks and file information.
 class _Checks extends StatelessWidget {
-  const _Checks({required this.state, required this.cad, required this.fileName});
+  const _Checks({required this.state, required this.cad, required this.fileName, this.embedded = false});
 
   final AppState state;
   final CadResult cad;
   final String fileName;
+
+  /// Laid out inside a page that scrolls itself (phones).
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
@@ -629,114 +725,113 @@ class _Checks extends StatelessWidget {
       ],
     );
 
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
-      children: [
-        DCard(
-          padding: const EdgeInsets.all(26),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              title(allGood ? Lucide.check : Lucide.alert, allGood ? c.okSolid : c.ngSolid, s.t('cad_checks')),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                decoration: BoxDecoration(color: allGood ? c.okTint : c.ngTint, borderRadius: BorderRadius.circular(22)),
+    final cards = <Widget>[
+      DCard(
+        padding: EdgeInsets.all(embedded ? 20 : 26),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            title(allGood ? Lucide.check : Lucide.alert, allGood ? c.okSolid : c.ngSolid, s.t('cad_checks')),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              decoration: BoxDecoration(color: allGood ? c.okTint : c.ngTint, borderRadius: BorderRadius.circular(22)),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: allGood ? c.okSolid : c.ngSolid),
+                    child: LucideIcon(allGood ? Lucide.check : Lucide.x, size: 20, color: const Color(0xFFFFFFFF), stroke: 2.6),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s.t(allGood ? 'cad_all_good' : 'cad_has_problems'),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: allGood ? c.okTx : c.ngTx),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(s.t('cad_matched_n', {'a': placed, 'b': expected}), style: TextStyle(fontSize: 13, color: c.tx2)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            for (final (ok, label) in checks)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 20,
+                      height: 20,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: allGood ? c.okSolid : c.ngSolid),
-                      child: LucideIcon(allGood ? Lucide.check : Lucide.x, size: 20, color: const Color(0xFFFFFFFF), stroke: 2.6),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: ok ? c.okSolid : c.ngSolid),
+                      child: LucideIcon(ok ? Lucide.check : Lucide.x, size: 12, color: const Color(0xFFFFFFFF), stroke: 3.2),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            s.t(allGood ? 'cad_all_good' : 'cad_has_problems'),
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: allGood ? c.okTx : c.ngTx),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(s.t('cad_matched_n', {'a': placed, 'b': expected}), style: TextStyle(fontSize: 13, color: c.tx2)),
-                        ],
-                      ),
+                      child: Text(label, style: TextStyle(fontSize: 14, color: c.tx)),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
-              for (final (ok, label) in checks)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: ok ? c.okSolid : c.ngSolid),
-                        child: LucideIcon(ok ? Lucide.check : Lucide.x, size: 12, color: const Color(0xFFFFFFFF), stroke: 3.2),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(label, style: TextStyle(fontSize: 14, color: c.tx)),
-                      ),
-                    ],
-                  ),
+            for (final (head, refs, tint, color) in groups)
+              if (refs.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  head,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx),
                 ),
-              for (final (head, refs, tint, color) in groups)
-                if (refs.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    head,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final r in refs.take(120)) DotChip(text: r, background: tint, color: color),
-                      if (refs.length > 120) Text('+${refs.length - 120}', style: TextStyle(fontSize: 12, color: c.tx2)),
-                    ],
-                  ),
-                ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        DCard(
-          padding: const EdgeInsets.all(26),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              title(Lucide.info, c.blue, s.t('info_title')),
-              const SizedBox(height: 18),
-              for (final (k, v) in info)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 84,
-                        child: Text(k, style: TextStyle(fontSize: 14, height: 1.45, color: c.tx2)),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(v, style: TextStyle(fontSize: 14, height: 1.45, color: c.tx)),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final r in refs.take(120)) DotChip(text: r, background: tint, color: color),
+                    if (refs.length > 120) Text('+${refs.length - 120}', style: TextStyle(fontSize: 12, color: c.tx2)),
+                  ],
                 ),
-            ],
-          ),
+              ],
+          ],
         ),
-      ],
-    );
+      ),
+      const SizedBox(height: 20),
+      DCard(
+        padding: const EdgeInsets.all(26),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            title(Lucide.info, c.blue, s.t('info_title')),
+            const SizedBox(height: 18),
+            for (final (k, v) in info)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 84,
+                      child: Text(k, style: TextStyle(fontSize: 14, height: 1.45, color: c.tx2)),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(v, style: TextStyle(fontSize: 14, height: 1.45, color: c.tx)),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
+    if (embedded) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: cards);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: cards);
   }
 }
