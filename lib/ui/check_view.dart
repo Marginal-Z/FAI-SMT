@@ -206,15 +206,49 @@ class _CheckViewState extends State<CheckView> {
           );
 
     final gap = phone ? 14.0 : 16.0;
-    final top = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        imports,
-        SizedBox(height: gap),
-        stats,
-        SizedBox(height: gap),
-      ],
-    );
+    // Wide windows: import cards over the statistics, both rows the same
+    // width, and the run / export / clear card spanning their height.
+    final wideTop = !phone && MediaQuery.sizeOf(context).width >= 1130;
+    final top = wideTop
+        ? Padding(
+            padding: EdgeInsets.only(bottom: gap),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        KeyedSubtree(key: tourTargets.fileChecks, child: ImportCardsRow(state: state)),
+                        const SizedBox(height: 12),
+                        IntrinsicHeight(
+                          key: tourTargets.checkCards,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var i = 0; i < statCards.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: statCards[i])],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(width: 220, child: ImportActions(state: state)),
+                ],
+              ),
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              imports,
+              SizedBox(height: gap),
+              stats,
+              SizedBox(height: gap),
+            ],
+          );
 
     if (showDiscrepancies) {
       return Padding(
@@ -337,7 +371,12 @@ class _CheckViewState extends State<CheckView> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                        child: _HeaderRow(allConfirmed: allConfirmed, listed: visible.length, onConfirmAll: () => state.setConfirmed(toConfirm, !allConfirmed)),
+                        child: _HeaderRow(
+                          allConfirmed: allConfirmed,
+                          listed: toConfirm.length,
+                          showConfirm: toConfirm.isNotEmpty,
+                          onConfirmAll: () => state.setConfirmed(toConfirm, !allConfirmed),
+                        ),
                       ),
                       Expanded(
                         child: ThinScrollbar(
@@ -346,7 +385,7 @@ class _CheckViewState extends State<CheckView> {
                             controller: _scroll,
                             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                             itemCount: visible.length,
-                            itemBuilder: (context, i) => _ResultRow(state: state, row: visible[i], index: i + 1),
+                            itemBuilder: (context, i) => _ResultRow(state: state, row: visible[i], index: i + 1, showConfirm: toConfirm.isNotEmpty),
                           ),
                         ),
                       ),
@@ -385,11 +424,9 @@ class _CheckViewState extends State<CheckView> {
             )
           : Row(
               children: [
-                Expanded(
-                  child: ConstrainedBox(constraints: const BoxConstraints(minWidth: 260), child: search),
-                ),
+                SizedBox(width: 320, child: search),
                 for (final w in selects) ...[const SizedBox(width: 16), w],
-                const SizedBox(width: 16),
+                const Spacer(),
                 count,
               ],
             ),
@@ -403,7 +440,9 @@ class _CheckViewState extends State<CheckView> {
         final short = box.maxHeight < 900;
         // The selected part's card sits right of the table, top and bottom
         // aligned with it; narrow windows put it under the table.
-        final side = box.maxWidth >= 1100;
+        // The card opens only once a result is clicked.
+        final selected = state.selected != null;
+        final side = box.maxWidth >= 1100 && selected;
         final body = side
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -419,7 +458,7 @@ class _CheckViewState extends State<CheckView> {
           filters,
           const SizedBox(height: 16),
           short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
-          if (!side) ...[const SizedBox(height: 16), _Detail(state: state)],
+          if (!side && selected) ...[const SizedBox(height: 16), _Detail(state: state)],
           const SizedBox(height: 16),
         ];
         final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
@@ -626,15 +665,16 @@ const _cols = [
   (68.0, 0.0), // SMT qty
   (220.0, 2.4), // designators
   (52.0, 0.0), // side
-  (100.0, 0.0), // confirmation
   (80.0, 0.0), // result
+  (112.0, 0.0), // confirmation (only when a listed row needs one)
 ];
 
 /// Lays out one table line in the design's grid.
 Widget _gridRow(List<Widget> cells, {List<Alignment>? align}) => LayoutBuilder(
   builder: (context, box) {
-    final fixed = _cols.fold<double>(0, (a, e) => a + e.$1);
-    final flex = _cols.fold<double>(0, (a, e) => a + e.$2);
+    final cols = _cols.take(cells.length).toList();
+    final fixed = cols.fold<double>(0, (a, e) => a + e.$1);
+    final flex = cols.fold<double>(0, (a, e) => a + e.$2);
     final spare = (box.maxWidth - fixed).clamp(0.0, double.infinity);
     // Narrower than the fixed columns (tablets): shrink them all evenly.
     final shrink = box.maxWidth < fixed ? box.maxWidth / fixed : 1.0;
@@ -643,7 +683,7 @@ Widget _gridRow(List<Widget> cells, {List<Alignment>? align}) => LayoutBuilder(
       children: [
         for (var i = 0; i < cells.length; i++)
           SizedBox(
-            width: _cols[i].$1 * shrink + (flex == 0 ? 0 : spare * _cols[i].$2 / flex),
+            width: cols[i].$1 * shrink + (flex == 0 ? 0 : spare * cols[i].$2 / flex),
             child: Align(alignment: align?[i] ?? Alignment.centerLeft, child: cells[i]),
           ),
       ],
@@ -651,7 +691,7 @@ Widget _gridRow(List<Widget> cells, {List<Alignment>? align}) => LayoutBuilder(
   },
 );
 
-const _centerCols = {3, 4};
+const _centerCols = {3, 4, 7};
 
 List<Alignment> _alignments() => [
   for (var i = 0; i < _cols.length; i++)
@@ -663,11 +703,14 @@ List<Alignment> _alignments() => [
 ];
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.allConfirmed, required this.listed, required this.onConfirmAll});
+  const _HeaderRow({required this.allConfirmed, required this.listed, required this.onConfirmAll, required this.showConfirm});
 
   final bool allConfirmed;
   final int listed;
   final VoidCallback onConfirmAll;
+
+  /// Some listed row needs manual confirmation.
+  final bool showConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -686,12 +729,20 @@ class _HeaderRow extends StatelessWidget {
         t('col_smt_qty'),
         t('col_bom_refs'),
         t('col_side'),
-        Hoverable(
-          onTap: onConfirmAll,
-          tooltip: allConfirmed ? s.t('confirm_none_visible') : s.t('confirm_all_visible', {'n': listed}),
-          builder: (context, hover, _) => Text(s.t('col_confirm'), style: style.copyWith(color: hover ? c.blueTx : null)),
-        ),
         t('col_result'),
+        if (showConfirm)
+          Hoverable(
+            onTap: onConfirmAll,
+            tooltip: allConfirmed ? s.t('confirm_none_visible') : s.t('confirm_all_visible', {'n': listed}),
+            builder: (context, hover, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LucideIcon(allConfirmed ? Lucide.check : Lucide.clipboardCheck, size: 13, color: hover ? c.blueTx : c.tx2, stroke: 2.2),
+                const SizedBox(width: 4),
+                Text(s.t('col_confirm'), style: style.copyWith(color: hover ? c.blueTx : null)),
+              ],
+            ),
+          ),
       ], align: _alignments()),
     );
   }
@@ -709,11 +760,12 @@ Widget _chip(AppColors c, CheckRow row, RefMark m) {
 }
 
 class _ResultRow extends StatelessWidget {
-  const _ResultRow({required this.state, required this.row, required this.index});
+  const _ResultRow({required this.state, required this.row, required this.index, required this.showConfirm});
 
   final AppState state;
   final CheckRow row;
   final int index;
+  final bool showConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -772,11 +824,12 @@ class _ResultRow extends StatelessWidget {
             ),
           ),
           Text(_sides(row.sides), style: TextStyle(fontSize: 14, color: c.tx2)),
-          // PASS needs no manual confirmation.
-          row.category == CheckCategory.pass
-              ? Text('—', style: TextStyle(fontSize: 14, color: c.tx3))
-              : _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
           DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+          // PASS needs no manual confirmation: the cell stays empty.
+          if (showConfirm)
+            row.category == CheckCategory.pass
+                ? const SizedBox.shrink()
+                : _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
         ], align: _alignments()),
       ),
     );
@@ -851,11 +904,16 @@ class _RowCard extends StatelessWidget {
   }
 }
 
+/// Manual confirmation toggle: an outlined blue "Confirm" that fills on
+/// hover; once confirmed a green tick that offers "Undo" on hover.
 class _ConfirmPill extends StatelessWidget {
-  const _ConfirmPill({required this.confirmed, required this.onTap});
+  const _ConfirmPill({required this.confirmed, required this.onTap, this.large = false});
 
   final bool confirmed;
   final VoidCallback onTap;
+
+  /// Detail card: a bigger primary button.
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
@@ -863,22 +921,37 @@ class _ConfirmPill extends StatelessWidget {
     final s = Strings.of(context);
     return Hoverable(
       onTap: onTap,
-      tooltip: confirmed ? s.t('confirm_undo') : null,
-      builder: (context, hover, _) => Container(
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 13),
-        decoration: BoxDecoration(color: confirmed ? c.blueTint : (hover ? c.glass2 : c.hover), borderRadius: BorderRadius.circular(15)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (confirmed) ...[LucideIcon(Lucide.check, size: 13, color: c.blueTx, stroke: 2.8), const SizedBox(width: 6)],
-            Text(
-              confirmed ? s.t('confirm_done') : s.t('confirm_btn'),
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: confirmed ? c.blueTx : c.tx2),
-            ),
-          ],
-        ),
-      ),
+      tooltip: confirmed ? s.t('confirm_undo') : s.t('confirm_hint_short'),
+      builder: (context, hover, pressed) {
+        final (bg, fg, border, icon, label) = confirmed
+            ? hover
+                  ? (c.grayTint, c.tx2, const Color(0x00000000), Lucide.x, s.t('confirm_undo_short'))
+                  : (c.okTint, c.okTx, const Color(0x00000000), Lucide.check, s.t('confirm_done'))
+            : hover
+            ? (c.btn, const Color(0xFFFFFFFF), c.btn, Lucide.check, s.t('confirm_btn'))
+            : (large ? c.btn : c.card, large ? const Color(0xFFFFFFFF) : c.blueTx, c.btn.withValues(alpha: 0.55), Lucide.circle, s.t('confirm_btn'));
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          height: large ? 40 : 30,
+          padding: EdgeInsets.symmetric(horizontal: large ? 18 : 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(large ? 20 : 15),
+            border: Border.all(color: border, width: 1.2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LucideIcon(icon, size: large ? 16 : 13, color: fg, stroke: 2.6),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(fontSize: large ? 14.5 : 13, fontWeight: FontWeight.w600, color: fg),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1040,7 +1113,7 @@ class _DetailState extends State<_Detail> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _ConfirmPill(confirmed: confirmation != null, onTap: () => state.setConfirmed([row], confirmation == null)),
+              _ConfirmPill(large: true, confirmed: confirmation != null, onTap: () => state.setConfirmed([row], confirmation == null)),
               const SizedBox(width: 12),
               Expanded(
                 child: confirmation == null
@@ -1063,7 +1136,16 @@ class _DetailState extends State<_Detail> {
         radius: 22,
         clip: true,
         padding: EdgeInsets.zero,
-        child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: body),
+        child: Stack(
+          children: [
+            SingleChildScrollView(padding: const EdgeInsets.fromLTRB(20, 20, 46, 20), child: body),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: GlassButton(icon: Lucide.x, size: 32, iconSize: 15, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
+            ),
+          ],
+        ),
       );
     }
     return DCard(radius: 22, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), child: body);

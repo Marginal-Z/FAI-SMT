@@ -580,6 +580,8 @@ const Map<String, List<String>> _t = {
   'confirm_none_visible': ['取消当前列表的确认', 'Clear confirmations in list', 'ยกเลิกการยืนยันในรายการ'],
   'confirm_section': ['人工确认', 'Manual confirmation', 'การยืนยันด้วยตนเอง'],
   'confirm_at': ['已于 {time} 确认', 'Confirmed at {time}', 'ยืนยันเมื่อ {time}'],
+  'confirm_hint_short': ['核对无误后点击确认', 'Click once you have verified it', 'คลิกเมื่อตรวจสอบแล้ว'],
+  'confirm_undo_short': ['撤销', 'Undo', 'ยกเลิก'],
   'confirm_not_needed': ['PASS 项核对一致，无需人工确认。', 'PASS items match and need no manual confirmation.', 'รายการ PASS ตรงกัน ไม่ต้องยืนยัน'],
   'empty_check_import': ['在上方导入 T100 BOM 与站位表，然后点击「开始核对」（F5）。', 'Import the T100 BOM and station lists above, then click Run Check (F5).', 'นำเข้า BOM และตารางสถานีด้านบน แล้วคลิก "เริ่มตรวจ" (F5)'],
   'confirm_pending': ['尚未人工确认。核对无误后点击「确认」，NG 项确认后生成 CAD 时不再提示。', 'Not confirmed yet. Confirm after checking; confirmed NG items no longer block CAD output.', 'ยังไม่ได้ยืนยัน ยืนยันหลังตรวจสอบ รายการ NG ที่ยืนยันแล้วจะไม่เตือนเมื่อสร้าง CAD'],

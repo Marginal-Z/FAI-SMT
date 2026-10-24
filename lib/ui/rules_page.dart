@@ -136,7 +136,6 @@ class _RulesPageState extends State<RulesPage> {
               ],
               onChanged: widget.state.openRules,
             ),
-            const SizedBox(width: 8),
             FlatButton(label: s.t('rules_reset'), compact: true, onTap: () => setState(() => _fill(CheckRules()))),
             FlatButton(label: s.t('dlg_save'), compact: true, primary: true, onTap: _save),
           ],

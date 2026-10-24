@@ -252,8 +252,12 @@ class AppState extends ChangeNotifier {
   /// Cycles system → light → dark, for the title-bar toggle.
   void cycleTheme() => setTheme(ThemePref.values[(theme.index + 1) % ThemePref.values.length]);
 
+  /// Opens page [m]; leaves Settings and full screen, so a page tab always
+  /// takes you to that page.
   void setModule(Module m) {
     module = m;
+    settingsOpen = false;
+    if (m != Module.board) boardFullscreen = false;
     notifyListeners();
   }
 

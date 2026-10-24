@@ -280,6 +280,8 @@ class _Controls extends StatelessWidget {
     final canBuild = state.report != null && f != null;
     final unit = state.settings.coordUnit;
     final unitText = f == null ? '' : (f.result.columns['unit'] ?? (unit == CoordUnit.auto ? 'mm' : unit.name));
+    // Phones: no icon tiles, so the unit choices fit.
+    final tight = MediaQuery.sizeOf(context).width < 600;
     Widget label(String text) => Text(
       text,
       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.tx2),
@@ -358,8 +360,7 @@ class _Controls extends StatelessWidget {
       Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const TintTile(icon: Lucide.ruler),
-          const SizedBox(width: 16),
+          if (!tight) ...[const TintTile(icon: Lucide.ruler), const SizedBox(width: 16)],
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,8 +384,7 @@ class _Controls extends StatelessWidget {
       Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const TintTile(icon: Lucide.grid),
-          const SizedBox(width: 16),
+          if (!tight) ...[const TintTile(icon: Lucide.grid), const SizedBox(width: 16)],
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

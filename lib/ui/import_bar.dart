@@ -15,56 +15,19 @@ import 'tour.dart';
 import 'widgets.dart';
 
 class ImportBar extends StatelessWidget {
-  const ImportBar({super.key, required this.state});
+  const ImportBar({super.key, required this.state, this.actions = true});
 
   final AppState state;
 
+  /// Include the run / export / clear card (the check page places it
+  /// itself when the statistics row is shown).
+  final bool actions;
+
   @override
   Widget build(BuildContext context) {
-    final s = Strings.of(context);
     final phone = isPhoneLayout(context);
-    final next = state.bom == null ? InputKind.bom : (state.stationA == null && state.stationB == null ? InputKind.stationA : null);
-    final cards = [
-      _ImportCard(
-        key: tourTargets.bomCard,
-        state: state,
-        kind: InputKind.bom,
-        title: s.t('in_bom_title'),
-        help: s.t('in_bom_help'),
-        file: state.bom,
-        optional: false,
-        icon: Lucide.clipboardCheck,
-        colors: GradientTile.blue,
-        glow: GradientTile.blueGlow,
-        next: next == InputKind.bom,
-      ),
-      _ImportCard(
-        key: tourTargets.stationCard,
-        state: state,
-        kind: InputKind.stationA,
-        title: s.t('btn_station_a'),
-        help: s.t('in_station_help'),
-        file: state.stationA,
-        optional: false,
-        icon: Lucide.fileText,
-        colors: GradientTile.teal,
-        glow: GradientTile.tealGlow,
-        next: next == InputKind.stationA,
-      ),
-      _ImportCard(
-        state: state,
-        kind: InputKind.stationB,
-        title: s.t('btn_station_b'),
-        help: s.t('in_station_help'),
-        file: state.stationB,
-        optional: true,
-        icon: Lucide.fileText,
-        colors: GradientTile.orange,
-        glow: GradientTile.orangeGlow,
-        next: false,
-      ),
-    ];
-    final actions = _Actions(state: state, compact: phone);
+    final cards = importCards(context, state);
+    final actionsCard = ImportActions(state: state, compact: phone);
     return KeyedSubtree(
       key: tourTargets.fileChecks,
       child: LayoutBuilder(
@@ -75,8 +38,8 @@ class ImportBar extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final card in cards) ...[Expanded(child: card), const SizedBox(width: gap)],
-                  SizedBox(width: 250, child: actions),
+                  Expanded(child: ImportCardsRow(state: state)),
+                  if (actions) ...[const SizedBox(width: gap), SizedBox(width: 220, child: actionsCard)],
                 ],
               ),
             );
@@ -86,20 +49,90 @@ class ImportBar extends StatelessWidget {
             return Wrap(
               spacing: gap,
               runSpacing: gap,
-              children: [for (final card in cards) SizedBox(width: w, child: card), SizedBox(width: w, child: actions)],
+              children: [
+                for (final card in cards) SizedBox(width: w, child: card),
+                if (actions) SizedBox(width: w, child: actionsCard),
+              ],
             );
           }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final card in cards) ...[card, const SizedBox(height: 10)],
-              actions,
+              if (actions) actionsCard,
             ],
           );
         },
       ),
     );
   }
+}
+
+/// The three import cards side by side, equal height (no layout builder, so
+/// it can sit inside intrinsic-height rows).
+class ImportCardsRow extends StatelessWidget {
+  const ImportCardsRow({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = importCards(context, state);
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: cards[i])],
+        ],
+      ),
+    );
+  }
+}
+
+/// BOM, station list A and station list B import cards.
+List<Widget> importCards(BuildContext context, AppState state) {
+  final s = Strings.of(context);
+  final next = state.bom == null ? InputKind.bom : (state.stationA == null && state.stationB == null ? InputKind.stationA : null);
+  return [
+    _ImportCard(
+      key: tourTargets.bomCard,
+      state: state,
+      kind: InputKind.bom,
+      title: s.t('in_bom_title'),
+      help: s.t('in_bom_help'),
+      file: state.bom,
+      optional: false,
+      icon: Lucide.clipboardCheck,
+      colors: GradientTile.blue,
+      glow: GradientTile.blueGlow,
+      next: next == InputKind.bom,
+    ),
+    _ImportCard(
+      key: tourTargets.stationCard,
+      state: state,
+      kind: InputKind.stationA,
+      title: s.t('btn_station_a'),
+      help: s.t('in_station_help'),
+      file: state.stationA,
+      optional: false,
+      icon: Lucide.fileText,
+      colors: GradientTile.teal,
+      glow: GradientTile.tealGlow,
+      next: next == InputKind.stationA,
+    ),
+    _ImportCard(
+      state: state,
+      kind: InputKind.stationB,
+      title: s.t('btn_station_b'),
+      help: s.t('in_station_help'),
+      file: state.stationB,
+      optional: true,
+      icon: Lucide.fileText,
+      colors: GradientTile.orange,
+      glow: GradientTile.orangeGlow,
+      next: false,
+    ),
+  ];
 }
 
 class _ImportCard extends StatefulWidget {
@@ -272,9 +305,10 @@ class _ImportCardState extends State<_ImportCard> {
   }
 }
 
-/// Run Check (F5), Export Excel and Clear.
-class _Actions extends StatelessWidget {
-  const _Actions({required this.state, required this.compact});
+/// Run Check (F5), Export Excel and Clear, stacked with room between them;
+/// on phones one row with round icon buttons.
+class ImportActions extends StatelessWidget {
+  const ImportActions({super.key, required this.state, this.compact = false});
 
   final AppState state;
   final bool compact;
@@ -289,55 +323,61 @@ class _Actions extends StatelessWidget {
       label: s.t('btn_run'),
       icon: Lucide.play,
       kind: PillKind.primary,
-      height: 40,
-      fontSize: 14.5,
+      height: compact ? 40 : 44,
+      fontSize: 15,
       iconSize: 15,
-      padding: EdgeInsets.fromLTRB(16, 0, compact ? 16 : 8, 0),
+      padding: EdgeInsets.fromLTRB(16, 0, compact ? 16 : 10, 0),
       trailing: compact ? null : const KeyHint('F5'),
       onTap: ready ? () => runCheck(context, state) : null,
     );
     final export = PillButton(
-      key: tourTargets.checkExport,
+      key: compact ? null : tourTargets.checkExport,
       label: s.t('btn_export_excel'),
       icon: Lucide.download,
       kind: PillKind.soft,
-      height: 36,
-      fontSize: 13.5,
-      iconSize: 14,
+      height: 40,
+      fontSize: 14,
+      iconSize: 15,
       color: c.blueTx,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       onTap: state.report == null ? null : () => exportReport(context, state),
     );
     final clear = PillButton(
       label: s.t('btn_clear'),
       icon: Lucide.trash,
       kind: PillKind.ghost,
-      height: 36,
-      fontSize: 13.5,
-      iconSize: 14,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: 40,
+      fontSize: 14,
+      iconSize: 15,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       onTap: state.clearAll,
     );
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(22), boxShadow: c.shadowSm),
       child: compact
+          // Phones: export and clear as round icon buttons beside Run.
           ? Row(
               children: [
                 Expanded(child: run),
                 const SizedBox(width: 8),
-                export,
-                clear,
+                KeyedSubtree(
+                  key: tourTargets.checkExport,
+                  child: GlassButton(
+                    icon: Lucide.download,
+                    size: 40,
+                    tooltip: s.t('btn_export_excel'),
+                    onTap: state.report == null ? null : () => exportReport(context, state),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GlassButton(icon: Lucide.trash, size: 40, tooltip: s.t('btn_clear'), onTap: state.clearAll),
               ],
             )
           : Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                run,
-                const SizedBox(height: 6),
-                Wrap(alignment: WrapAlignment.center, spacing: 2, runSpacing: 4, children: [export, clear]),
-              ],
+              children: [run, const SizedBox(height: 12), export, const SizedBox(height: 8), clear],
             ),
     );
   }

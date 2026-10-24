@@ -188,24 +188,28 @@ class PillButton extends StatelessWidget {
                     ? c.shadowSm
                     : null,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null) ...[
-                    LucideIcon(icon!, size: iconSize ?? (height >= 44 ? 18 : 15), color: enabled ? fg : c.tx3, stroke: 1.9),
-                    const SizedBox(width: 8),
-                  ],
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: weight ?? (primary || height >= 44 ? FontWeight.w600 : FontWeight.w500),
-                      letterSpacing: -0.01 * fontSize,
-                      color: enabled || primary ? fg : c.tx3,
+              // Centred when the pill is stretched to a column's width.
+              child: Center(
+                widthFactor: 1,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      LucideIcon(icon!, size: iconSize ?? (height >= 44 ? 18 : 15), color: enabled ? fg : c.tx3, stroke: 1.9),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: weight ?? (primary || height >= 44 ? FontWeight.w600 : FontWeight.w500),
+                        letterSpacing: -0.01 * fontSize,
+                        color: enabled || primary ? fg : c.tx3,
+                      ),
                     ),
-                  ),
-                  if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-                ],
+                    if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+                  ],
+                ),
               ),
             ),
           ),

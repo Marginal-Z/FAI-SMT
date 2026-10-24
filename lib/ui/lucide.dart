@@ -20,6 +20,7 @@ class Lucide {
   static const chevronDown = Lucide(['m6 9 6 6 6-6']);
   static const chevronLeft = Lucide(['m15 18-6-6 6-6']);
   static const more = Lucide(['circle 12 12 1', 'circle 19 12 1', 'circle 5 12 1']);
+  static const circle = Lucide(['circle 12 12 9']);
   static const locate = Lucide(['M2 12h3M19 12h3M12 2v3M12 19v3', 'circle 12 12 7', 'circle 12 12 3']);
   static const chevronRight = Lucide(['m9 18 6-6-6-6']);
   static const theme = Lucide(['circle 12 12 9', '*M12 3a9 9 0 0 1 0 18Z']);

@@ -1,6 +1,8 @@
 /// Hand-built desktop controls (no Material widgets).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import 'icons.dart';
@@ -24,27 +26,97 @@ class _HoverableState extends State<Hoverable> {
   bool _hover = false;
   bool _pressed = false;
 
+  // Tooltip: shown after a short hover with the mouse, or on long press.
+  final _tip = OverlayPortalController();
+  final _link = LayerLink();
+  Timer? _tipTimer;
+
+  void _showTip({Duration after = const Duration(milliseconds: 450), Duration? hideAfter}) {
+    _tipTimer?.cancel();
+    _tipTimer = Timer(after, () {
+      if (!mounted) return;
+      _tip.show();
+      if (hideAfter != null) _tipTimer = Timer(hideAfter, _hideTip);
+    });
+  }
+
+  void _hideTip() {
+    _tipTimer?.cancel();
+    if (_tip.isShowing) _tip.hide();
+  }
+
+  @override
+  void dispose() {
+    _tipTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null;
+    final tip = widget.tooltip;
     Widget child = MouseRegion(
       cursor: enabled ? widget.cursor : SystemMouseCursors.basic,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() {
-        _hover = false;
-        _pressed = false;
-      }),
+      onEnter: (_) {
+        setState(() => _hover = true);
+        if (tip != null) _showTip();
+      },
+      onExit: (_) {
+        setState(() {
+          _hover = false;
+          _pressed = false;
+        });
+        if (tip != null) _hideTip();
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapDown: enabled
+            ? (_) {
+                _hideTip();
+                setState(() => _pressed = true);
+              }
+            : null,
         onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
         onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
         onTap: widget.onTap,
+        onLongPress: tip == null ? null : () => _showTip(after: Duration.zero, hideAfter: const Duration(milliseconds: 1600)),
         child: widget.builder(context, enabled && _hover, enabled && _pressed),
       ),
     );
-    if (widget.tooltip != null) {
-      child = Semantics(tooltip: widget.tooltip, child: child);
+    if (tip != null) {
+      child = Semantics(
+        tooltip: tip,
+        child: CompositedTransformTarget(
+          link: _link,
+          child: OverlayPortal(
+            controller: _tip,
+            overlayChildBuilder: (context) => CompositedTransformFollower(
+              link: _link,
+              targetAnchor: Alignment.bottomCenter,
+              followerAnchor: Alignment.topCenter,
+              offset: const Offset(0, 6),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xEE1D1D1F),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3))],
+                    ),
+                    child: Text(
+                      tip,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFFFFFFFF), decoration: TextDecoration.none),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            child: child,
+          ),
+        ),
+      );
     }
     return child;
   }
@@ -783,34 +855,40 @@ class PageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(title, style: TextStyle(fontSize: 30, height: 1.15, fontWeight: FontWeight.w700, color: c.text, letterSpacing: -0.84)),
+        if (subtitle != null) ...[
+          const SizedBox(height: 6),
+          Text(subtitle!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: c.textDim)),
+        ],
+      ],
+    );
     return Padding(
       padding: EdgeInsets.fromLTRB(8, m.touch ? 8 : 4, 0, 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // Narrow screens put the actions under the title, wrapping as needed.
+          if (trailing.isNotEmpty && box.maxWidth < 760) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(fontSize: 30, height: 1.15, fontWeight: FontWeight.w700, color: c.text, letterSpacing: -0.84),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, color: c.textDim),
-                  ),
-                ],
+                heading,
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: trailing),
               ],
-            ),
-          ),
-          for (final t in trailing) ...[const SizedBox(width: 8), t],
-        ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(child: heading),
+              for (final t in trailing) ...[const SizedBox(width: 8), t],
+            ],
+          );
+        },
       ),
     );
   }
