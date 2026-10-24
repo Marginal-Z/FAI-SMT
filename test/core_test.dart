@@ -1,5 +1,6 @@
 import 'dart:ffi' show Abi;
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
@@ -326,6 +327,13 @@ void main() {
       expect(shapeOf('1C4', description: '贴片电容 CC0603 22UF').width, 1.6);
       expect(shapeOf('1L2', description: '贴片工字电感 一体252012').kind, PartKind.inductor);
       expect(shapeOf('Y1', description: '贴片晶振 SMD3225').width, 3.2);
+      // Power inductor codes are square: 4020 = 4.0 x 4.0 mm.
+      final l = shapeOf('L3', description: '一体成型电感 4020 2.2uH');
+      expect((l.width, l.height), (4.0, 4.0));
+      // Connector length from pins and pitch, not a fixed 0.8 mm per pin.
+      final btb = shapeOf('J1', description: 'BTB 板对板连接器 40PIN 0.4MM');
+      expect(btb.width, closeTo(19 * 0.4 + 1.8, 1e-9));
+      expect(shapeOf('J2', description: 'FPC 翻盖 24PIN 0.5MM').width, closeTo(23 * 0.5 + 3.6, 1e-9));
       expect(shapeOf('U5', footprint: 'AML_C3_C308L_BGA_PACKAGE_1').bga, isTrue);
       expect(shapeOf('8U1', description: 'MSOP_8').pins, 4);
       expect(shapeOf('1Q2', footprint: 'SOT23').kind, PartKind.transistor);
@@ -392,7 +400,9 @@ void main() {
       ]);
       // The pair along X now fits: 0.6 * w0 + 0.6 * w1 <= 0.5 - gap.
       expect(0.6 * f[0].$1 + 0.6 * f[1].$1, lessThanOrEqualTo(0.5));
-      expect(f[0].$2, 1.0);
+      // Bodies keep their proportions.
+      expect(f[0].$2, f[0].$1);
+      expect(f[1].$2, f[1].$1);
       expect(f[2], (1.0, 1.0));
       expect(f[3], (1.0, 1.0));
       expect(f[4], (1.0, 1.0));
@@ -415,6 +425,72 @@ void main() {
       final g = fitBodies(const [emptyTop, placed]);
       expect(g[1], (1.0, 1.0));
       expect(g[0].$1, lessThan(1));
+    });
+
+    test('identical packages share one size and never overlap', () {
+      // A row of 0402 parts 0.8 mm apart (1.0 mm long) and one far away.
+      final row = [
+        for (var i = 0; i < 6; i++) BodyBox(x: i * 0.8, y: 0, rotation: 0, width: 1.0, height: 0.5, side: 1, exact: true),
+        const BodyBox(x: 30, y: 30, rotation: 0, width: 1.0, height: 0.5, side: 1, exact: true),
+      ];
+      final f = fitBodies(row);
+      for (final e in f) {
+        expect(e.$1, e.$2);
+        expect(e.$1, f.first.$1);
+      }
+      expect(f.first.$1 * 1.0, lessThanOrEqualTo(0.8));
+    });
+
+    test('random crowded boards: no overlaps left, proportions kept', () {
+      final rnd = math.Random(7);
+      final bodies = [
+        for (var i = 0; i < 300; i++)
+          BodyBox(
+            x: rnd.nextDouble() * 20,
+            y: rnd.nextDouble() * 20,
+            rotation: [0.0, 90.0, 45.0, 180.0][rnd.nextInt(4)],
+            width: [1.0, 1.6, 2.9, 4.0][rnd.nextInt(4)],
+            height: [0.5, 0.8, 1.3, 4.0][rnd.nextInt(4)],
+            side: 1,
+            exact: rnd.nextBool(),
+          ),
+      ];
+      final f = fitBodies(bodies);
+      List<(double, double)> corners(int i) {
+        final b = bodies[i], c = math.cos(b.rotation * math.pi / 180), s = math.sin(b.rotation * math.pi / 180);
+        final w = b.width * f[i].$1 / 2, h = b.height * f[i].$2 / 2;
+        return [for (final (x, y) in [(-w, -h), (w, -h), (w, h), (-w, h)]) (b.x + x * c - y * s, b.y + x * s + y * c)];
+      }
+
+      bool overlap(int a, int b) {
+        final ca = corners(a), cb = corners(b);
+        for (final poly in [ca, cb]) {
+          for (var k = 0; k < 4; k++) {
+            final (x1, y1) = poly[k];
+            final (x2, y2) = poly[(k + 1) % 4];
+            final nx = y1 - y2, ny = x2 - x1;
+            final pa = [for (final (x, y) in ca) x * nx + y * ny], pb = [for (final (x, y) in cb) x * nx + y * ny];
+            if (pa.reduce(math.max) <= pb.reduce(math.min) + 1e-9 || pb.reduce(math.max) <= pa.reduce(math.min) + 1e-9) return false;
+          }
+        }
+        return true;
+      }
+
+      var left = 0;
+      for (var a = 0; a < bodies.length; a++) {
+        expect(f[a].$1, f[a].$2);
+        for (var b = a + 1; b < bodies.length; b++) {
+          final d = math.sqrt(math.pow(bodies[a].x - bodies[b].x, 2) + math.pow(bodies[a].y - bodies[b].y, 2));
+          // Alternate footprints (centres nearly on one spot) and bodies
+          // already at the minimum scale may stay overlapped.
+          final long = [bodies[a].width, bodies[a].height, bodies[b].width, bodies[b].height].reduce(math.max);
+          double short(BodyBox e) => math.min(math.min(e.width, e.height), e.exact ? double.infinity : 0.5);
+          if (d < 0.6 * math.min(short(bodies[a]), short(bodies[b])) || d < 0.12 * long) continue;
+          if (f[a].$1 <= 0.2 || f[b].$1 <= 0.2) continue;
+          if (overlap(a, b)) left++;
+        }
+      }
+      expect(left, 0);
     });
 
     test('an estimated body gives way to a package-code body', () {

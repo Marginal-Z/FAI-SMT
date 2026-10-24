@@ -115,6 +115,37 @@ const _chips = {
 /// Metric two-dimension codes used for inductors / crystals (2520 = 2.5 × 2.0).
 final _metric = RegExp(r'(?<!\d)(1608|2012|2016|2520|3215|3225|4020|4030|5032|6060|7050)(?!\d)');
 
+/// Power inductor size-and-height codes (4020 = 4.0 × 4.0 mm, 2.0 mm high).
+final _powerInductor = RegExp(r'(?<!\d)(30(?:12|15|20)|40(?:12|18|20|25|30)|50(?:20|40)|60(?:20|28|45)|80(?:40|50))(?!\d)');
+
+/// Contact pitch written in a connector description: `0.5MM`, `P0.4`, `间距1.25`.
+final _pitch = RegExp(r'(?:P|PITCH|间距)\s*[:=]?\s*(\d\.\d{1,2})|(?<![\d.])(0\.35|0\.4|0\.5|0\.6|0\.8|1\.0|1\.25|1\.27|1\.5|2\.0|2\.54)\s*MM');
+
+/// Connector body from its pin count and pitch: the contacts set the length,
+/// the connector family the depth.
+PartShape _connector(String text, RegExpMatch pin) {
+  final perRowGiven = pin.group(1) != null;
+  var rows = int.tryParse(pin.group(1) ?? '') ?? 1;
+  final count = int.tryParse(pin.group(2) ?? pin.group(3) ?? '') ?? 4;
+  final m = _pitch.firstMatch(text);
+  final written = double.tryParse(m?.group(1) ?? m?.group(2) ?? '');
+  final btb = RegExp(r'BTB|板对板|BOARD TO BOARD').hasMatch(text);
+  final fpc = RegExp(r'FPC|FFC|翻盖').hasMatch(text);
+  final header = RegExp(r'HEADER|排针|排母').hasMatch(text);
+  if (btb || text.contains('双排')) rows = math.max(rows, 2);
+  final pitch = (written ?? (btb ? 0.4 : fpc ? 0.5 : header ? 2.54 : text.contains('SH') ? 1.0 : text.contains('PH') ? 2.0 : 1.25)).clamp(0.3, 2.54);
+  final perRow = perRowGiven ? count : (count / rows).ceil();
+  final contacts = math.max(perRow - 1, 1) * pitch;
+  final (extra, depth) = btb
+      ? (1.8, 1.2 + rows * 0.7)
+      : fpc
+      ? (3.6, 4.2)
+      : header
+      ? (pitch, rows * pitch)
+      : (3.0, 4.5);
+  return PartShape(PartKind.connector, (contacts + extra).clamp(2.0, 60.0), depth.clamp(1.5, 12.0), exact: written != null);
+}
+
 /// Explicit body size in a footprint name: `QFN24_4X4`, `PAD_1X4MM`, `TP_1.4X2.9`.
 final _dims = RegExp(r'(?<![\d.])(\d{1,2}(?:\.\d+)?)\s*X\s*(\d{1,2}(?:\.\d+)?)(?![\d.])');
 
@@ -176,6 +207,15 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
       return (PartShape(kind, e.value.$1, e.value.$2, exact: true), false);
     }
   }
+  // Power inductor codes give the square side and the height: 4020 is
+  // 4.0 × 4.0 mm, 2.0 mm high.
+  if (kind == PartKind.inductor) {
+    final power = _powerInductor.firstMatch(text);
+    if (power != null) {
+      final side = int.parse(power.group(1)!.substring(0, 2)) / 10;
+      return (PartShape(kind, side, side, exact: true), false);
+    }
+  }
   final metric = _metric.firstMatch(text);
   if (metric != null && kind != PartKind.ic) {
     final code = metric.group(1)!;
@@ -208,9 +248,7 @@ PartShape shapeOf(String ref, {String footprint = '', String description = '', S
   final pin = RegExp(r'(\d+)\s*\*\s*(\d+)\s*PIN|(\d+)\s*PIN').firstMatch(text);
 
   if (kind == PartKind.connector && pin != null) {
-    final rows = int.tryParse(pin.group(1) ?? '') ?? 1;
-    final n = int.tryParse(pin.group(2) ?? pin.group(3) ?? '') ?? 4;
-    return (PartShape(PartKind.connector, (n * 0.8).clamp(3.0, 30.0), rows > 1 ? 3.5 : 2.5), false);
+    return (_connector(text, pin), false);
   }
   final shape = switch (kind) {
     PartKind.resistor => const PartShape(PartKind.resistor, 1.0, 0.5),

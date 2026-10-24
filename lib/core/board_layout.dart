@@ -2,9 +2,9 @@
 ///
 /// Body sizes are estimated from package codes, so neighbouring parts can be
 /// drawn on top of each other although they never touch on the real board.
-/// [fitBodies] shrinks bodies around their unchanged centres until parts on
-/// the same side no longer overlap. Estimated bodies shrink before sizes read
-/// from a package code, larger before smaller. Bodies whose centres nearly
+/// [fitBodies] shrinks bodies proportionally around their unchanged centres
+/// until parts on the same side no longer overlap. Estimated bodies shrink
+/// before sizes read from a package code, larger before smaller. Bodies whose centres nearly
 /// coincide are alternate footprints sharing one spot and are left alone.
 library;
 
@@ -39,16 +39,22 @@ class BodyBox {
   final bool solid;
 }
 
-/// Scale factors (width, height), each in (0, 1], per body; centres and
-/// rotations are unchanged. A collision shrinks the dimension that faces the
-/// neighbour first, so a row of long pads keeps its pads' width.
+/// Scale factors (width, height) per body; both are always equal, so a body
+/// keeps its proportions and only gets smaller. Centres and rotations are
+/// unchanged.
+///
+/// Every overlapping pair is separated along the axis needing the least
+/// shrinking (separating axis test on the rotated rectangles). Afterwards
+/// bodies of one package (same model and size) are brought to a common size,
+/// the median of the group, so identical parts look identical; scales are
+/// rounded down to steps of 5 %. Shrinking further never creates an overlap.
 ///
 /// Bodies on a side listed in [yieldingSides] also make way for bodies of the
 /// other side (the all-sides view, where the far side is drawn underneath);
 /// in such a pair only the yielding body shrinks.
-List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, double minScale = 0.15, Set<int> yieldingSides = const {}}) {
+List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, double minScale = 0.2, Set<int> yieldingSides = const {}}) {
   final n = bodies.length;
-  final sw = List<double>.filled(n, 1), sh = List<double>.filled(n, 1);
+  final sc = List<double>.filled(n, 1);
   if (n < 2) return [for (var i = 0; i < n; i++) (1.0, 1.0)];
   final cos = List<double>.generate(n, (i) => math.cos(bodies[i].rotation * math.pi / 180));
   final sin = List<double>.generate(n, (i) => math.sin(bodies[i].rotation * math.pi / 180));
@@ -86,34 +92,22 @@ List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, doubl
     }
   }
 
-  // Width and height terms of body i projected on the unit axis (ux, uy).
-  (double, double) terms(int i, double ux, double uy) =>
-      ((bodies[i].width / 2 * sw[i] * (ux * cos[i] + uy * sin[i])).abs(), (bodies[i].height / 2 * sh[i] * (-ux * sin[i] + uy * cos[i])).abs());
+  // Half extent of the unscaled body i projected on the unit axis (ux, uy).
+  double reach(int i, double ux, double uy) =>
+      (bodies[i].width / 2 * (ux * cos[i] + uy * sin[i])).abs() + (bodies[i].height / 2 * (-ux * sin[i] + uy * cos[i])).abs();
 
-  // Shrinks body i by up to [need] along the axis, larger term first;
-  // returns what could not be removed.
-  double shrink(int i, double ux, double uy, double need) {
-    final (tw, th) = terms(i, ux, uy);
-    for (final width in tw >= th ? [true, false] : [false, true]) {
-      if (need <= 0) break;
-      final term = width ? tw : th;
-      final s = width ? sw[i] : sh[i];
-      if (term <= 0 || s <= minScale) continue;
-      final cut = math.min(need, term * (1 - minScale / s));
-      final f = (term - cut) / term;
-      if (width) {
-        sw[i] *= f;
-      } else {
-        sh[i] *= f;
-      }
-      need -= cut;
-    }
-    return need;
+  // Shrinks body i by up to [need] along an axis where its full-size reach
+  // is [r]; returns what could not be removed.
+  double shrink(int i, double r, double need) {
+    if (need <= 0 || r <= 0 || sc[i] <= minScale) return need;
+    final cut = math.min(need, (sc[i] - minScale) * r);
+    sc[i] -= cut / r;
+    return need - cut;
   }
 
-  double weight(int i) => bodies[i].width * bodies[i].height * sw[i] * sh[i] * (bodies[i].exact ? 0.25 : 1);
+  double weight(int i) => bodies[i].width * bodies[i].height * sc[i] * sc[i] * (bodies[i].exact ? 0.25 : 1);
 
-  for (var pass = 0; pass < 4; pass++) {
+  for (var pass = 0; pass < 6; pass++) {
     var changed = false;
     for (final (a, b, cross) in pairs) {
       // Separating axis needing the least shrinking.
@@ -122,36 +116,68 @@ List<(double, double)> fitBodies(List<BodyBox> bodies, {double gap = 0.04, doubl
       var bestT = -double.infinity;
       for (final (ux, uy) in [(cos[a], sin[a]), (-sin[a], cos[a]), (cos[b], sin[b]), (-sin[b], cos[b])]) {
         final d = (dx * ux + dy * uy).abs() - gap;
-        final (aw, ah) = terms(a, ux, uy);
-        final (bw, bh) = terms(b, ux, uy);
-        final t = d / (aw + ah + bw + bh);
+        final ra = reach(a, ux, uy), rb = reach(b, ux, uy);
+        final t = d / (ra * sc[a] + rb * sc[b]);
         if (t > bestT) {
           bestT = t;
-          best = (ux, uy, d);
+          best = (ra, rb, d);
         }
       }
       if (bestT >= 1 - 1e-9) continue;
       changed = true;
-      final (ux, uy, d) = best;
-      final (aw, ah) = terms(a, ux, uy);
-      final (bw, bh) = terms(b, ux, uy);
-      final over = aw + ah + bw + bh - math.max(d, 0);
+      final (ra, rb, d) = best;
+      final over = ra * sc[a] + rb * sc[b] - math.max(d, 0);
+      double r(int i) => i == a ? ra : rb;
       if (cross) {
-        shrink(yields(a) ? a : b, ux, uy, over);
+        final y = yields(a) ? a : b;
+        shrink(y, r(y), over);
         continue;
       }
       if (bodies[a].solid != bodies[b].solid) {
-        shrink(bodies[a].solid ? b : a, ux, uy, over);
+        final e = bodies[a].solid ? b : a;
+        shrink(e, r(e), over);
         continue;
       }
       final (big, small) = weight(a) >= weight(b) ? (a, b) : (b, a);
-      // A clearly bigger or estimated body gives way alone; similar ones share.
-      final alone = weight(big) > 2 * weight(small);
-      final first = shrink(big, ux, uy, alone ? over : over / 2);
-      final rest = shrink(small, ux, uy, (alone ? 0 : over / 2) + first);
-      if (rest > 0) shrink(big, ux, uy, rest);
+      // A clearly bigger or estimated body gives way alone.
+      if (weight(big) > 2 * weight(small)) {
+        final rest = shrink(big, r(big), over);
+        if (rest > 0) shrink(small, r(small), rest);
+        continue;
+      }
+      // Similar bodies meet at one common scale, so a row of equal parts
+      // comes out equal; one already smaller leaves the rest to the other.
+      final common = math.max(math.max(d, 0) / (ra + rb), minScale);
+      if (sc[a] > common && sc[b] > common) {
+        sc[a] = common;
+        sc[b] = common;
+      } else {
+        final (keep, give) = sc[a] <= sc[b] ? (a, b) : (b, a);
+        final rest = shrink(give, r(give), over);
+        if (rest > 0) shrink(keep, r(keep), rest);
+      }
     }
     if (!changed) break;
   }
-  return [for (var i = 0; i < n; i++) (sw[i], sh[i])];
+
+  // One size per package: the group's median scale caps every member.
+  final groups = <(double, double, bool), List<int>>{};
+  for (var i = 0; i < n; i++) {
+    groups.putIfAbsent((bodies[i].width, bodies[i].height, bodies[i].solid), () => []).add(i);
+  }
+  for (final members in groups.values) {
+    if (members.length < 3) continue;
+    final sorted = [for (final i in members) sc[i]]..sort();
+    final cap = sorted[sorted.length ~/ 2];
+    for (final i in members) {
+      sc[i] = math.min(sc[i], cap);
+    }
+  }
+  return [
+    for (var i = 0; i < n; i++)
+      () {
+        final q = sc[i] >= 1 ? 1.0 : math.max(minScale, (sc[i] * 20 + 1e-9).floorToDouble() / 20);
+        return (q, q);
+      }(),
+  ];
 }
