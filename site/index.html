@@ -260,7 +260,7 @@ footer a:hover{color:var(--tx)}
       <a class="btn primary" href="#download" id="heroDl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg><span>免费下载</span></a>
       <a class="btn ghost" href="#tutorial">查看使用教程</a>
     </div>
-    <div class="meta rv"><span id="verLine">最新版本 v1.5.1</span> · Windows · Android · Linux · 完全离线运行</div>
+    <div class="meta rv"><span id="verLine">最新版本 v1.6.0</span> · Windows · Android · Linux · 完全离线运行</div>
     <div class="hero-shot rv">
       <div class="shot"><img class="only-light" src="assets/check.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面" fetchpriority="high"><img class="only-dark" src="assets/check-dark.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面（深色）" loading="lazy"></div>
       <div class="shot float"><img src="assets/board-3d.webp" width="1440" height="1000" alt="PCB 导航图" loading="lazy"></div>
@@ -286,7 +286,7 @@ footer a:hover{color:var(--tx)}
       <div class="text">
         <div class="tile t-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></div>
         <h3>拖入文件，立即检查</h3>
-        <p>T100 BOM、A 面与 B 面站位表直接拖入卡片。每个文件导入后自动识别工作表和列，并立即显示检查结果。</p>
+        <p>在 BOM 核对页顶部把 T100 BOM、A 面与 B 面站位表直接拖入卡片。每个文件导入后自动识别工作表和列，并立即显示检查结果。</p>
         <ul class="checks">
           <li>支持 .xlsx / .csv / .txt，自动识别表头位置</li>
           <li>插件位置中的换行、逗号、空格和范围写法都能识别</li>
@@ -385,7 +385,7 @@ footer a:hover{color:var(--tx)}
         <article class="step rv" id="s2">
           <div class="no">STEP 2</div>
           <h3>导入文件</h3>
-          <p>打开「文件导入」页，把文件拖到对应卡片上，或点击卡片选择文件。BOM 与站位表 A 为必需，单面板可不导入站位表 B。</p>
+          <p>在「BOM 核对」页顶部，把文件拖到对应卡片上，或点击卡片选择文件。BOM 与站位表 A 为必需，单面板可不导入站位表 B。</p>
           <table class="spec">
             <tr><th>文件</th><th>需要的列</th></tr>
             <tr><td><b>T100 BOM</b></td><td>料件编号、品名（规格）、组成用量、插件位置。其他列会被忽略。</td></tr>
@@ -401,10 +401,11 @@ footer a:hover{color:var(--tx)}
           <h3>核对与人工确认</h3>
           <ol>
             <li>顶部统计卡显示 <b>PASS / NG / 已排除物料 / 替代料 / 差异清单</b> 数量，点击卡片即可筛选该类。</li>
-            <li>点击表格中的料号，底部明细卡列出 BOM 用量、SMT 数量、面别、站位以及每一条 NG 原因和说明。</li>
+            <li>点击表格中的一行，右侧卡片列出 BOM 用量、SMT 数量、面别、站位以及每一条问题原因和说明。</li>
             <li>核对无误的项目点「确认」，可填写备注；表头的「人工确认」可一次确认当前列表。</li>
             <li>点「差异清单」查看 BOM、站位表 A/B、坐标文件之间的全部不一致。</li>
-            <li>点右上角 <b>导出 Excel</b>（<kbd>Ctrl</kbd>+<kbd>E</kbd>）保存核对报告，确认记录与备注会一并写入。</li>
+            <li>PASS 无需人工确认；NG、已排除物料、替代料核对无误后点「确认」并可填写备注。</li>
+            <li>点 <b>导出 Excel</b>（<kbd>Ctrl</kbd>+<kbd>E</kbd>）保存核对报告，确认记录与备注会一并写入。</li>
           </ol>
           <div class="shot"><img src="assets/check.webp" width="1440" height="900" alt="" loading="lazy"></div>
         </article>
@@ -431,6 +432,7 @@ footer a:hover{color:var(--tx)}
             <li><b>视图</b>：左转、右转 90°，适应窗口，复位，全屏（<kbd>F11</kbd>，<kbd>Esc</kbd> 退出）。滚轮或双指缩放，拖动平移，双击适应窗口。</li>
             <li><b>元件显示</b>：2D 平面或 3D 立体。3D 默认俯视，右键拖动旋转、倾斜视角，右下角一键切换俯视 / 斜视。</li>
             <li><b>着色</b>：实物配色、元件类型或核对结果；「配色」可自定义颜色与板子背景。</li>
+            <li><b>位号定位</b>：在工具栏右侧输入位号并回车，导航图自动缩放定位到该元件并发光闪烁。</li>
             <li>鼠标悬停查看位号、坐标、料号；右键（触屏长按）元件可更换元件模型。</li>
           </ol>
           <div class="shot"><img src="assets/board-3d.webp" width="1440" height="1000" alt="" loading="lazy"></div>
@@ -439,12 +441,12 @@ footer a:hover{color:var(--tx)}
         <article class="step rv" id="s6">
           <div class="no">STEP 6</div>
           <h3>规则与设置</h3>
-          <p>点击右上角设置按钮：</p>
+          <p>点击右上角齿轮按钮打开设置列表，点击一项进入对应页面：</p>
           <ol>
             <li><b>核对规则</b>：排除关键字（如 PCB、锡膏、标签）、排除料号前缀、编程件关键字、替代料对照表（<code>原料号=替代料1,替代料2</code>）、忽略位号和数量检查开关。</li>
             <li><b>元件库</b>：浏览 64 种元件模型，查看按位号、料号或封装指定的自定义模型。</li>
             <li><b>导航图配色</b>：元件颜色、板子背景、2D / 3D 默认显示。</li>
-            <li><b>外观</b>：主题、界面缩放与语言。<b>软件更新</b>：检查更新与自动检查开关。</li>
+            <li><b>外观</b>：主题、界面缩放与语言。<b>关于</b>：版本信息、检查更新与自动检查开关。</li>
           </ol>
           <div class="shot"><img src="assets/library.webp" width="1440" height="900" alt="" loading="lazy"></div>
         </article>
@@ -507,7 +509,7 @@ footer a:hover{color:var(--tx)}
         </div>
       </div>
     </div>
-    <p class="ver" id="verInfo">当前版本 <b>v1.5.1</b> · <a href="https://github.com/Marginal-Z/FAI-SMT/releases/latest">更新说明与全部安装包</a></p>
+    <p class="ver" id="verInfo">当前版本 <b>v1.6.0</b> · <a href="https://github.com/Marginal-Z/FAI-SMT/releases/latest">更新说明与全部安装包</a></p>
   </div>
 </section>
 
@@ -551,7 +553,7 @@ footer a:hover{color:var(--tx)}
 
 <script>
 (function(){
-  var REPO='Marginal-Z/FAI-SMT', FALLBACK='1.5.1';
+  var REPO='Marginal-Z/FAI-SMT', FALLBACK='1.6.0';
   document.getElementById('yr').textContent=new Date().getFullYear();
 
   // Theme toggle (remembered per browser).

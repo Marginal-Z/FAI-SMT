@@ -13,6 +13,7 @@ import 'board_view.dart';
 import 'glyphs.dart';
 import 'icons.dart';
 import 'part_render.dart';
+import 'design.dart';
 import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
@@ -225,7 +226,7 @@ class PartLibraryPage extends StatelessWidget {
     final s = Strings.of(context);
     final rules = state.settings.partRules;
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(bottom: 24 + bottomInset(context)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

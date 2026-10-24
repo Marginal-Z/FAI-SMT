@@ -10,7 +10,6 @@ import 'actions.dart';
 import 'board_view.dart';
 import 'cad_view.dart';
 import 'check_view.dart';
-import 'files_page.dart';
 import 'design.dart';
 import 'settings_page.dart';
 import 'shell.dart';
@@ -57,7 +56,7 @@ class HomeWindow extends StatelessWidget {
     if (state.module == Module.board && state.boardFullscreen && !state.settingsOpen) {
       return MeshBackground(child: BoardView(state: state, immersive: true));
     }
-    return MeshBackground(child: LayoutBuilder(builder: (context, box) => box.maxWidth < 600 ? _phone() : _desktop()));
+    return MeshBackground(child: Builder(builder: (context) => isPhoneLayout(context) ? _phone(context) : _desktop()));
   }
 
   Widget _page() => state.settingsOpen
@@ -66,7 +65,6 @@ class HomeWindow extends StatelessWidget {
           builder: (context, box) {
             final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
             return switch (state.module) {
-              Module.files => FilesPage(state: state),
               Module.check => CheckView(state: state, cards: compact),
               Module.cad => CadView(state: state, compact: compact),
               Module.board => BoardView(state: state),
@@ -74,15 +72,30 @@ class HomeWindow extends StatelessWidget {
           },
         );
 
-  /// Phones: compact top bar, the page, bottom navigation.
-  Widget _phone() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      PhoneHeader(state: state),
-      Expanded(child: _page()),
-      PhoneNavBar(state: state),
-    ],
-  );
+  /// Phones: compact top bar, the page running under the floating glass tab
+  /// bar (pages keep [bottomInset] free at their end).
+  Widget _phone(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PhoneHeader(state: state),
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: MediaQuery(
+                  data: mq.copyWith(padding: mq.padding.copyWith(bottom: phoneTabBarInset)),
+                  child: _page(),
+                ),
+              ),
+              Positioned(left: 0, right: 0, bottom: 0, child: PhoneNavBar(state: state)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _desktop() {
     return Column(

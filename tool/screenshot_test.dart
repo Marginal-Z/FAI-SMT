@@ -103,14 +103,14 @@ void main() {
 
   testWidgets('tour on the check page', (tester) async {
     final s = demoState(dark: false);
-    s.setModule(Module.files);
+    s.setModule(Module.check);
     s.tourStep = 8;
     await shot(tester, s, 'tour_check_light', size: const Size(1600, 1000));
   });
 
   testWidgets('tour on the CAD page', (tester) async {
     final s = demoState();
-    s.setModule(Module.files);
+    s.setModule(Module.check);
     s.tourStep = 13;
     await shot(tester, s, 'tour_cad_dark', size: const Size(1600, 1000));
   });
@@ -129,7 +129,7 @@ void main() {
 
   testWidgets('files page dark', (tester) async {
     final s = demoState();
-    s.setModule(Module.files);
+    s.setModule(Module.check);
     await shot(tester, s, 'files_zh_dark');
   });
 
@@ -184,7 +184,7 @@ void main() {
 
   testWidgets('tablet portrait files', (tester) async {
     final s = demoState(dark: false);
-    s.setModule(Module.files);
+    s.setModule(Module.check);
     await shot(tester, s, 'tablet_portrait_files_light', size: const Size(800, 1280), touch: true);
   });
 
@@ -192,7 +192,7 @@ void main() {
     // A 1600 x 1000 dp tablet at 125 %: the 1280 x 800 layout filling the screen.
     final s = demoState(dark: false);
     s.settings.uiScale = 1.25;
-    s.setModule(Module.files);
+    s.setModule(Module.check);
     await shot(tester, s, 'tablet_scaled_files_light', size: const Size(1600, 1000), touch: true);
   });
 
@@ -226,7 +226,7 @@ void main() {
 
   testWidgets('settings', (tester) async {
     final s = demoState(dark: false);
-    s.openSettings(SettingsSection.update);
+    s.openSettings(SettingsSection.about);
     await shot(tester, s, 'settings_zh_light');
   });
 
@@ -282,7 +282,7 @@ void main() {
     const size = Size(1440, 900);
     testWidgets('site files', (tester) async {
       final s = demoState(dark: false);
-      s.setModule(Module.files);
+      s.setModule(Module.check);
       await shot(tester, s, 'site_files', size: const Size(1440, 1000));
     });
     testWidgets('site check', (tester) async {
@@ -322,7 +322,7 @@ void main() {
   // Phones: their own layout, not the desktop one scaled down.
   group('phone', () {
     const size = Size(390, 844);
-    for (final (name, mod) in [('files', Module.files), ('check', Module.check), ('cad', Module.cad), ('board', Module.board)]) {
+    for (final (name, mod) in [('check', Module.check), ('cad', Module.cad), ('board', Module.board)]) {
       testWidgets('phone $name', (tester) async {
         final s = demoState(dark: false);
         s.setModule(mod);
@@ -342,7 +342,7 @@ void main() {
   });
 
   group('tablet', () {
-    for (final (name, mod) in [('files', Module.files), ('cad', Module.cad), ('board', Module.board)]) {
+    for (final (name, mod) in [('check', Module.check), ('cad', Module.cad), ('board', Module.board)]) {
       testWidgets('tablet portrait $name', (tester) async {
         final s = demoState(dark: false);
         s.setModule(mod);
@@ -354,6 +354,19 @@ void main() {
         await shot(tester, s, 'tablet_landscape_$name', size: const Size(1280, 800), touch: true);
       });
     }
+  });
+
+
+  testWidgets('settings list', (tester) async {
+    final s = demoState(dark: false);
+    s.openSettings();
+    await shot(tester, s, 'settings_list_light');
+  });
+
+  testWidgets('phone settings list', (tester) async {
+    final s = demoState(dark: false);
+    s.openSettings();
+    await shot(tester, s, 'phone_settings_list', size: const Size(390, 844), touch: true);
   });
 
 }

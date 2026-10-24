@@ -1,4 +1,5 @@
-/// Settings module: appearance, software update, about.
+/// Settings: a list of pages (appearance, navigator colours, rules, part
+/// library, user guide, about with software update).
 library;
 
 import 'dart:io';
@@ -21,8 +22,8 @@ import 'theme.dart';
 import 'ui_scale.dart';
 import 'widgets.dart';
 
-/// Full-screen settings, opened from the header gear and closed with Back:
-/// a navigation card on the left, the chosen section on the right.
+/// Settings, like the settings of a desktop or phone OS: a list of pages in
+/// grouped rows; a row opens its page, whose back button returns to the list.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.state});
 
@@ -30,198 +31,215 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final sections = [
-      (SettingsSection.appearance, Lucide.brush, s.t('set_appearance')),
-      (SettingsSection.board, Lucide.palette, s.t('set_board_colors')),
-      (SettingsSection.library, Lucide.library, s.t('set_library')),
-      (SettingsSection.rules, Lucide.shield, s.t('set_rules')),
-      (SettingsSection.guide, Lucide.book, s.t('set_guide')),
-      (SettingsSection.update, Lucide.update, s.t('set_update')),
-      (SettingsSection.about, Lucide.info, s.t('set_about')),
-    ];
-    final narrow = MediaQuery.sizeOf(context).width < 900;
-    final items = [
-      for (final (sec, icon, label) in sections)
-        _NavItem(icon: icon, label: label, active: state.settingsSection == sec, onTap: () => state.setSettingsSection(sec)),
-    ];
-    final back = PillButton(
-      label: s.t('btn_back'),
-      icon: Lucide.back,
-      kind: PillKind.glass,
-      height: 36,
-      fontSize: 14,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      onTap: state.closeSettings,
-    );
-    final title = Text(
-      s.t('mod_settings'),
-      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: c.tx),
-    );
-    final version = Text('SMT-FAI ${s.t('about_version', {'v': appVersion})}', style: TextStyle(fontSize: 12, color: c.tx3));
+    final phone = isPhoneLayout(context);
+    final section = state.settingsSection;
+    final pad = EdgeInsets.fromLTRB(phone ? 14 : 24, phone ? 4 : 6, phone ? 14 : 24, 0);
+    if (section == null) return Padding(padding: pad, child: _SettingsList(state: state));
 
-    final nav = narrow
-        ? DCard(
-            radius: 26,
-            padding: const EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 2, 8, 8),
-                  // The phone top bar already names the page.
-                  child: Row(children: isPhoneLayout(context) ? [back] : [back, const SizedBox(width: 14), title, const Spacer(), version]),
-                ),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: items),
-                ),
-              ],
-            ),
-          )
-        : DCard(
-            radius: 32,
-            padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
-            child: SizedBox(
-              width: 220,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 0, 6, 18),
-                    child: Row(children: [back, const Spacer()]),
-                  ),
-                  Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 12), child: title),
-                  ...items,
-                  const Spacer(),
-                  Padding(padding: const EdgeInsets.fromLTRB(14, 12, 14, 0), child: version),
-                ],
-              ),
-            ),
-          );
-
-    // Rules, library and guide lay out their own cards; the short sections
-    // share one content card.
-    final content = switch (state.settingsSection) {
+    final title = s.t(_titles[section]!);
+    final content = switch (section) {
       SettingsSection.rules => RulesPage(state: state),
       SettingsSection.library => PartLibraryPage(state: state),
       SettingsSection.guide => GuidePage(state: state),
-      SettingsSection.appearance => _Section(
-        title: s.t('set_appearance'),
-        child: _Appearance(state: state),
-      ),
-      SettingsSection.board => _Section(
-        title: s.t('set_board_colors'),
-        child: _BoardColors(state: state),
-      ),
-      SettingsSection.update => _Section(
-        title: s.t('set_update'),
-        child: _UpdatePanel(state: state),
-      ),
+      SettingsSection.appearance => _Section(child: _Appearance(state: state)),
+      SettingsSection.board => _Section(child: _BoardColors(state: state)),
       SettingsSection.about => _Section(
-        title: s.t('set_about'),
-        child: _About(state: state),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [_About(state: state), const SizedBox(height: 24), const HDivider(), const SizedBox(height: 20), _UpdatePanel(state: state)],
+        ),
       ),
     };
-
     return Padding(
-      padding: EdgeInsets.fromLTRB(narrow ? 12 : 32, isPhoneLayout(context) ? 4 : 12, narrow ? 12 : 32, 0),
-      child: narrow
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                nav,
-                const SizedBox(height: 16),
-                Expanded(child: content is _Section ? DCard(clip: true, child: content) : content),
-              ],
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                nav,
-                const SizedBox(width: 20),
-                Expanded(child: content is _Section ? DCard(clip: true, child: content) : content),
-              ],
+      padding: pad,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Second-level page: back to the list, and the page title.
+          Row(
+            children: [
+              PillButton(
+                label: s.t('mod_settings'),
+                icon: Lucide.chevronLeft,
+                kind: PillKind.glass,
+                height: 36,
+                fontSize: 14,
+                iconSize: 16,
+                padding: const EdgeInsets.fromLTRB(10, 0, 16, 0),
+                onTap: () => state.setSettingsSection(null),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: AppTheme.of(context).tx),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1100),
+                child: content is _Section ? DCard(clip: true, radius: 24, child: content) : content,
+              ),
             ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _NavItem extends StatelessWidget {
-  const _NavItem({required this.icon, required this.label, required this.active, required this.onTap});
+const _titles = {
+  SettingsSection.appearance: 'set_appearance',
+  SettingsSection.board: 'set_board_colors',
+  SettingsSection.library: 'set_library',
+  SettingsSection.rules: 'set_rules',
+  SettingsSection.guide: 'set_guide',
+  SettingsSection.about: 'set_about',
+};
 
-  final Lucide icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
+/// The settings list: grouped rows with an icon, a title, a hint and an
+/// arrow to the page.
+class _SettingsList extends StatelessWidget {
+  const _SettingsList({required this.state});
+
+  final AppState state;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final m = Metrics.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(2),
-      child: Hoverable(
-        onTap: onTap,
-        builder: (context, hover, _) => Container(
-          height: m.touch ? 46 : 42,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: active
-                ? c.blueTint
-                : hover
-                ? c.hover
-                : null,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LucideIcon(icon, size: 18, color: active ? c.blueTx : c.tx2),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: TextStyle(fontSize: 14, color: active ? c.blueTx : c.tx, fontWeight: active ? FontWeight.w600 : FontWeight.w500),
+    final s = Strings.of(context);
+    final phone = isPhoneLayout(context);
+    final groups = [
+      [
+        (SettingsSection.appearance, Lucide.brush, const Color(0xFF5E5CE6), s.t('set_appearance_hint'), null),
+        (SettingsSection.board, Lucide.palette, const Color(0xFFFF9F0A), s.t('set_board_hint'), null),
+      ],
+      [
+        (SettingsSection.rules, Lucide.shield, const Color(0xFF34C759), s.t('set_rules_hint'), null),
+        (SettingsSection.library, Lucide.library, const Color(0xFF0A84FF), s.t('set_library_hint'), null),
+      ],
+      [
+        (SettingsSection.guide, Lucide.book, const Color(0xFF30B0C7), s.t('set_guide_hint'), null),
+        (
+          SettingsSection.about,
+          Lucide.info,
+          const Color(0xFF8E8E93),
+          s.t('about_version', {'v': appVersion}),
+          state.updateAvailable ? s.t('upd_available', {'v': state.latestRelease!.version}) : null,
+        ),
+      ],
+    ];
+    Widget row(SettingsSection sec, Lucide icon, Color color, String hint, String? badge, bool last) => Hoverable(
+      onTap: () => state.setSettingsSection(sec),
+      builder: (context, hover, _) => Container(
+        color: hover ? c.hover : null,
+        padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(9)),
+              child: LucideIcon(icon, size: 17, color: const Color(0xFFFFFFFF), stroke: 2),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.t(_titles[sec]!), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.tx)),
+                  const SizedBox(height: 2),
+                  Text(hint, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: c.tx2)),
+                ],
               ),
+            ),
+            if (badge != null) ...[
+              DBadge(text: badge, background: c.blueTint, color: c.blueTx),
+              const SizedBox(width: 8),
             ],
-          ),
+            LucideIcon(Lucide.chevronRight, size: 16, color: c.tx3, stroke: 2.2),
+          ],
         ),
       ),
+    );
+    return ListView(
+      padding: EdgeInsets.only(bottom: bottomInset(context) + 24),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!phone)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 18),
+                    child: Row(
+                      children: [
+                        PillButton(
+                          label: s.t('btn_back'),
+                          icon: Lucide.chevronLeft,
+                          kind: PillKind.glass,
+                          height: 36,
+                          fontSize: 14,
+                          iconSize: 16,
+                          padding: const EdgeInsets.fromLTRB(10, 0, 16, 0),
+                          onTap: state.closeSettings,
+                        ),
+                        const SizedBox(width: 14),
+                        Text(
+                          s.t('mod_settings'),
+                          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx),
+                        ),
+                      ],
+                    ),
+                  ),
+                for (final group in groups) ...[
+                  DCard(
+                    radius: 20,
+                    clip: true,
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < group.length; i++) ...[
+                          if (i > 0) Padding(padding: const EdgeInsets.only(left: 62), child: Container(height: 1, color: c.line)),
+                          row(group[i].$1, group[i].$2, group[i].$3, group[i].$4, group[i].$5, i == group.length - 1),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// Scrollable content with the section title over its settings.
+/// Scrollable content of a short settings page.
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
+  const _Section({required this.child});
 
-  final String title;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
     final phone = isPhoneLayout(context);
     return SingleChildScrollView(
-      padding: phone ? const EdgeInsets.fromLTRB(18, 18, 18, 24) : const EdgeInsets.fromLTRB(32, 28, 32, 32),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                title,
-                style: TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx),
-              ),
-              const SizedBox(height: 20),
-              child,
-            ],
-          ),
-        ),
-      ),
+      padding: EdgeInsets.fromLTRB(phone ? 18 : 28, phone ? 18 : 24, phone ? 18 : 28, (phone ? 24 : 28) + bottomInset(context)),
+      child: child,
     );
   }
 }

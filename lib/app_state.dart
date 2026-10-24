@@ -42,10 +42,10 @@ class UserMessage implements Exception {
 }
 
 /// Function modules. Each ribbon tab opens exactly one module page.
-enum Module { files, check, cad, board }
+enum Module { check, cad, board }
 
 /// Sections of the full-screen settings page.
-enum SettingsSection { appearance, board, library, rules, guide, update, about }
+enum SettingsSection { appearance, board, library, rules, guide, about }
 
 /// Sections of the rules editor inside settings.
 enum RulesSection { exclusion, alternates, general }
@@ -86,9 +86,11 @@ class AppState extends ChangeNotifier {
   List<Discrepancy>? _discrepancies;
 
   // UI state
-  Module module = Module.files;
+  Module module = Module.check;
   bool settingsOpen = false;
-  SettingsSection settingsSection = SettingsSection.appearance;
+
+  /// Open settings page; null is the list of all of them.
+  SettingsSection? settingsSection;
   RulesSection rulesSection = RulesSection.exclusion;
 
   /// PCB view: data source, an opened CAD coordinate file, full screen.
@@ -146,7 +148,7 @@ class AppState extends ChangeNotifier {
   void startTour() {
     settingsOpen = false;
     boardFullscreen = false;
-    module = Module.files;
+    module = Module.check;
     tourStep = 0;
     notifyListeners();
   }
@@ -255,9 +257,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void openSettings([SettingsSection section = SettingsSection.appearance]) {
+  /// Opens Settings at [section], or at the list of pages.
+  void openSettings([SettingsSection? section]) {
     settingsOpen = true;
     settingsSection = section;
+    notifyListeners();
+  }
+
+  void setNavLabels(bool v) {
+    settings.navLabels = v;
+    persist();
     notifyListeners();
   }
 
@@ -266,7 +275,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSettingsSection(SettingsSection s) {
+  void setSettingsSection(SettingsSection? s) {
     settingsSection = s;
     notifyListeners();
   }
@@ -455,7 +464,8 @@ class AppState extends ChangeNotifier {
 
   void setConfirmed(Iterable<CheckRow> rows, bool confirmed) {
     final now = DateTime.now();
-    for (final r in rows) {
+    // PASS rows need no manual confirmation.
+    for (final r in rows.where((r) => r.category != CheckCategory.pass)) {
       if (!confirmed) {
         confirmations.remove(r.key);
       } else {

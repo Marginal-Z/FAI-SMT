@@ -62,18 +62,17 @@ class _Step {
   final GlobalKey? Function() target;
 }
 
-const _files = _Place.module(Module.files);
 const _check = _Place.module(Module.check);
 const _cad = _Place.module(Module.cad);
 const _board = _Place.module(Module.board);
 
 final _steps = <_Step>[
-  _Step('welcome', _files, () => null),
-  _Step('modules', _files, () => tourTargets.tabs),
-  _Step('bom', _files, () => tourTargets.bomCard),
-  _Step('station', _files, () => tourTargets.stationCard),
-  _Step('file_checks', _files, () => tourTargets.fileChecks),
-  _Step('run', _files, () => tourTargets.runButton),
+  _Step('welcome', _check, () => null),
+  _Step('modules', _check, () => tourTargets.tabs),
+  _Step('bom', _check, () => tourTargets.bomCard),
+  _Step('station', _check, () => tourTargets.stationCard),
+  _Step('file_checks', _check, () => tourTargets.fileChecks),
+  _Step('run', _check, () => tourTargets.runButton),
   _Step('check_cards', _check, () => tourTargets.checkCards),
   _Step('check_filters', _check, () => tourTargets.checkFilters),
   _Step('check_table', _check, () => tourTargets.checkTable),
@@ -88,8 +87,8 @@ final _steps = <_Step>[
   _Step('board_coloring', _board, () => tourTargets.boardColoring),
   _Step('library', _Place.settings(SettingsSection.library), () => tourTargets.library),
   _Step('guide', _Place.settings(SettingsSection.guide), () => tourTargets.guide),
-  _Step('help', _files, () => tourTargets.help),
-  _Step('done', _files, () => null),
+  _Step('help', _check, () => tourTargets.help),
+  _Step('done', _check, () => null),
 ];
 
 /// The sample files the tour uses when nothing is loaded.
@@ -267,7 +266,8 @@ class _TourOverlayState extends State<TourOverlay> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        if (!last)
+                        // The first-run tour is gone through once; later runs can be skipped.
+                        if (!last && state.settings.tourDone)
                           Hoverable(
                             onTap: state.endTour,
                             builder: (context, hover, _) => Text(s.t('tour_skip'), style: TextStyle(fontSize: 13, color: hover ? c.text : c.textFaint)),
@@ -302,7 +302,6 @@ String _placeLabel(Strings s, _Place place) {
     return '${s.t('mod_settings')} · ${s.t(section == SettingsSection.library ? 'set_library' : 'set_guide')}';
   }
   return s.t(switch (place.module!) {
-    Module.files => 'mod_files',
     Module.check => 'mod_check',
     Module.cad => 'mod_cad',
     Module.board => 'mod_board',

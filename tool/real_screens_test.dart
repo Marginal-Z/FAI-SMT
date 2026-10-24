@@ -183,4 +183,17 @@ void main() {
     s.toggleBoardMirror();
     await shot(tester, s, 'board_3d_bottom', zoomSteps: 6, zoomAt: const Offset(800, 560));
   });
+
+  testWidgets('real board locate', (tester) async {
+    final s = demoState(dark: false);
+    s.setModule(Module.board);
+    await shot(tester, s, 'board_locate_before');
+    await tester.enterText(find.byType(EditableText), '10U3');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 250));
+    await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens_real/board_locate.png'));
+    await tester.pumpAndSettle();
+  });
+
 }

@@ -18,6 +18,9 @@ class Lucide {
 
   static const cpu = Lucide(['rect 4 4 16 16 3', 'rect 9 9 6 6 1.5', 'M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2']);
   static const chevronDown = Lucide(['m6 9 6 6 6-6']);
+  static const chevronLeft = Lucide(['m15 18-6-6 6-6']);
+  static const more = Lucide(['circle 12 12 1', 'circle 19 12 1', 'circle 5 12 1']);
+  static const locate = Lucide(['M2 12h3M19 12h3M12 2v3M12 19v3', 'circle 12 12 7', 'circle 12 12 3']);
   static const chevronRight = Lucide(['m9 18 6-6-6-6']);
   static const theme = Lucide(['circle 12 12 9', '*M12 3a9 9 0 0 1 0 18Z']);
   static const help = Lucide(['circle 12 12 10', 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3', 'M12 17h.01']);
@@ -50,7 +53,10 @@ class Lucide {
     'm17.5 15.5 2-2',
   ]);
   static const grid = Lucide(['rect 3 3 18 18 3', 'M3 9h18', 'M3 15h18', 'M9 3v18']);
-  static const gear = Lucide(['circle 12 12 3', 'M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1']);
+  static const gear = Lucide([
+    'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',
+    'circle 12 12 3',
+  ]);
   static const info = Lucide(['circle 12 12 10', 'M12 16v-4', 'M12 8h.01']);
   static const folderOpen = Lucide([
     'm6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',

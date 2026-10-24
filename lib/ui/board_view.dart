@@ -196,9 +196,16 @@ class BoardView extends StatefulWidget {
   State<BoardView> createState() => _BoardViewState();
 }
 
-class _BoardViewState extends State<BoardView> {
+class _BoardViewState extends State<BoardView> with TickerProviderStateMixin {
   final _cam = ValueNotifier(const _Camera(1, Offset.zero));
   final _hover = ValueNotifier<(_Part, Offset)?>(null);
+
+  /// Designator found by the search and the glow pulse (0..1) around it.
+  final _flash = ValueNotifier<(String, double)?>(null);
+  late final _fly = AnimationController(vsync: this, duration: const Duration(milliseconds: 520));
+  late final _blink = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+  Size _canvas = Size.zero;
+  List<_Part> _shown = const [];
   int _fitSeen = 0;
   int _resetSeen = 0;
   _Camera _gestureStart = const _Camera(1, Offset.zero);
@@ -235,6 +242,61 @@ class _BoardViewState extends State<BoardView> {
   void initState() {
     super.initState();
     if (widget.immersive && Platform.isAndroid) SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _fly.addListener(_flyStep);
+    _blink.addListener(() {
+      final f = _flash.value;
+      if (f == null) return;
+      // Three soft pulses, then the glow fades out.
+      final t = _blink.value;
+      _flash.value = (f.$1, t >= 1 ? 0 : (0.5 - 0.5 * math.cos(t * 6 * math.pi)) * (t < 0.85 ? 1 : (1 - t) / 0.15));
+    });
+    _blink.addStatusListener((st) {
+      if (st == AnimationStatus.completed) _flash.value = null;
+    });
+  }
+
+  /// Flies the camera to designator [ref] (any case) and makes it glow.
+  void _locate(BuildContext context, String ref) {
+    final state = widget.state;
+    final key = ref.trim().toUpperCase();
+    _Part? part;
+    for (final e in _model?.parts ?? const <_Part>[]) {
+      if (e.p.ref.toUpperCase() == key) {
+        part = e;
+        break;
+      }
+    }
+    if (part == null || _canvas.isEmpty) {
+      final s = Strings.of(context);
+      showMessage(context, title: s.t('board_locate'), message: s.t('board_ref_not_found', {'ref': ref.trim()}), ok: s.t('dlg_ok'));
+      return;
+    }
+    // A part on the hidden side brings both sides back into view.
+    if (!_shown.contains(part)) state.setBoardSide(BoardSideFilter.both);
+    final depth = state.settings.board.depth;
+    final from = _cam.value;
+    _View at(double zoom) => _fitView(_model!.extents, _canvas, state.boardQuarterTurns, state.boardMirror, from.copyWith(zoom: zoom, pan: Offset.zero), tilt: depth);
+    // Zoom so the part spans about a sixth of the canvas (at least 8 mm of board).
+    final base = at(1).scale;
+    final span = math.max(math.max(part.shape.width, part.shape.height), 8.0);
+    final zoom = (math.min(_canvas.width, _canvas.height) / 6 / (span * base)).clamp(1.0, 60.0).toDouble();
+    final p0 = at(zoom).project(part.p.x, part.p.y);
+    _flyFrom = from;
+    _flyTo = from.copyWith(zoom: zoom, pan: Offset(_canvas.width / 2, _canvas.height / 2) - p0);
+    _fly.forward(from: 0);
+    _flash.value = (part.p.ref, 0);
+    _blink.forward(from: 0);
+  }
+
+  /// Camera flight of the designator search.
+  _Camera? _flyFrom, _flyTo;
+
+  void _flyStep() {
+    final a = _flyFrom, b = _flyTo;
+    if (a == null || b == null) return;
+    final t = Curves.easeInOutCubic.transform(_fly.value);
+    // Zoom moves geometrically so the flight looks even.
+    _cam.value = a.copyWith(zoom: a.zoom * math.pow(b.zoom / a.zoom, t), pan: Offset.lerp(a.pan, b.pan, t)!);
   }
 
   @override
@@ -242,6 +304,9 @@ class _BoardViewState extends State<BoardView> {
     if (widget.immersive && Platform.isAndroid) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _cam.dispose();
     _hover.dispose();
+    _flash.dispose();
+    _fly.dispose();
+    _blink.dispose();
     super.dispose();
   }
 
@@ -270,18 +335,17 @@ class _BoardViewState extends State<BoardView> {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final m = Metrics.of(context);
     final state = widget.state;
     final phone = isPhoneLayout(context);
     final fromFile = state.boardSource == BoardSource.file && state.boardFile != null;
     final coords = fromFile ? state.boardFile : state.coords;
     if (coords == null) {
       return Padding(
-        padding: phone ? const EdgeInsets.fromLTRB(12, 4, 12, 0) : const EdgeInsets.fromLTRB(32, 12, 32, 0),
+        padding: phone ? EdgeInsets.fromLTRB(12, 4, 12, bottomInset(context)) : const EdgeInsets.fromLTRB(24, 6, 24, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _BoardToolbar(state: state, compact: phone),
+            _BoardToolbar(state: state, compact: phone, onLocate: (_) {}),
             const SizedBox(height: 20),
             Expanded(
               child: DCard(
@@ -326,50 +390,21 @@ class _BoardViewState extends State<BoardView> {
         .toList();
     // The side being looked at stands up in 3D; the other lies flat under it.
     final raisedSide = state.boardSide == BoardSideFilter.bottom ? BoardSide.bottom : BoardSide.top;
-    final deg = state.boardQuarterTurns * 90;
     final palette = PartPalette(state.settings.board);
 
-    final source = fromFile ? s.t('board_source_file', {'name': coords.name}) : s.t('board_source_check');
     final immersive = widget.immersive;
     return Padding(
       padding: immersive
           ? EdgeInsets.all(phone ? 8 : 20)
           : phone
-          ? const EdgeInsets.fromLTRB(12, 4, 12, 0)
-          : const EdgeInsets.fromLTRB(32, 12, 32, 0),
+          ? EdgeInsets.fromLTRB(12, 4, 12, bottomInset(context))
+          : const EdgeInsets.fromLTRB(24, 6, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!immersive && phone) ...[_BoardToolbar(state: state, compact: true), const SizedBox(height: 10)],
-          if (!immersive && !phone) ...[
-            // Tablets and narrow windows: the icon row fits where the
-            // captioned groups (about 1300 px wide) do not.
-            _BoardToolbar(state: state, compact: MediaQuery.sizeOf(context).width < 1360),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: PageHeader(
-                      title: s.t('mod_board'),
-                      subtitle: '$source · ${s.t(depth ? (m.touch ? 'page_board_sub_3d_touch' : 'page_board_sub_3d') : 'page_board_sub', {'n': parts.length})}',
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
-                    child: Text(
-                      s.t('board_view_state', {'deg': deg, 'mirror': state.boardMirror ? s.t('board_mirrored') : ''}),
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
+          if (!immersive) ...[
+            _BoardToolbar(state: state, compact: phone, onLocate: (ref) => _locate(context, ref)),
+            SizedBox(height: phone ? 10 : 12),
           ],
           Expanded(
             child: ClipRRect(
@@ -379,6 +414,8 @@ class _BoardViewState extends State<BoardView> {
                 child: LayoutBuilder(
                   builder: (context, box) {
                     final size = Size(box.maxWidth, box.maxHeight);
+                    _canvas = size;
+                    _shown = parts;
                     _View view() => _fitView(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
                     return Listener(
                       onPointerSignal: (e) {
@@ -453,6 +490,7 @@ class _BoardViewState extends State<BoardView> {
                                         raisedSide: raisedSide,
                                         depth: depth,
                                         palette: palette,
+                                        flash: _flash,
                                       ),
                                     ),
                                   ),
@@ -582,7 +620,8 @@ _View _fitView((double, double, double, double) ext, Size size, int quarter, boo
   final odd = quarter.isOdd;
   final w = math.max((odd ? maxY - minY : maxX - minX) + 4, 2.0);
   final h = math.max((odd ? maxX - minX : maxY - minY) * math.cos(pitch) + 4, 2.0);
-  const margin = 56.0;
+  // A small margin: the board fills as much of the canvas as it can.
+  const margin = 18.0;
   final base = math.max(math.min((size.width - 2 * margin) / w, (size.height - 2 * margin) / h), 0.01);
   return _View(cx, cy, theta, mirror, pitch, base * cam.zoom, centre + cam.pan);
 }
@@ -603,7 +642,11 @@ class _AssemblyPainter extends CustomPainter {
     required this.raisedSide,
     required this.depth,
     required this.palette,
-  }) : super(repaint: Listenable.merge([cam, hover]));
+    required this.flash,
+  }) : super(repaint: Listenable.merge([cam, hover, flash]));
+
+  /// Located designator and its glow strength.
+  final ValueNotifier<(String, double)?> flash;
 
   final _BoardModel model;
   final List<_Part> parts;
@@ -706,6 +749,36 @@ class _AssemblyPainter extends CustomPainter {
       }
     }
     if (cam.value.zoom > 1.05) _drawLabels(canvas, size, view, visible, drawn);
+    _drawFlash(canvas, view);
+  }
+
+  /// Pulsing glow around the designator found by the search.
+  void _drawFlash(Canvas canvas, _View view) {
+    final f = flash.value;
+    if (f == null) return;
+    for (final part in parts) {
+      if (part.p.ref != f.$1) continue;
+      final at = view.project(part.p.x, part.p.y);
+      final box = _bounds(_corners(part, at, view));
+      final k = f.$2;
+      final grow = 6 + 10 * k;
+      final rect = RRect.fromRectAndRadius(box.inflate(grow), Radius.circular(8 + grow / 2));
+      const glow = Color(0xFFFFD60A);
+      canvas.drawRRect(
+        rect,
+        Paint()
+          ..color = glow.withValues(alpha: 0.25 + 0.45 * k)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 + 10 * k),
+      );
+      canvas.drawRRect(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..color = glow.withValues(alpha: 0.55 + 0.45 * k),
+      );
+      return;
+    }
   }
 
   /// Where a point [h] mm above the board casts its shadow, relative to its
@@ -1016,127 +1089,45 @@ class _OrbitControls extends StatelessWidget {
   }
 }
 
-/// The navigator's toolbar card: data source, side, view, colours and the
-/// 2D / 3D switch, each group of tiles over its caption.
-class _BoardToolbar extends StatelessWidget {
-  const _BoardToolbar({required this.state, this.compact = false});
+/// The navigator's toolbar: one slim row of icon tools (names in tooltips),
+/// the colouring and 2D / 3D menus, the designator search. Less used view
+/// tools fold away behind the "more" button.
+class _BoardToolbar extends StatefulWidget {
+  const _BoardToolbar({required this.state, required this.onLocate, this.compact = false});
 
   final AppState state;
 
-  /// Phones: one sideways-scrolling row of round icon toggles.
+  /// Finds a designator on the board and flies to it.
+  final void Function(String ref) onLocate;
+
+  /// Phones: smaller search field.
   final bool compact;
 
   @override
-  Widget build(BuildContext context) {
-    final s = Strings.of(context);
-    if (compact) return _compact(context);
-    Widget group(String caption, List<Widget> tiles, {Key? key}) => Column(
-      key: key,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(width: 4), tiles[i]],
-          ],
-        ),
-        const SizedBox(height: 8),
-        Caption(caption),
-      ],
-    );
-    Widget radios(List<Widget> options) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < options.length; i++) ...[if (i > 0) const SizedBox(height: 2), options[i]],
-        ],
-      ),
-    );
-    final groups = [
-      group(s.t('grp_source'), [
-        ToolTile(
-          icon: Lucide.clipboardCheck,
-          label: s.t('btn_check_data'),
-          active: state.boardSource == BoardSource.check,
-          onTap: () => state.setBoardSource(BoardSource.check),
-        ),
-        ToolTile(
-          icon: Lucide.folderOpen,
-          label: s.t('btn_open_cad'),
-          active: state.boardSource == BoardSource.file,
-          onTap: () => state.boardFile != null && state.boardSource != BoardSource.file
-              ? state.setBoardSource(BoardSource.file)
-              : importFile(context, state, InputKind.boardCad),
-        ),
-      ]),
-      group(s.t('grp_side'), [
-        ToolTile(
-          icon: Lucide.layers,
-          label: s.t('side_both'),
-          active: state.boardSide == BoardSideFilter.both,
-          onTap: () => state.setBoardSide(BoardSideFilter.both),
-        ),
-        ToolTile(
-          icon: Lucide.faceTop,
-          label: s.t('side_top'),
-          active: state.boardSide == BoardSideFilter.top,
-          onTap: () => state.setBoardSide(BoardSideFilter.top),
-        ),
-        ToolTile(
-          icon: Lucide.faceBottom,
-          label: s.t('side_bottom'),
-          active: state.boardSide == BoardSideFilter.bottom,
-          onTap: () => state.setBoardSide(BoardSideFilter.bottom),
-        ),
-      ]),
-      group(key: tourTargets.boardView, s.t('grp_view'), [
-        ToolTile(icon: Lucide.mirror, label: s.t('board_mirror'), active: state.boardMirror, onTap: state.toggleBoardMirror),
-        ToolTile(icon: Lucide.rotateLeft, label: s.t('board_rotate_left'), onTap: () => state.rotateBoard(1)),
-        ToolTile(icon: Lucide.rotateRight, label: s.t('board_rotate_right'), onTap: () => state.rotateBoard(3)),
-        ToolTile(icon: Lucide.fit, label: s.t('board_fit'), onTap: state.fitBoard),
-        ToolTile(icon: Lucide.reset, label: s.t('btn_reset_view'), onTap: state.resetBoardView),
-        ToolTile(icon: Lucide.fullscreen, label: s.t('btn_fullscreen'), onTap: () => state.setBoardFullscreen(true)),
-      ]),
-      group(key: tourTargets.boardColoring, s.t('grp_coloring'), [
-        radios([
-          for (final (mode, key) in [(BoardColoring.real, 'color_real'), (BoardColoring.type, 'color_type'), (BoardColoring.status, 'color_status')])
-            RadioPill(label: s.t(key), on: state.boardColoring == mode, onTap: () => state.setBoardColoring(mode)),
-        ]),
-        ToolTile(icon: Lucide.palette, label: s.t('btn_colors'), onTap: () => state.openSettings(SettingsSection.board)),
-      ]),
-      group(key: tourTargets.boardRender, s.t('grp_render'), [
-        radios([
-          RadioPill(label: s.t('render_flat'), on: !state.settings.board.depth, onTap: () => state.setBoardDepth(false)),
-          RadioPill(label: s.t('render_3d'), on: state.settings.board.depth, onTap: () => state.setBoardDepth(true)),
-        ]),
-      ]),
-    ];
-    return DCard(
-      padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < groups.length; i++) ...[if (i > 0) const SizedBox(width: 36), groups[i]],
-          ],
-        ),
-      ),
-    );
+  State<_BoardToolbar> createState() => _BoardToolbarState();
+}
+
+class _BoardToolbarState extends State<_BoardToolbar> {
+  final _search = TextEditingController();
+  bool _more = false;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
-  Widget _compact(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    Widget tool(Lucide icon, String tip, VoidCallback onTap, {bool on = false, Key? key}) => Hoverable(
-      key: key,
+    final state = widget.state;
+    Widget tool(Lucide icon, String tip, VoidCallback onTap, {bool on = false}) => Hoverable(
       onTap: onTap,
       tooltip: tip,
       builder: (context, hover, _) => Container(
-        width: 40,
-        height: 40,
+        width: 38,
+        height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: on
@@ -1146,71 +1137,96 @@ class _BoardToolbar extends StatelessWidget {
               : null,
           shape: BoxShape.circle,
         ),
-        child: LucideIcon(icon, size: 19, color: on ? c.blueTx : c.tx),
+        child: LucideIcon(icon, size: 18, color: on ? c.blueTx : c.tx),
       ),
     );
-    Widget chip(String label, VoidCallback onTap, {Key? key}) => Hoverable(
-      key: key,
-      onTap: onTap,
-      builder: (context, hover, _) => Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: hover ? c.hover : c.well, borderRadius: BorderRadius.circular(999)),
-        child: Text(
-          label,
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
-        ),
-      ),
-    );
-    Widget gap() => Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 6), color: c.line);
-    const modes = [BoardColoring.real, BoardColoring.type, BoardColoring.status];
-    final colorKey = switch (state.boardColoring) {
-      BoardColoring.real => 'color_real',
-      BoardColoring.type => 'color_type',
-      BoardColoring.status => 'color_status',
-    };
+    Widget gap() => Container(width: 1, height: 20, margin: const EdgeInsets.symmetric(horizontal: 6), color: c.line);
     final depth = state.settings.board.depth;
-    return DCard(
-      radius: 22,
-      padding: const EdgeInsets.all(5),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+    final tools = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        tool(Lucide.clipboardCheck, s.t('btn_check_data'), () => state.setBoardSource(BoardSource.check), on: state.boardSource == BoardSource.check),
+        tool(
+          Lucide.folderOpen,
+          s.t('btn_open_cad'),
+          () => state.boardFile != null && state.boardSource != BoardSource.file
+              ? state.setBoardSource(BoardSource.file)
+              : importFile(context, state, InputKind.boardCad),
+          on: state.boardSource == BoardSource.file,
+        ),
+        gap(),
+        tool(Lucide.layers, s.t('side_both'), () => state.setBoardSide(BoardSideFilter.both), on: state.boardSide == BoardSideFilter.both),
+        tool(Lucide.faceTop, s.t('side_top'), () => state.setBoardSide(BoardSideFilter.top), on: state.boardSide == BoardSideFilter.top),
+        tool(Lucide.faceBottom, s.t('side_bottom'), () => state.setBoardSide(BoardSideFilter.bottom), on: state.boardSide == BoardSideFilter.bottom),
+        gap(),
+        KeyedSubtree(
+          key: tourTargets.boardView,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              tool(Lucide.fit, s.t('board_fit'), state.fitBoard),
+              tool(Lucide.fullscreen, s.t('btn_fullscreen'), () => state.setBoardFullscreen(true)),
+              if (_more) ...[
+                tool(Lucide.mirror, s.t('board_mirror'), state.toggleBoardMirror, on: state.boardMirror),
+                tool(Lucide.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
+                tool(Lucide.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
+                tool(Lucide.reset, s.t('btn_reset_view'), state.resetBoardView),
+              ],
+            ],
+          ),
+        ),
+        gap(),
+        KeyedSubtree(
+          key: tourTargets.boardColoring,
+          child: DropdownSelect<BoardColoring>(
+            value: state.boardColoring,
+            width: 124,
+            flat: true,
+            options: [
+              (BoardColoring.real, s.t('color_real')),
+              (BoardColoring.type, s.t('color_type')),
+              (BoardColoring.status, s.t('color_status')),
+            ],
+            onChanged: state.setBoardColoring,
+          ),
+        ),
+        const SizedBox(width: 6),
+        KeyedSubtree(
+          key: tourTargets.boardRender,
+          child: DropdownSelect<bool>(
+            value: depth,
+            width: 104,
+            flat: true,
+            options: [(false, s.t('render_flat')), (true, s.t('render_3d'))],
+            onChanged: state.setBoardDepth,
+          ),
+        ),
+        if (_more) ...[const SizedBox(width: 2), tool(Lucide.palette, s.t('btn_colors'), () => state.openSettings(SettingsSection.board))],
+        const SizedBox(width: 2),
+        tool(_more ? Lucide.chevronLeft : Lucide.more, s.t(_more ? 'board_less' : 'board_more'), () => setState(() => _more = !_more), on: _more),
+      ],
+    );
+    void locate([String? _]) {
+      final ref = _search.text.trim();
+      if (ref.isNotEmpty) widget.onLocate(ref);
+    }
+
+    final search = SizedBox(
+      width: widget.compact ? 150 : 200,
+      child: PillSearch(controller: _search, hint: s.t('board_search_hint'), icon: Lucide.locate, flat: true, height: 38, onSubmitted: locate),
+    );
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: DCard(
+        radius: 24,
+        padding: const EdgeInsets.all(5),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            tool(Lucide.clipboardCheck, s.t('btn_check_data'), () => state.setBoardSource(BoardSource.check), on: state.boardSource == BoardSource.check),
-            tool(
-              Lucide.folderOpen,
-              s.t('btn_open_cad'),
-              () => state.boardFile != null && state.boardSource != BoardSource.file
-                  ? state.setBoardSource(BoardSource.file)
-                  : importFile(context, state, InputKind.boardCad),
-              on: state.boardSource == BoardSource.file,
-            ),
-            gap(),
-            tool(Lucide.layers, s.t('side_both'), () => state.setBoardSide(BoardSideFilter.both), on: state.boardSide == BoardSideFilter.both),
-            tool(Lucide.faceTop, s.t('side_top'), () => state.setBoardSide(BoardSideFilter.top), on: state.boardSide == BoardSideFilter.top),
-            tool(Lucide.faceBottom, s.t('side_bottom'), () => state.setBoardSide(BoardSideFilter.bottom), on: state.boardSide == BoardSideFilter.bottom),
-            gap(),
-            KeyedSubtree(
-              key: tourTargets.boardView,
-              child: Row(
-                children: [
-                  tool(Lucide.mirror, s.t('board_mirror'), state.toggleBoardMirror, on: state.boardMirror),
-                  tool(Lucide.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
-                  tool(Lucide.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
-                  tool(Lucide.fit, s.t('board_fit'), state.fitBoard),
-                  tool(Lucide.fullscreen, s.t('btn_fullscreen'), () => state.setBoardFullscreen(true)),
-                ],
-              ),
-            ),
-            gap(),
-            // Colouring cycles through its three modes; 2D / 3D toggles.
-            chip(s.t(colorKey), () => state.setBoardColoring(modes[(modes.indexOf(state.boardColoring) + 1) % modes.length]), key: tourTargets.boardColoring),
+            Flexible(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: tools)),
             const SizedBox(width: 6),
-            chip(s.t(depth ? 'render_3d' : 'render_flat'), () => state.setBoardDepth(!depth), key: tourTargets.boardRender),
-            const SizedBox(width: 2),
-            tool(Lucide.palette, s.t('btn_colors'), () => state.openSettings(SettingsSection.board)),
+            search,
+            tool(Lucide.search, s.t('board_locate'), locate),
           ],
         ),
       ),

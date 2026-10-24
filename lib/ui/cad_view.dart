@@ -52,7 +52,7 @@ class _CadViewState extends State<CadView> {
     final s = Strings.of(context);
     final state = widget.state;
     final cad = state.cad;
-    final pad = EdgeInsets.fromLTRB(widget.compact ? 16 : 32, 12, widget.compact ? 16 : 32, 0);
+    final pad = EdgeInsets.fromLTRB(widget.compact ? 16 : 24, 6, widget.compact ? 16 : 24, 0);
 
     final Widget body;
     if (cad == null) {
@@ -66,7 +66,7 @@ class _CadViewState extends State<CadView> {
               : FlatButton(
                   label: state.bom != null ? s.t('btn_run') : s.t('go_files'),
                   primary: state.bom != null,
-                  onTap: () => state.bom != null ? runCheck(context, state) : state.setModule(Module.files),
+                  onTap: () => state.bom != null ? runCheck(context, state) : state.setModule(Module.check),
                 ),
         ),
       );
@@ -193,7 +193,7 @@ class _CadViewState extends State<CadView> {
       ),
     ];
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, 4, 16, 16 + bottomInset(context)),
       itemCount: head.length + indices.length,
       itemBuilder: (context, i) {
         if (i < head.length) return head[i];
@@ -284,8 +284,8 @@ class _Controls extends StatelessWidget {
       text,
       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.tx2),
     );
-    Widget card(Widget child, {EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 24, vertical: 20)}) =>
-        DCard(radius: 30, padding: padding, child: child);
+    Widget card(Widget child, {EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 18, vertical: 14)}) =>
+        DCard(radius: 22, padding: padding, child: child);
 
     final fileCard = KeyedSubtree(
       key: tourTargets.cadFile,
@@ -462,27 +462,31 @@ class _Controls extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, box) {
-        // One row when everything fits, as in the design; the action card
-        // wraps to its own row next, then everything stacks.
-        const fixed = 380.0 + 320.0 + 360.0 + 60.0;
+        // Cards keep their natural width, left aligned: one row when they
+        // fit, the action card on its own row next, then everything stacks.
         Widget row(List<Widget> children) => IntrinsicHeight(
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(width: 20), children[i]],
+              for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(width: 12), children[i]],
             ],
           ),
         );
+        final file = SizedBox(width: 380, child: fileCard);
         final formats = KeyedSubtree(key: tourTargets.cadFormat, child: row([unitCard, formatCard]));
-        if (box.maxWidth - fixed >= 400) {
-          return row([Expanded(child: fileCard), unitCard, KeyedSubtree(key: tourTargets.cadFormat, child: formatCard), actionsCard]);
+        if (box.maxWidth >= 1340) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: row([file, unitCard, KeyedSubtree(key: tourTargets.cadFormat, child: formatCard), actionsCard]),
+          );
         }
-        if (box.maxWidth - 720 >= 400) {
+        if (box.maxWidth >= 1010) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              row([Expanded(child: fileCard), unitCard, KeyedSubtree(key: tourTargets.cadFormat, child: formatCard)]),
-              const SizedBox(height: 20),
+              row([file, unitCard, KeyedSubtree(key: tourTargets.cadFormat, child: formatCard)]),
+              const SizedBox(height: 12),
               actionsCard,
             ],
           );

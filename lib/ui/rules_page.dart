@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'glyphs.dart';
+import 'design.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -143,7 +144,7 @@ class _RulesPageState extends State<RulesPage> {
         const SizedBox(height: 20),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: EdgeInsets.only(bottom: 24 + bottomInset(context)),
             child: Align(
               alignment: Alignment.topLeft,
               child: ConstrainedBox(

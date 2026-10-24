@@ -587,11 +587,23 @@ class TrackBar extends StatelessWidget {
 /// Pill search / text field: glass with a soft shadow, or [flat] on the
 /// hover tint inside cards.
 class PillSearch extends StatefulWidget {
-  const PillSearch({super.key, required this.controller, this.hint, this.onChanged, this.icon = Lucide.search, this.flat = false, this.height = 40});
+  const PillSearch({
+    super.key,
+    required this.controller,
+    this.hint,
+    this.onChanged,
+    this.onSubmitted,
+    this.icon = Lucide.search,
+    this.flat = false,
+    this.height = 40,
+  });
 
   final TextEditingController controller;
   final String? hint;
   final ValueChanged<String>? onChanged;
+
+  /// Enter pressed.
+  final ValueChanged<String>? onSubmitted;
   final Lucide icon;
   final bool flat;
   final double height;
@@ -671,6 +683,7 @@ class _PillSearchState extends State<PillSearch> {
                       selectionColor: c.blue.withValues(alpha: 0.3),
                       maxLines: 1,
                       onChanged: widget.onChanged,
+                      onSubmitted: widget.onSubmitted,
                       rendererIgnoresPointer: false,
                       selectionControls: emptyTextSelectionControls,
                       enableInteractiveSelection: true,
@@ -686,6 +699,13 @@ class _PillSearchState extends State<PillSearch> {
   }
 }
 
-/// Phone layout: narrow screens get a compact top bar, bottom navigation,
-/// one column and sheets instead of side panels.
-bool isPhoneLayout(BuildContext context) => MediaQuery.sizeOf(context).width < 600;
+/// Phone layout: narrow screens, and touch tablets held upright, get a
+/// compact top bar, bottom navigation, one column and sheets instead of side
+/// panels. Tablets in landscape use the desktop layout.
+bool isPhoneLayout(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return size.width < 600 || (Metrics.of(context).touch && size.height > size.width);
+}
+
+/// Space the floating phone tab bar takes at the bottom of a page.
+double bottomInset(BuildContext context) => MediaQuery.paddingOf(context).bottom;

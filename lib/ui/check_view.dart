@@ -10,9 +10,9 @@ import 'package:flutter/widgets.dart';
 import '../app_state.dart';
 import '../core/models.dart';
 import '../l10n/strings.dart';
-import 'actions.dart';
 import 'design.dart';
 import 'discrepancy_view.dart';
+import 'import_bar.dart';
 import 'icons.dart';
 import 'lucide.dart';
 import 'theme.dart';
@@ -103,7 +103,7 @@ class _CheckViewState extends State<CheckView> {
   bool _confirmMatches(CheckRow r) => switch (_confirm) {
     _ConfirmFilter.all => true,
     _ConfirmFilter.yes => widget.state.confirmationOf(r) != null,
-    _ConfirmFilter.no => widget.state.confirmationOf(r) == null,
+    _ConfirmFilter.no => r.category != CheckCategory.pass && widget.state.confirmationOf(r) == null,
   };
 
   @override
@@ -112,14 +112,36 @@ class _CheckViewState extends State<CheckView> {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final report = state.report;
-    final stations = [state.stationA?.name, state.stationB?.name].whereType<String>().length;
+    final phone = isPhoneLayout(context);
+    final narrow = widget.cards;
+    final pad = EdgeInsets.fromLTRB(narrow ? 16 : 24, phone ? 4 : 6, narrow ? 16 : 24, 0);
+    final imports = ImportBar(state: state);
     if (report == null) {
-      return EmptyState(
-        icon: Ic.listChecks,
-        text: s.t('empty_check'),
-        action: state.bom != null && stations > 0
-            ? FlatButton(label: s.t('btn_run'), primary: true, onTap: () => runCheck(context, state))
-            : FlatButton(label: s.t('go_files'), onTap: () => state.setModule(Module.files)),
+      final hint = DCard(
+        radius: 24,
+        child: EmptyState(icon: Ic.listChecks, text: s.t('empty_check_import')),
+      );
+      if (phone) {
+        return ListView(
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + 12),
+          children: [
+            imports,
+            const SizedBox(height: 14),
+            SizedBox(height: 260, child: hint),
+          ],
+        );
+      }
+      return Padding(
+        padding: pad,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            imports,
+            const SizedBox(height: 16),
+            Expanded(child: hint),
+            const SizedBox(height: 16),
+          ],
+        ),
       );
     }
     if (_search.text != state.search) _search.text = state.search;
@@ -127,71 +149,6 @@ class _CheckViewState extends State<CheckView> {
     final discrepancies = state.discrepancies ?? const [];
     final showDiscrepancies = state.checkView == CheckPageView.discrepancies;
     final total = report.rows.length;
-    final narrow = widget.cards;
-    final phone = isPhoneLayout(context);
-
-    // File header.
-    final header = DCard(
-      radius: phone ? 24 : 32,
-      padding: EdgeInsets.symmetric(horizontal: phone ? 16 : (narrow ? 20 : 28), vertical: phone ? 14 : 22),
-      child: Row(
-        children: [
-          GradientTile(
-            icon: Lucide.clipboardCheck,
-            colors: GradientTile.blue,
-            glow: GradientTile.blueGlow,
-            size: phone ? 42 : 56,
-            radius: phone ? 13 : 17,
-            iconSize: phone ? 20 : 26,
-          ),
-          SizedBox(width: phone ? 12 : 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  state.bom?.name ?? '-',
-                  maxLines: phone ? 1 : 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: phone ? 17 : (narrow ? 20 : 26), height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: c.tx),
-                ),
-                SizedBox(height: phone ? 3 : 5),
-                Text(
-                  [
-                    s.t('hdr_stations', {'n': stations}),
-                    if (state.checkedAt != null) formatTime(state.checkedAt!),
-                    s.t('hdr_total', {'n': total}),
-                  ].join(' · '),
-                  maxLines: phone ? 2 : null,
-                  style: TextStyle(fontSize: phone ? 12.5 : 14, color: c.tx2),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: phone ? 8 : 16),
-          if (phone)
-            GlassButton(
-              key: tourTargets.checkExport,
-              icon: Lucide.download,
-              size: 42,
-              tooltip: s.t('btn_export_excel'),
-              onTap: () => exportReport(context, state),
-            )
-          else
-            PillButton(
-              key: tourTargets.checkExport,
-              label: s.t('btn_export_excel'),
-              icon: Lucide.download,
-              kind: PillKind.glass,
-              height: 44,
-              fontSize: 15,
-              iconSize: 17,
-              color: c.blueTx,
-              onTap: () => exportReport(context, state),
-            ),
-        ],
-      ),
-    );
 
     // Statistic cards.
     final statCards = <Widget>[
@@ -206,7 +163,7 @@ class _CheckViewState extends State<CheckView> {
           icon: icon,
           value: report.count(cat),
           total: total,
-          confirmed: state.confirmedCount(cat),
+          confirmed: cat == CheckCategory.pass ? 0 : state.confirmedCount(cat),
           tint: c.categorySoft(cat),
           fg: c.categoryText(cat),
           bar: _barColor(cat),
@@ -231,39 +188,33 @@ class _CheckViewState extends State<CheckView> {
     final stats = phone
         ? SizedBox(
             key: tourTargets.checkCards,
-            height: 126,
+            height: 92,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
               itemCount: statCards.length,
               separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => SizedBox(width: 148, child: statCards[i]),
+              itemBuilder: (context, i) => SizedBox(width: 156, child: statCards[i]),
             ),
           )
-        : LayoutBuilder(
+        // Desktop: compact cards of one width, not stretched across the page.
+        : Wrap(
             key: tourTargets.checkCards,
-            builder: (context, box) {
-              final perRow = box.maxWidth >= 1100 ? 5 : (box.maxWidth >= 640 ? 3 : 2);
-              final w = (box.maxWidth - (perRow - 1) * 16) / perRow;
-              return Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [for (final card in statCards) SizedBox(width: w, child: card)],
-              );
-            },
+            spacing: 12,
+            runSpacing: 12,
+            children: [for (final card in statCards) SizedBox(width: 200, child: card)],
           );
 
-    final gap = phone ? 14.0 : 20.0;
+    final gap = phone ? 14.0 : 16.0;
     final top = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        header,
+        imports,
         SizedBox(height: gap),
         stats,
         SizedBox(height: gap),
       ],
     );
-    final pad = EdgeInsets.fromLTRB(narrow ? 16 : 32, phone ? 4 : 12, narrow ? 16 : 32, 0);
 
     if (showDiscrepancies) {
       return Padding(
@@ -285,7 +236,12 @@ class _CheckViewState extends State<CheckView> {
 
     final visible = state.visibleRows().where((r) => _sideMatches(r) && _confirmMatches(r) && (_area == null || r.category == _area)).toList()
       ..sort((a, b) => _areaOrder.indexOf(a.category) - _areaOrder.indexOf(b.category));
-    final allConfirmed = visible.isNotEmpty && visible.every((r) => state.confirmationOf(r) != null);
+    // Only results other than PASS are confirmed by hand.
+    final toConfirm = [
+      for (final r in visible)
+        if (r.category != CheckCategory.pass) r,
+    ];
+    final allConfirmed = toConfirm.isNotEmpty && toConfirm.every((r) => state.confirmationOf(r) != null);
 
     Widget labelled(String label, Widget child) => Row(
       mainAxisSize: MainAxisSize.min,
@@ -381,7 +337,7 @@ class _CheckViewState extends State<CheckView> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                        child: _HeaderRow(allConfirmed: allConfirmed, listed: visible.length, onConfirmAll: () => state.setConfirmed(visible, !allConfirmed)),
+                        child: _HeaderRow(allConfirmed: allConfirmed, listed: visible.length, onConfirmAll: () => state.setConfirmed(toConfirm, !allConfirmed)),
                       ),
                       Expanded(
                         child: ThinScrollbar(
@@ -445,14 +401,26 @@ class _CheckViewState extends State<CheckView> {
         // Short windows (tablets in landscape) scroll the whole page so the
         // table keeps a usable height.
         final short = box.maxHeight < 900;
+        // The selected part's card sits right of the table, top and bottom
+        // aligned with it; narrow windows put it under the table.
+        final side = box.maxWidth >= 1100;
+        final body = side
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: keyedTable),
+                  const SizedBox(width: 16),
+                  SizedBox(width: 360, child: _Detail(state: state, panel: true)),
+                ],
+              )
+            : keyedTable;
         final children = [
           top,
           filters,
-          const SizedBox(height: 20),
-          short ? SizedBox(height: math.max(420.0, box.maxHeight * 0.62), child: keyedTable) : Expanded(child: keyedTable),
-          const SizedBox(height: 20),
-          _Detail(state: state),
-          if (short) const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
+          if (!side) ...[const SizedBox(height: 16), _Detail(state: state)],
+          const SizedBox(height: 16),
         ];
         final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
         return Padding(
@@ -474,7 +442,7 @@ class _CheckViewState extends State<CheckView> {
       children: [
         ListView.builder(
           controller: _page,
-          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, selected == null ? 16 : 280),
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + (selected == null ? 12 : 300)),
           itemCount: visible.length + 2,
           itemBuilder: (context, i) {
             if (i == 0) return top;
@@ -504,7 +472,7 @@ class _CheckViewState extends State<CheckView> {
           Positioned(
             left: 8,
             right: 8,
-            bottom: 0,
+            bottom: bottomInset(context),
             child: ConstrainedBox(
               constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.55),
               child: Stack(
@@ -579,14 +547,13 @@ class _StatCard extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (context, hover, _) => AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: selected
-              ? [BoxShadow(color: glow, offset: const Offset(0, 2), blurRadius: 4), BoxShadow(color: glow, offset: const Offset(0, 24), blurRadius: 56)]
-              : c.shadow,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? fg.withValues(alpha: 0.55) : const Color(0x00000000), width: 1.5),
+          boxShadow: selected ? [BoxShadow(color: glow, offset: const Offset(0, 10), blurRadius: 26)] : c.shadowSm,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -594,63 +561,53 @@ class _StatCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 26,
+                  height: 26,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-                  child: LucideIcon(icon, size: 16, color: fg, stroke: 2.3),
+                  child: LucideIcon(icon, size: 14, color: fg, stroke: 2.4),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: -0.15, color: c.tx),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
                   ),
                 ),
-                if (chevron) LucideIcon(Lucide.chevronRight, size: 16, color: c.tx2, stroke: 2.2),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
                 Text(
                   '$value',
                   style: TextStyle(
-                    fontSize: 32,
+                    fontSize: 22,
                     height: 1,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -1.1,
+                    letterSpacing: -0.6,
                     color: c.tx,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-                if (share != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    pct,
-                    style: TextStyle(fontSize: 14, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()]),
-                  ),
-                ],
-                if (confirmed > 0) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      s.t('confirm_count', {'n': confirmed}),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.blueTx),
-                    ),
-                  ),
-                ],
+                if (chevron) ...[const SizedBox(width: 2), LucideIcon(Lucide.chevronRight, size: 14, color: c.tx2, stroke: 2.2)],
               ],
             ),
-            const SizedBox(height: 12),
-            // Cards without a share keep the bar's space so all are one size.
-            share != null ? TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar) : const SizedBox(height: 6),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: share != null ? TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar, height: 4) : const SizedBox(height: 4),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  confirmed > 0 ? s.t('confirm_count', {'n': confirmed}) : pct,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: confirmed > 0 ? FontWeight.w600 : FontWeight.w400,
+                    color: confirmed > 0 ? c.blueTx : c.tx2,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -658,19 +615,19 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-const _minTable = 1200.0;
+const _minTable = 900.0;
 
 /// Column widths: fixed px, or flex weight with a minimum.
 const _cols = [
-  (44.0, 0.0), // #
-  (196.0, 0.0), // part number
-  (260.0, 1.6), // description
-  (84.0, 0.0), // BOM qty
-  (84.0, 0.0), // SMT qty
-  (280.0, 2.4), // designators
-  (72.0, 0.0), // side
-  (112.0, 0.0), // confirmation
-  (104.0, 0.0), // result
+  (40.0, 0.0), // #
+  (168.0, 0.0), // part number
+  (200.0, 1.6), // description
+  (68.0, 0.0), // BOM qty
+  (68.0, 0.0), // SMT qty
+  (220.0, 2.4), // designators
+  (52.0, 0.0), // side
+  (100.0, 0.0), // confirmation
+  (80.0, 0.0), // result
 ];
 
 /// Lays out one table line in the design's grid.
@@ -815,7 +772,10 @@ class _ResultRow extends StatelessWidget {
             ),
           ),
           Text(_sides(row.sides), style: TextStyle(fontSize: 14, color: c.tx2)),
-          _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
+          // PASS needs no manual confirmation.
+          row.category == CheckCategory.pass
+              ? Text('—', style: TextStyle(fontSize: 14, color: c.tx3))
+              : _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
           DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
         ], align: _alignments()),
       ),
@@ -862,8 +822,10 @@ class _RowCard extends StatelessWidget {
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx),
                   ),
                 ),
-                _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
-                const SizedBox(width: 8),
+                if (row.category != CheckCategory.pass) ...[
+                  _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
+                  const SizedBox(width: 8),
+                ],
                 DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
               ],
             ),
@@ -924,9 +886,12 @@ class _ConfirmPill extends StatelessWidget {
 /// Details of the selected part: quantities, side, result, reasons and the
 /// manual confirmation with its note.
 class _Detail extends StatefulWidget {
-  const _Detail({required this.state});
+  const _Detail({required this.state, this.panel = false});
 
   final AppState state;
+
+  /// Shown right of the table at its full height (scrolls inside).
+  final bool panel;
 
   @override
   State<_Detail> createState() => _DetailState();
@@ -949,10 +914,33 @@ class _DetailState extends State<_Detail> {
     final state = widget.state;
     final row = state.selected;
     final narrow = MediaQuery.sizeOf(context).width < 900;
+    final panel = widget.panel;
     if (row == null) {
+      if (panel) {
+        return DCard(
+          radius: 22,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TintTile(icon: Lucide.clipboardCheck),
+                  const SizedBox(height: 14),
+                  Text(
+                    s.t('detail_hint'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, height: 1.5, color: c.tx2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
       return DCard(
-        radius: 26,
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+        radius: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Text(s.t('detail_hint'), style: TextStyle(fontSize: 14, color: c.tx2)),
       );
     }
@@ -973,81 +961,82 @@ class _DetailState extends State<_Detail> {
       ),
       style: TextStyle(fontSize: 13, color: c.tx2),
     );
-    return DCard(
-      radius: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 24,
-            runSpacing: 12,
-            children: [
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 640),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(s.t('detail_selected', {'pn': row.partNo}), style: TextStyle(fontSize: 12, color: c.tx2)),
-                    const SizedBox(height: 4),
-                    Text(
-                      row.description,
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.16, color: c.tx),
-                    ),
-                  ],
-                ),
-              ),
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 28,
-                runSpacing: 8,
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 24,
+          runSpacing: 12,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 640),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  fact('BOM', _qty(row.bomQty)),
-                  fact('SMT', row.smtQty?.toString() ?? '-'),
-                  fact(s.t('col_side'), _sides(row.sides)),
-                  if (row.slots.isNotEmpty) fact(s.t('col_slot'), row.slots.join(', ')),
-                  DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+                  Text(s.t('detail_selected', {'pn': row.partNo}), style: TextStyle(fontSize: 12, color: c.tx2)),
+                  const SizedBox(height: 4),
+                  Text(
+                    row.description,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.16, color: c.tx),
+                  ),
                 ],
               ),
-            ],
-          ),
-          if (row.reasons.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            for (final r in row.reasons)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: r.info ? c.warnSolid : c.ngSolid),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: s.t(r.code, r.args),
-                              style: TextStyle(fontWeight: FontWeight.w600, color: r.info ? c.warnTx : c.ngTx),
-                            ),
-                            if (Texts.has('why_${r.code}')) TextSpan(text: '  ${s.t('why_${r.code}')}'),
-                          ],
-                        ),
-                        style: TextStyle(fontSize: 13, height: 1.5, color: c.tx2),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            ),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 28,
+              runSpacing: 8,
+              children: [
+                fact('BOM', _qty(row.bomQty)),
+                fact('SMT', row.smtQty?.toString() ?? '-'),
+                fact(s.t('col_side'), _sides(row.sides)),
+                if (row.slots.isNotEmpty) fact(s.t('col_slot'), row.slots.join(', ')),
+                DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+              ],
+            ),
           ],
+        ),
+        if (row.reasons.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          for (final r in row.reasons)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: r.info ? c.warnSolid : c.ngSolid),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: s.t(r.code, r.args),
+                            style: TextStyle(fontWeight: FontWeight.w600, color: r.info ? c.warnTx : c.ngTx),
+                          ),
+                          if (Texts.has('why_${r.code}')) TextSpan(text: '  ${s.t('why_${r.code}')}'),
+                        ],
+                      ),
+                      style: TextStyle(fontSize: 13, height: 1.5, color: c.tx2),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        if (row.category == CheckCategory.pass) ...[
+          const SizedBox(height: 12),
+          Text(s.t('confirm_not_needed'), style: TextStyle(fontSize: 13, color: c.tx2)),
+        ] else ...[
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1067,8 +1056,17 @@ class _DetailState extends State<_Detail> {
             ],
           ),
         ],
-      ),
+      ],
     );
+    if (panel) {
+      return DCard(
+        radius: 22,
+        clip: true,
+        padding: EdgeInsets.zero,
+        child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: body),
+      );
+    }
+    return DCard(radius: 22, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), child: body);
   }
 }
 

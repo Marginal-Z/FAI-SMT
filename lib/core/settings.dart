@@ -272,6 +272,7 @@ class AppSettings {
     this.coordUnit = CoordUnit.auto,
     this.uiScale = 0,
     this.tourDone = false,
+    this.navLabels = false,
     List<PartModelRule>? partRules,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate(),
@@ -294,6 +295,9 @@ class AppSettings {
   /// The first-run guided tour has been finished or skipped.
   bool tourDone;
 
+  /// The page bar shows names next to its icons.
+  bool navLabels;
+
   /// Part library models chosen by the user for specific parts.
   List<PartModelRule> partRules;
 
@@ -307,6 +311,7 @@ class AppSettings {
     'coordUnit': coordUnit.name,
     'uiScale': uiScale,
     'tourDone': tourDone,
+    'navLabels': navLabels,
     'partRules': [for (final r in partRules) r.toJson()],
   };
 
@@ -328,6 +333,7 @@ class AppSettings {
     coordUnit: CoordUnit.values.firstWhere((u) => u.name == j['coordUnit'], orElse: () => CoordUnit.auto),
     uiScale: (j['uiScale'] as num?)?.toDouble() ?? 0,
     tourDone: j['tourDone'] == true,
+    navLabels: j['navLabels'] == true,
     partRules: [for (final r in (j['partRules'] as List?) ?? const []) if (r is Map) PartModelRule.fromJson(r.cast())],
   );
 

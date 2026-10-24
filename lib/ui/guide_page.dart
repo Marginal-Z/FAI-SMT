@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../app_state.dart';
 import '../l10n/strings.dart';
 import 'glyphs.dart';
+import 'design.dart';
 import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
@@ -33,7 +34,7 @@ class GuidePage extends StatelessWidget {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(bottom: 24 + bottomInset(context)),
       child: Align(
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
