@@ -1142,6 +1142,10 @@ class _BoardToolbarState extends State<_BoardToolbar> {
     );
     Widget gap() => Container(width: 1, height: 20, margin: const EdgeInsets.symmetric(horizontal: 6), color: c.line);
     final depth = state.settings.board.depth;
+    // Wide windows show every tool; narrower ones fold the less used ones
+    // behind "more".
+    final wide = MediaQuery.sizeOf(context).width >= 1180 && !widget.compact;
+    final more = wide || _more;
     final tools = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1166,7 +1170,7 @@ class _BoardToolbarState extends State<_BoardToolbar> {
             children: [
               tool(Lucide.fit, s.t('board_fit'), state.fitBoard),
               tool(Lucide.fullscreen, s.t('btn_fullscreen'), () => state.setBoardFullscreen(true)),
-              if (_more) ...[
+              if (more) ...[
                 tool(Lucide.mirror, s.t('board_mirror'), state.toggleBoardMirror, on: state.boardMirror),
                 tool(Lucide.rotateLeft, s.t('board_rotate_left'), () => state.rotateBoard(1)),
                 tool(Lucide.rotateRight, s.t('board_rotate_right'), () => state.rotateBoard(3)),
@@ -1195,15 +1199,17 @@ class _BoardToolbarState extends State<_BoardToolbar> {
           key: tourTargets.boardRender,
           child: DropdownSelect<bool>(
             value: depth,
-            width: 104,
+            width: 120,
             flat: true,
             options: [(false, s.t('render_flat')), (true, s.t('render_3d'))],
             onChanged: state.setBoardDepth,
           ),
         ),
-        if (_more) ...[const SizedBox(width: 2), tool(Lucide.palette, s.t('btn_colors'), () => state.openSettings(SettingsSection.board))],
-        const SizedBox(width: 2),
-        tool(_more ? Lucide.chevronLeft : Lucide.more, s.t(_more ? 'board_less' : 'board_more'), () => setState(() => _more = !_more), on: _more),
+        if (more) ...[const SizedBox(width: 2), tool(Lucide.palette, s.t('btn_colors'), () => state.openSettings(SettingsSection.board))],
+        if (!wide) ...[
+          const SizedBox(width: 2),
+          tool(_more ? Lucide.chevronLeft : Lucide.more, s.t(_more ? 'board_less' : 'board_more'), () => setState(() => _more = !_more), on: _more),
+        ],
       ],
     );
     void locate([String? _]) {

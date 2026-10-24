@@ -2,8 +2,10 @@
 /// library, user guide, about with software update).
 library;
 
+import 'dart:ffi' show Abi;
 import 'dart:io';
 
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
@@ -44,12 +46,7 @@ class SettingsScreen extends StatelessWidget {
       SettingsSection.guide => GuidePage(state: state),
       SettingsSection.appearance => _Section(child: _Appearance(state: state)),
       SettingsSection.board => _Section(child: _BoardColors(state: state)),
-      SettingsSection.about => _Section(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [_About(state: state), const SizedBox(height: 24), const HDivider(), const SizedBox(height: 20), _UpdatePanel(state: state)],
-        ),
-      ),
+      SettingsSection.about => _Section(child: _About(state: state)),
     };
     return Padding(
       padding: pad,
@@ -307,45 +304,243 @@ class _Appearance extends StatelessWidget {
   }
 }
 
+/// About: the app, its version and platform, software update, links and
+/// the open-source components it uses.
 class _About extends StatelessWidget {
   const _About({required this.state});
 
   final AppState state;
 
+  static const _site = 'https://marginal-z.github.io/FAI-SMT/';
+
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final phone = isPhoneLayout(context);
+    final platform = switch (Abi.current()) {
+      Abi.windowsX64 => 'Windows x64',
+      Abi.windowsArm64 => 'Windows ARM64',
+      Abi.linuxX64 => 'Linux x64',
+      Abi.linuxArm64 => 'Linux ARM64',
+      Abi.androidArm64 => 'Android ARM64',
+      Abi.androidArm => 'Android ARMv7',
+      Abi.androidX64 => 'Android x86_64',
+      final abi => abi.toString(),
+    };
+    Widget chip(String text, {bool accent = false}) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(color: accent ? c.blueTint : c.well, borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent ? c.blueTx : c.tx2),
+      ),
+    );
+    final hero = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          children: [
-            Image.asset('assets/icon/app_icon_64.png', width: 48, height: 48),
-            const SizedBox(width: 14),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'SMT-FAI',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: c.text),
-                ),
-                Text(s.t('about_version', {'v': appVersion}), style: TextStyle(fontSize: 12.5, color: c.textDim)),
-              ],
-            ),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(phone ? 16 : 20),
+            boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 18, offset: Offset(0, 8))],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(phone ? 16 : 20),
+            child: Image.asset('assets/icon/app_icon.png', width: phone ? 60 : 76, height: phone ? 60 : 76, filterQuality: FilterQuality.medium),
+          ),
+        ),
+        SizedBox(width: phone ? 14 : 20),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SMT-FAI',
+                style: TextStyle(fontSize: phone ? 22 : 28, height: 1.1, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx),
+              ),
+              const SizedBox(height: 6),
+              Text(s.t('about_tagline'), style: TextStyle(fontSize: 13.5, height: 1.45, color: c.tx2)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [chip(s.t('about_version', {'v': appVersion}), accent: true), chip(platform), chip(s.t('about_release'))],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        hero,
+        const SizedBox(height: 26),
+        _Group(
+          title: s.t('about_update'),
+          child: Padding(padding: const EdgeInsets.all(16), child: _UpdatePanel(state: state)),
+        ),
+        const SizedBox(height: 20),
+        _Group(
+          title: s.t('about_info'),
+          rows: [
+            _InfoRow(label: s.t('about_version_label'), value: appVersion),
+            _InfoRow(label: s.t('about_platform'), value: platform),
+            _InfoRow(label: s.t('about_config'), value: '${state.settingsDir}${Platform.pathSeparator}settings.json', mono: true, copy: true),
+            _InfoRow(label: s.t('about_source_label'), value: 'GitHub Releases · $updateRepo'),
           ],
         ),
-        const SizedBox(height: 14),
-        Text(s.t('about_text'), style: TextStyle(fontSize: 12.5, color: c.textDim, height: 1.5)),
-        const SizedBox(height: 12),
-        Text(s.t('about_config'), style: TextStyle(fontSize: 12, color: c.textFaint)),
-        Text(
-          '${state.settingsDir}${Platform.pathSeparator}settings.json',
-          style: TextStyle(fontFamily: monoFontFamily, fontSize: 12, color: c.textDim),
+        const SizedBox(height: 20),
+        _Group(
+          title: s.t('about_links'),
+          rows: [
+            _InfoRow(label: s.t('about_site'), value: _site, link: true),
+            _InfoRow(label: s.t('about_tutorial'), value: '$_site#tutorial', link: true),
+            _InfoRow(label: s.t('about_changelog'), value: 'https://github.com/$updateRepo/releases', link: true),
+            _InfoRow(label: s.t('about_github'), value: 'https://github.com/$updateRepo', link: true),
+          ],
         ),
-        const SizedBox(height: 12),
-        Text(s.t('set_licenses'), style: TextStyle(fontSize: 12, color: c.textFaint)),
+        const SizedBox(height: 20),
+        _Group(
+          title: s.t('about_licenses'),
+          rows: const [
+            _InfoRow(label: 'Flutter', value: 'BSD-3-Clause'),
+            _InfoRow(label: 'Inter', value: 'SIL Open Font License 1.1'),
+            _InfoRow(label: 'Lucide', value: 'ISC'),
+            _InfoRow(label: 'Phosphor Icons', value: 'MIT'),
+            _InfoRow(label: 'Fluent UI System Icons', value: 'MIT'),
+            _InfoRow(label: 'excel · archive · xml · file_picker · desktop_drop', value: 'MIT / BSD'),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Text(
+          s.t('about_footer', {'y': DateTime.now().year}),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, height: 1.6, color: c.tx3),
+        ),
       ],
+    );
+  }
+}
+
+/// A titled group of rows on a light well, like the settings list.
+class _Group extends StatelessWidget {
+  const _Group({required this.title, this.rows = const [], this.child});
+
+  final String title;
+  final List<Widget> rows;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
+        ),
+        Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(color: c.well, borderRadius: BorderRadius.circular(16)),
+          child:
+              child ??
+              Column(
+                children: [
+                  for (var i = 0; i < rows.length; i++) ...[
+                    if (i > 0) Padding(padding: const EdgeInsets.only(left: 16), child: Container(height: 1, color: c.line)),
+                    rows[i],
+                  ],
+                ],
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Label and value; links open in the browser, paths can be copied.
+class _InfoRow extends StatefulWidget {
+  const _InfoRow({required this.label, required this.value, this.mono = false, this.copy = false, this.link = false});
+
+  final String label;
+  final String value;
+  final bool mono;
+  final bool copy;
+  final bool link;
+
+  @override
+  State<_InfoRow> createState() => _InfoRowState();
+}
+
+class _InfoRowState extends State<_InfoRow> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.value));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
+    if (mounted) setState(() => _copied = false);
+  }
+
+  /// Opens [url] in the default browser; where that is not possible (the
+  /// Android build has no browser hook) the link is copied instead.
+  Future<void> _open() async {
+    try {
+      if (Platform.isWindows) {
+        await Process.start('cmd', ['/c', 'start', '', widget.value], mode: ProcessStartMode.detached);
+      } else if (Platform.isLinux) {
+        await Process.start('xdg-open', [widget.value], mode: ProcessStartMode.detached);
+      } else if (Platform.isMacOS) {
+        await Process.start('open', [widget.value], mode: ProcessStartMode.detached);
+      } else {
+        await _copy();
+      }
+    } catch (_) {
+      await _copy();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final action = widget.link ? _open : (widget.copy ? _copy : null);
+    final icon = _copied ? Lucide.check : (widget.link ? Lucide.externalLink : Lucide.copy);
+    return Hoverable(
+      onTap: action,
+      cursor: action == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      tooltip: action == null ? null : (_copied ? s.t('about_copied') : (widget.link ? s.t('about_open') : s.t('about_copy'))),
+      builder: (context, hover, _) => Container(
+        color: hover ? c.hover : null,
+        padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 150,
+              child: Text(widget.label, style: TextStyle(fontSize: 13.5, color: c.tx2)),
+            ),
+            Expanded(
+              child: Text(
+                widget.value,
+                style: TextStyle(
+                  fontSize: widget.mono ? 12.5 : 13.5,
+                  fontFamily: widget.mono ? monoFontFamily : null,
+                  fontWeight: FontWeight.w500,
+                  color: widget.link ? c.blueTx : c.tx,
+                ),
+              ),
+            ),
+            if (action != null) ...[
+              const SizedBox(width: 10),
+              LucideIcon(icon, size: 15, color: _copied ? c.okTx : c.tx3, stroke: 2.2),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -447,8 +642,6 @@ class _UpdatePanel extends StatelessWidget {
         ],
         const SizedBox(height: 12),
         CheckBox(value: state.settings.autoUpdate, label: s.t('set_auto_update'), onChanged: state.setAutoUpdate),
-        const SizedBox(height: 4),
-        Text(s.t('set_update_source', {'repo': updateRepo}), style: TextStyle(fontSize: 12, color: c.textFaint)),
       ],
     );
   }

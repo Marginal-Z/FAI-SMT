@@ -55,6 +55,7 @@ class _CadViewState extends State<CadView> {
     final pad = EdgeInsets.fromLTRB(widget.compact ? 16 : 24, 6, widget.compact ? 16 : 24, 0);
 
     final Widget body;
+    (Widget, Widget)? wideBody;
     if (cad == null) {
       final noCoords = state.coords == null;
       body = DCard(
@@ -127,6 +128,7 @@ class _CadViewState extends State<CadView> {
         ),
       );
       final aside = _Checks(state: state, cad: cad, fileName: fileName);
+      wideBody = (preview, aside);
       if (isPhoneLayout(context)) return _phonePage(context, cad, indices, fileName);
       body = widget.compact
           ? Column(
@@ -147,6 +149,40 @@ class _CadViewState extends State<CadView> {
             );
     }
 
+    // Wide pages: the input cards over the preview on the left; the build
+    // and report card over the checks on the right, sharing their edges.
+    if (cad != null && !widget.compact && MediaQuery.sizeOf(context).width >= 1100) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Controls(state: state, part: _ControlsPart.inputs),
+                  const SizedBox(height: 16),
+                  Expanded(child: wideBody!.$1),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 380,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Controls(state: state, part: _ControlsPart.actions),
+                  const SizedBox(height: 16),
+                  Expanded(child: wideBody.$2),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: pad,
       child: Column(
@@ -258,10 +294,15 @@ class _CadViewState extends State<CadView> {
 }
 
 /// Coordinate file, unit, CAD format, and the build / report actions.
+/// Which cards [_Controls] builds: all of them, or (wide pages) the input
+/// cards and the action card apart.
+enum _ControlsPart { all, inputs, actions }
+
 class _Controls extends StatelessWidget {
-  const _Controls({required this.state});
+  const _Controls({required this.state, this.part = _ControlsPart.all});
 
   final AppState state;
+  final _ControlsPart part;
 
   void _setUnit(BuildContext context, CoordUnit u) {
     try {
@@ -460,6 +501,46 @@ class _Controls extends StatelessWidget {
       ),
     );
 
+    if (part == _ControlsPart.actions) {
+      // Top of the right column, as wide as the checks under it.
+      return card(
+        Row(
+          children: [
+            Expanded(
+              child: KeyedSubtree(
+                key: tourTargets.cadBuild,
+                child: action(
+                  PillButton(
+                    label: s.t('btn_gen_cad'),
+                    icon: Lucide.exportArrow,
+                    kind: PillKind.primary,
+                    height: 46,
+                    fontSize: 15.5,
+                    onTap: canBuild ? () => exportCad(context, state) : null,
+                  ),
+                  s.t('cap_gen_cad'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: action(
+                PillButton(
+                  label: s.t('btn_export_report'),
+                  icon: Lucide.fileCheck,
+                  height: 46,
+                  fontSize: 15.5,
+                  onTap: state.report == null ? null : () => exportReport(context, state),
+                ),
+                s.t('cap_report'),
+              ),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, box) {
         // Cards keep their natural width, left aligned: one row when they
@@ -475,6 +556,21 @@ class _Controls extends StatelessWidget {
         );
         final file = SizedBox(width: 380, child: fileCard);
         final formats = KeyedSubtree(key: tourTargets.cadFormat, child: row([unitCard, formatCard]));
+        if (part == _ControlsPart.inputs) {
+          // The file card takes the room the unit and format cards leave.
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: fileCard),
+                const SizedBox(width: 12),
+                unitCard,
+                const SizedBox(width: 12),
+                KeyedSubtree(key: tourTargets.cadFormat, child: formatCard),
+              ],
+            ),
+          );
+        }
         if (box.maxWidth >= 1340) {
           return Align(
             alignment: Alignment.centerLeft,

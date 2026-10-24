@@ -21,6 +21,8 @@ class Lucide {
   static const chevronLeft = Lucide(['m15 18-6-6 6-6']);
   static const more = Lucide(['circle 12 12 1', 'circle 19 12 1', 'circle 5 12 1']);
   static const circle = Lucide(['circle 12 12 9']);
+  static const externalLink = Lucide(['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6']);
+  static const copy = Lucide(['rect 8 8 14 14 2', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2']);
   static const locate = Lucide(['M2 12h3M19 12h3M12 2v3M12 19v3', 'circle 12 12 7', 'circle 12 12 3']);
   static const chevronRight = Lucide(['m9 18 6-6-6-6']);
   static const theme = Lucide(['circle 12 12 9', '*M12 3a9 9 0 0 1 0 18Z']);
