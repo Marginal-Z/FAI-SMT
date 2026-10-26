@@ -52,7 +52,9 @@ class SmtFaiApp extends StatelessWidget {
               ThemePref.light => false,
               ThemePref.system => MediaQuery.platformBrightnessOf(context) == Brightness.dark,
             };
-            final colors = dark ? AppColors.darkTheme : AppColors.lightTheme;
+            final colors = state.settings.themeStyle == ThemeStyle.industrial
+                ? (dark ? AppColors.industrialDark : AppColors.industrialLight)
+                : (dark ? AppColors.darkTheme : AppColors.lightTheme);
             if (Platform.isAndroid) {
               SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
                 statusBarColor: colors.chrome,

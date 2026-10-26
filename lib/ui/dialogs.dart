@@ -157,7 +157,7 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
                     ]),
                     const SizedBox(height: 6),
                     Container(
-                      decoration: BoxDecoration(color: c.well, borderRadius: BorderRadius.circular(16)),
+                      decoration: BoxDecoration(color: c.well, borderRadius: c.r(16)),
                       clipBehavior: Clip.antiAlias,
                       child: Column(children: [
                         for (var i = 0; i < _order.length; i++)
@@ -212,7 +212,7 @@ class _CadTemplateBodyState extends State<_CadTemplateBody> {
                     const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: c.well, borderRadius: BorderRadius.circular(14)),
+                      decoration: BoxDecoration(color: c.well, borderRadius: c.r(14)),
                       child: Text(preview, style: TextStyle(fontFamily: monoFontFamily, fontSize: 12, color: c.text)),
                     ),
                   ]),

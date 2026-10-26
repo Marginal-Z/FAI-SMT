@@ -138,7 +138,7 @@ class _DiscrepancyCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: c.panel,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: c.r(8),
         border: Border.all(color: c.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -208,7 +208,7 @@ class _Tag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
         color: outlined ? c.panelAlt : color.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: c.r(4),
         border: Border.all(color: outlined ? c.border : color.withValues(alpha: 0.45)),
       ),
       child: Text(

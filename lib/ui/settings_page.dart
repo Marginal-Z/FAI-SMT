@@ -145,7 +145,7 @@ class _SettingsList extends StatelessWidget {
               width: 32,
               height: 32,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(9)),
+              decoration: BoxDecoration(color: color, borderRadius: c.r(9)),
               child: LucideIcon(icon, size: 17, color: const Color(0xFFFFFFFF), stroke: 2),
             ),
             const SizedBox(width: 14),
@@ -279,6 +279,14 @@ class _Appearance extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         row(
+          s.t('set_theme_style'),
+          Segmented<ThemeStyle>(
+            value: state.settings.themeStyle,
+            options: [(ThemeStyle.modern, s.t('style_modern')), (ThemeStyle.industrial, s.t('style_industrial'))],
+            onChanged: state.setThemeStyle,
+          ),
+        ),
+        row(
           s.t('set_theme'),
           Segmented<ThemePref>(
             value: state.theme,
@@ -330,7 +338,7 @@ class _About extends StatelessWidget {
     };
     Widget chip(String text, {bool accent = false}) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(color: accent ? c.blueTint : c.well, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(color: accent ? c.blueTint : c.well, borderRadius: c.r(999)),
       child: Text(
         text,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent ? c.blueTx : c.tx2),
@@ -341,11 +349,11 @@ class _About extends StatelessWidget {
       children: [
         Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(phone ? 16 : 20),
+            borderRadius: c.r(phone ? 16 : 20),
             boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 18, offset: Offset(0, 8))],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(phone ? 16 : 20),
+            borderRadius: c.r(phone ? 16 : 20),
             child: Image.asset('assets/icon/app_icon.png', width: phone ? 60 : 76, height: phone ? 60 : 76, filterQuality: FilterQuality.medium),
           ),
         ),
@@ -443,7 +451,7 @@ class _Group extends StatelessWidget {
         ),
         Container(
           clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(color: c.well, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(color: c.well, borderRadius: c.r(16)),
           child:
               child ??
               Column(
@@ -595,7 +603,7 @@ class _UpdatePanel extends StatelessWidget {
         if (status == UpdateStatus.downloading) ...[
           const SizedBox(height: 12),
           ClipRRect(
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: c.r(3),
             child: SizedBox(
               height: 6,
               child: Row(
@@ -632,7 +640,7 @@ class _UpdatePanel extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: c.panelAlt,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: c.r(6),
               border: Border.all(color: c.border),
             ),
             child: SingleChildScrollView(
@@ -827,7 +835,7 @@ class _Swatch extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: c.r(6),
           border: Border.all(color: selected ? c.accent : (hover ? c.text : c.borderStrong), width: selected ? 2.5 : 1),
         ),
       ),
@@ -851,7 +859,7 @@ class _Preview extends StatelessWidget {
         width: w,
         height: h,
         margin: const EdgeInsets.symmetric(horizontal: 7),
-        decoration: BoxDecoration(color: body, borderRadius: BorderRadius.circular(k == PartKind.ic ? 3 : 1.5)),
+        decoration: BoxDecoration(color: body, borderRadius: c.r(k == PartKind.ic ? 3 : 1.5)),
         child: ends
             ? Row(
                 children: [
@@ -869,7 +877,7 @@ class _Preview extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: board,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: c.r(20),
         border: Border.all(color: c.line),
       ),
       child: SingleChildScrollView(
@@ -988,7 +996,7 @@ class _PickerBodyState extends State<_PickerBody> {
                 height: 30,
                 decoration: BoxDecoration(
                   color: _color,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: c.r(6),
                   border: Border.all(color: c.borderStrong),
                 ),
               ),

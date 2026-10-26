@@ -120,7 +120,7 @@ class _CadViewState extends State<CadView> {
             ),
             Expanded(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: c.r(20),
                 child: _CadGrid(cad: cad, indices: indices, v: _v, h: _h),
               ),
             ),
@@ -557,6 +557,17 @@ class _Controls extends StatelessWidget {
         final file = SizedBox(width: 380, child: fileCard);
         final formats = KeyedSubtree(key: tourTargets.cadFormat, child: row([unitCard, formatCard]));
         if (part == _ControlsPart.inputs) {
+          // Narrow left columns: the file card above the unit and format cards.
+          if (box.maxWidth < 1000) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                fileCard,
+                const SizedBox(height: 12),
+                Align(alignment: Alignment.centerLeft, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: formats)),
+              ],
+            );
+          }
           // The file card takes the room the unit and format cards leave.
           return IntrinsicHeight(
             child: Row(
@@ -700,7 +711,7 @@ class _CadGrid extends StatelessWidget {
                   Container(
                     constraints: const BoxConstraints(minHeight: 38),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(color: c.solid, borderRadius: c.r(12)),
                     child: Row(
                       children: [cell(text('#', head: true), numberCol), for (var i = 0; i < header.length; i++) cell(text(header[i], head: true), widths[i])],
                     ),
@@ -724,7 +735,7 @@ class _CadGrid extends StatelessWidget {
                             cursor: SystemMouseCursors.basic,
                             builder: (context, hover, _) => Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12),
-                              decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: BorderRadius.circular(12)),
+                              decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: c.r(12)),
                               child: Row(
                                 children: [
                                   cell(text('${i + 1}', color: c.tx2), numberCol),
@@ -835,7 +846,7 @@ class _Checks extends StatelessWidget {
             const SizedBox(height: 18),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-              decoration: BoxDecoration(color: allGood ? c.okTint : c.ngTint, borderRadius: BorderRadius.circular(22)),
+              decoration: BoxDecoration(color: allGood ? c.okTint : c.ngTint, borderRadius: c.r(22)),
               child: Row(
                 children: [
                   Container(

@@ -78,7 +78,7 @@ class GuidePage extends StatelessWidget {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: c.accent.withValues(alpha: c.dark ? 0.18 : 0.1),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: c.r(8),
                             ),
                             child: GlyphIcon(glyph, size: 17, filled: true, color: c.accent),
                           ),

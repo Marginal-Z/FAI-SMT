@@ -369,4 +369,23 @@ void main() {
     await shot(tester, s, 'phone_settings_list', size: const Size(390, 844), touch: true);
   });
 
+
+  group('industrial', () {
+    testWidgets('industrial empty', (tester) async {
+      final s = AppState(AppSettings(theme: ThemePref.light, themeStyle: ThemeStyle.industrial), Directory.systemTemp.path);
+      await shot(tester, s, 'industrial_empty', size: const Size(1280, 800));
+    });
+    testWidgets('industrial settings', (tester) async {
+      final s = demoState(dark: false);
+      s.settings.themeStyle = ThemeStyle.industrial;
+      s.openSettings(SettingsSection.appearance);
+      await shot(tester, s, 'industrial_settings');
+    });
+    testWidgets('industrial phone', (tester) async {
+      final s = demoState(dark: false);
+      s.settings.themeStyle = ThemeStyle.industrial;
+      await shot(tester, s, 'industrial_phone', size: const Size(390, 844), touch: true);
+    });
+  });
+
 }

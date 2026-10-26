@@ -275,7 +275,14 @@ class _BoardViewState extends State<BoardView> with TickerProviderStateMixin {
     if (!_shown.contains(part)) state.setBoardSide(BoardSideFilter.both);
     final depth = state.settings.board.depth;
     final from = _cam.value;
-    _View at(double zoom) => _fitView(_model!.extents, _canvas, state.boardQuarterTurns, state.boardMirror, from.copyWith(zoom: zoom, pan: Offset.zero), tilt: depth);
+    _View at(double zoom) => _fitView(
+      _model!.extents,
+      _canvas,
+      state.boardQuarterTurns,
+      state.boardMirror,
+      from.copyWith(zoom: zoom, pan: Offset.zero),
+      tilt: depth,
+    );
     // Zoom so the part spans about a sixth of the canvas (at least 8 mm of board).
     final base = at(1).scale;
     final span = math.max(math.max(part.shape.width, part.shape.height), 8.0);
@@ -402,172 +409,173 @@ class _BoardViewState extends State<BoardView> with TickerProviderStateMixin {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!immersive) ...[
-            _BoardToolbar(state: state, compact: phone, onLocate: (ref) => _locate(context, ref)),
-            SizedBox(height: phone ? 10 : 12),
-          ],
+          if (!immersive) ...[_BoardToolbar(state: state, compact: phone, onLocate: (ref) => _locate(context, ref)), SizedBox(height: phone ? 10 : 12)],
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(phone ? 24 : 32),
-              child: ColoredBox(
-                color: c.hover,
-                child: LayoutBuilder(
-                  builder: (context, box) {
-                    final size = Size(box.maxWidth, box.maxHeight);
-                    _canvas = size;
-                    _shown = parts;
-                    _View view() => _fitView(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
-                    return Listener(
-                      onPointerSignal: (e) {
-                        if (e is PointerScrollEvent) _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size);
-                      },
-                      // Right or middle drag orbits the 3D view.
-                      onPointerMove: (e) {
-                        if (depth && e.kind == PointerDeviceKind.mouse && e.buttons & (kSecondaryMouseButton | kMiddleMouseButton) != 0) {
-                          _orbit(yaw: -e.delta.dx * 0.4, pitch: e.delta.dy * 0.35);
-                        }
-                      },
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.grab,
-                        onHover: (e) {
-                          final best = _partAt(e.localPosition, parts, view(), depth, raisedSide);
-                          _hover.value = best == null ? null : (best, e.localPosition);
+            child: Container(
+              // Industrial style: the canvas is outlined like every panel.
+              foregroundDecoration: c.industrial ? BoxDecoration(border: c.cardBorder, borderRadius: c.r(phone ? 24 : 32)) : null,
+              child: ClipRRect(
+                borderRadius: c.r(phone ? 24 : 32),
+                child: ColoredBox(
+                  color: c.industrial ? c.well : c.hover,
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final size = Size(box.maxWidth, box.maxHeight);
+                      _canvas = size;
+                      _shown = parts;
+                      _View view() => _fitView(model.extents, size, state.boardQuarterTurns, state.boardMirror, _cam.value, tilt: depth);
+                      return Listener(
+                        onPointerSignal: (e) {
+                          if (e is PointerScrollEvent) _zoomAt(e.localPosition, e.scrollDelta.dy < 0 ? 1.18 : 1 / 1.18, size);
                         },
-                        onExit: (_) => _hover.value = null,
-                        child: GestureDetector(
-                          // Right-click or long-press a part to choose its model.
-                          onSecondaryTapUp: (d) {
-                            final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
-                            if (part != null) _pickModel(context, part);
+                        // Right or middle drag orbits the 3D view.
+                        onPointerMove: (e) {
+                          if (depth && e.kind == PointerDeviceKind.mouse && e.buttons & (kSecondaryMouseButton | kMiddleMouseButton) != 0) {
+                            _orbit(yaw: -e.delta.dx * 0.4, pitch: e.delta.dy * 0.35);
+                          }
+                        },
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.grab,
+                          onHover: (e) {
+                            final best = _partAt(e.localPosition, parts, view(), depth, raisedSide);
+                            _hover.value = best == null ? null : (best, e.localPosition);
                           },
-                          onLongPressStart: (d) {
-                            final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
-                            if (part != null) _pickModel(context, part);
-                          },
-                          onScaleStart: (d) {
-                            _gestureStart = _cam.value;
-                            _gestureFocal = d.localFocalPoint;
-                          },
-                          onScaleUpdate: (d) {
-                            final cam = _cam.value;
-                            final center = Offset(size.width / 2, size.height / 2);
-                            final newZoom = (_gestureStart.zoom * d.scale).clamp(0.2, 200.0);
-                            final f = newZoom / cam.zoom;
-                            var next = cam.copyWith(zoom: newZoom, pan: (d.localFocalPoint - center) * (1 - f) + cam.pan * f + d.focalPointDelta);
-                            // Touch: two fingers turn the 3D view, three fingers tilt it.
-                            if (depth && d.pointerCount >= 2) {
-                              next = next.copyWith(yaw: (_gestureStart.yaw - d.rotation * 180 / math.pi) % 360);
-                              if (d.pointerCount >= 3) {
-                                next = next.copyWith(
-                                  pan: cam.pan,
-                                  pitch: (_gestureStart.pitch + (d.localFocalPoint.dy - _gestureFocal.dy) * 0.3).clamp(0.0, 80.0),
-                                );
+                          onExit: (_) => _hover.value = null,
+                          child: GestureDetector(
+                            // Right-click or long-press a part to choose its model.
+                            onSecondaryTapUp: (d) {
+                              final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
+                              if (part != null) _pickModel(context, part);
+                            },
+                            onLongPressStart: (d) {
+                              final part = _partAt(d.localPosition, parts, view(), depth, raisedSide);
+                              if (part != null) _pickModel(context, part);
+                            },
+                            onScaleStart: (d) {
+                              _gestureStart = _cam.value;
+                              _gestureFocal = d.localFocalPoint;
+                            },
+                            onScaleUpdate: (d) {
+                              final cam = _cam.value;
+                              final center = Offset(size.width / 2, size.height / 2);
+                              final newZoom = (_gestureStart.zoom * d.scale).clamp(0.2, 200.0);
+                              final f = newZoom / cam.zoom;
+                              var next = cam.copyWith(zoom: newZoom, pan: (d.localFocalPoint - center) * (1 - f) + cam.pan * f + d.focalPointDelta);
+                              // Touch: two fingers turn the 3D view, three fingers tilt it.
+                              if (depth && d.pointerCount >= 2) {
+                                next = next.copyWith(yaw: (_gestureStart.yaw - d.rotation * 180 / math.pi) % 360);
+                                if (d.pointerCount >= 3) {
+                                  next = next.copyWith(
+                                    pan: cam.pan,
+                                    pitch: (_gestureStart.pitch + (d.localFocalPoint.dy - _gestureFocal.dy) * 0.3).clamp(0.0, 80.0),
+                                  );
+                                }
                               }
-                            }
-                            _cam.value = next;
-                          },
-                          onDoubleTap: _fit,
-                          child: ClipRect(
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: RepaintBoundary(
-                                    key: tourTargets.boardCanvas,
-                                    child: CustomPaint(
-                                      isComplex: true,
-                                      painter: _AssemblyPainter(
-                                        model: model,
-                                        parts: parts,
-                                        cam: _cam,
-                                        hover: _hover,
-                                        quarter: state.boardQuarterTurns,
-                                        mirror: state.boardMirror,
-                                        colors: c,
-                                        coloring: state.boardColoring,
-                                        checked: report != null,
-                                        highlight: highlight,
-                                        dimOther: state.boardSide == BoardSideFilter.both,
-                                        raisedSide: raisedSide,
-                                        depth: depth,
-                                        palette: palette,
-                                        flash: _flash,
+                              _cam.value = next;
+                            },
+                            onDoubleTap: _fit,
+                            child: ClipRect(
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: RepaintBoundary(
+                                      key: tourTargets.boardCanvas,
+                                      child: CustomPaint(
+                                        isComplex: true,
+                                        painter: _AssemblyPainter(
+                                          model: model,
+                                          parts: parts,
+                                          cam: _cam,
+                                          hover: _hover,
+                                          quarter: state.boardQuarterTurns,
+                                          mirror: state.boardMirror,
+                                          colors: c,
+                                          coloring: state.boardColoring,
+                                          checked: report != null,
+                                          highlight: highlight,
+                                          dimOther: state.boardSide == BoardSideFilter.both,
+                                          raisedSide: raisedSide,
+                                          depth: depth,
+                                          palette: palette,
+                                          flash: _flash,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                // Phones: the legend sits at the top so the zoom and
-                                // 3D controls keep the bottom edge.
-                                Positioned(
-                                  left: phone ? 10 : 20,
-                                  right: phone ? 10 : null,
-                                  top: phone ? 10 : null,
-                                  bottom: phone ? null : 20,
-                                  child: Align(
-                                    alignment: Alignment.topLeft,
-                                    child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
-                                  ),
-                                ),
-                                if (immersive) Positioned(top: 20, right: 20, child: _FloatingControls(state: state)),
-                                Positioned(
-                                  right: phone ? 10 : 20,
-                                  bottom: phone ? 10 : 20,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      GlassButton(
-                                        icon: Lucide.plus,
-                                        size: 40,
-                                        tooltip: s.t('zoom_in'),
-                                        onTap: () => _zoomAt(Offset(size.width / 2, size.height / 2), 1.25, size),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      GlassButton(
-                                        icon: Lucide.minus,
-                                        size: 40,
-                                        tooltip: s.t('zoom_out'),
-                                        onTap: () => _zoomAt(Offset(size.width / 2, size.height / 2), 1 / 1.25, size),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (depth)
+                                  // Phones: the legend sits at the top so the zoom and
+                                  // 3D controls keep the bottom edge.
                                   Positioned(
                                     left: phone ? 10 : 20,
-                                    right: phone ? 60 : 80,
-                                    bottom: phone ? 10 : 20,
+                                    right: phone ? 10 : null,
+                                    top: phone ? 10 : null,
+                                    bottom: phone ? null : 20,
                                     child: Align(
-                                      alignment: phone ? Alignment.bottomLeft : Alignment.bottomRight,
-                                      child: SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: ValueListenableBuilder(
-                                          valueListenable: _cam,
-                                          builder: (context, cam, _) => _OrbitControls(
-                                            cam: cam,
-                                            onOrbit: _orbit,
-                                            onTop: () => _cam.value = cam.copyWith(yaw: 0, pitch: 0),
-                                            onDefault: () => _cam.value = cam.copyWith(yaw: 0, pitch: _defaultPitch),
+                                      alignment: Alignment.topLeft,
+                                      child: _LegendCard(coloring: state.boardColoring, checked: report != null, palette: palette),
+                                    ),
+                                  ),
+                                  if (immersive) Positioned(top: 20, right: 20, child: _FloatingControls(state: state)),
+                                  Positioned(
+                                    right: phone ? 10 : 20,
+                                    bottom: phone ? 10 : 20,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GlassButton(
+                                          icon: Lucide.plus,
+                                          size: 40,
+                                          tooltip: s.t('zoom_in'),
+                                          onTap: () => _zoomAt(Offset(size.width / 2, size.height / 2), 1.25, size),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        GlassButton(
+                                          icon: Lucide.minus,
+                                          size: 40,
+                                          tooltip: s.t('zoom_out'),
+                                          onTap: () => _zoomAt(Offset(size.width / 2, size.height / 2), 1 / 1.25, size),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (depth)
+                                    Positioned(
+                                      left: phone ? 10 : 20,
+                                      right: phone ? 60 : 80,
+                                      bottom: phone ? 10 : 20,
+                                      child: Align(
+                                        alignment: phone ? Alignment.bottomLeft : Alignment.bottomRight,
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: ValueListenableBuilder(
+                                            valueListenable: _cam,
+                                            builder: (context, cam, _) => _OrbitControls(
+                                              cam: cam,
+                                              onOrbit: _orbit,
+                                              onTop: () => _cam.value = cam.copyWith(yaw: 0, pitch: 0),
+                                              onDefault: () => _cam.value = cam.copyWith(yaw: 0, pitch: _defaultPitch),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
+                                  ValueListenableBuilder(
+                                    valueListenable: _hover,
+                                    builder: (context, hover, _) => hover == null
+                                        ? const SizedBox.shrink()
+                                        : Positioned(
+                                            left: math.min(hover.$2.dx + 16, size.width - 250),
+                                            top: math.min(hover.$2.dy + 16, size.height - 120),
+                                            child: _HoverCard(part: hover.$1),
+                                          ),
                                   ),
-                                ValueListenableBuilder(
-                                  valueListenable: _hover,
-                                  builder: (context, hover, _) => hover == null
-                                      ? const SizedBox.shrink()
-                                      : Positioned(
-                                          left: math.min(hover.$2.dx + 16, size.width - 250),
-                                          top: math.min(hover.$2.dy + 16, size.height - 120),
-                                          child: _HoverCard(part: hover.$1),
-                                        ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -1054,7 +1062,7 @@ class _OrbitControls extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: c.r(999),
         ),
         child: Text(
           label,
@@ -1065,7 +1073,7 @@ class _OrbitControls extends StatelessWidget {
     final yaw = cam.yaw > 180 ? cam.yaw - 360 : cam.yaw;
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
+      decoration: BoxDecoration(color: c.glass, borderRadius: c.r(999), boxShadow: c.shadowSm, border: c.cardBorder),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1186,11 +1194,7 @@ class _BoardToolbarState extends State<_BoardToolbar> {
             value: state.boardColoring,
             width: 124,
             flat: true,
-            options: [
-              (BoardColoring.real, s.t('color_real')),
-              (BoardColoring.type, s.t('color_type')),
-              (BoardColoring.status, s.t('color_status')),
-            ],
+            options: [(BoardColoring.real, s.t('color_real')), (BoardColoring.type, s.t('color_type')), (BoardColoring.status, s.t('color_status'))],
             onChanged: state.setBoardColoring,
           ),
         ),
@@ -1229,7 +1233,9 @@ class _BoardToolbarState extends State<_BoardToolbar> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Flexible(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: tools)),
+            Flexible(
+              child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: tools),
+            ),
             const SizedBox(width: 6),
             search,
             tool(Lucide.search, s.t('board_locate'), locate),
@@ -1257,7 +1263,7 @@ class _LegendCard extends StatelessWidget {
       height: ring != null ? 10 : 12,
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(ring != null ? 3 : 4),
+        borderRadius: c.r(ring != null ? 3 : 4),
         border: ring != null ? Border.all(color: ring, width: 1.5) : null,
       ),
     );
@@ -1298,7 +1304,7 @@ class _LegendCard extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 640),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(22), boxShadow: c.shadowSm),
+        decoration: BoxDecoration(color: c.glass, borderRadius: c.r(22), boxShadow: c.shadowSm, border: c.cardBorder),
         child: Wrap(
           spacing: 16,
           runSpacing: 6,
@@ -1343,7 +1349,7 @@ class _HoverCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: c.panel,
           border: Border.all(color: c.borderStrong),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: c.r(8),
           boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 4))],
         ),
         child: Column(
@@ -1412,7 +1418,7 @@ class _FloatingControls extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
+          decoration: BoxDecoration(color: c.glass, borderRadius: c.r(999), boxShadow: c.shadowSm, border: c.cardBorder),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

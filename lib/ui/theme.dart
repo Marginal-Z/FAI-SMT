@@ -53,9 +53,20 @@ class AppColors {
     required this.lineStrong,
     required this.shadow,
     required this.shadowSm,
+    this.industrial = false,
   });
 
   final bool dark;
+
+  /// Industrial style: flat white surfaces, 1 px grey borders, small square
+  /// corners, no shadows or gradients, graphite accent, system fonts.
+  final bool industrial;
+
+  /// Corner radius: the design's radius, or in the industrial style 3–6 px.
+  BorderRadius r(double v) => BorderRadius.circular(!industrial || v <= 4 ? v : (v >= 100 ? 4 : (v <= 12 ? 3 : (v <= 20 ? 4 : 6))));
+
+  /// Industrial style: every card is outlined.
+  Border? get cardBorder => industrial ? Border.all(color: lineStrong) : null;
   final Color bg;
   final Color tx;
   final Color tx2;
@@ -224,6 +235,98 @@ class AppColors {
     shadowSm: [BoxShadow(color: Color(0x59000000), offset: Offset(0, 4), blurRadius: 20)],
   );
 
+  /// Industrial style (light), from the SMT-FAI industrial design.
+  static const industrialLight = AppColors(
+    industrial: true,
+    dark: false,
+    bg: Color(0xFFFFFFFF),
+    tx: Color(0xFF000000),
+    tx2: Color(0xFF333333),
+    tx3: Color(0xFF555555),
+    card: Color(0xFFFFFFFF),
+    solid: Color(0xFFF0F0F0),
+    well: Color(0xFFF5F5F5),
+    hover: Color(0xFFF2F2F2),
+    glass: Color(0xFFFFFFFF),
+    glass2: Color(0xFFF5F5F5),
+    circle: Color(0xFFFFFFFF),
+    blue: Color(0xFF17191C),
+    btn: Color(0xFF17191C),
+    btnHover: Color(0xFF2E3136),
+    blueTx: Color(0xFF17191C),
+    blueTint: Color(0xFFE6E6E7),
+    okTx: Color(0xFF14602C),
+    okTint: Color(0xFFE4F2E8),
+    okSolid: Color(0xFF1B7F3B),
+    ngTx: Color(0xFFA01E25),
+    ngTint: Color(0xFFFCE8E9),
+    ngSolid: Color(0xFFC0262D),
+    warnTx: Color(0xFF8A4A00),
+    warnTint: Color(0xFFFFF1DC),
+    warnSolid: Color(0xFFB35F00),
+    grayTint: Color(0xFFEEEEEE),
+    kbd: Color(0xFFFFFFFF),
+    navOn: Color(0xFF17191C),
+    navOnTx: Color(0xFFFFFFFF),
+    navTx: Color(0xFF333333),
+    track: Color(0xFFE6E6E6),
+    mesh1: Color(0x00000000),
+    mesh2: Color(0x00000000),
+    mesh3: Color(0x00000000),
+    rowSel: Color(0xFFE9EBEE),
+    band: Color(0xFFFAFAFA),
+    line: Color(0xFFE3E3E3),
+    lineStrong: Color(0xFFCCCCCC),
+    shadow: [],
+    shadowSm: [],
+  );
+
+  /// Industrial style (dark): the same flat, outlined look on graphite.
+  static const industrialDark = AppColors(
+    industrial: true,
+    dark: true,
+    bg: Color(0xFF141516),
+    tx: Color(0xFFF2F2F2),
+    tx2: Color(0xFFC6C6C6),
+    tx3: Color(0xFF9A9A9A),
+    card: Color(0xFF1D1E20),
+    solid: Color(0xFF26282B),
+    well: Color(0xFF232427),
+    hover: Color(0xFF2A2C2F),
+    glass: Color(0xFF1D1E20),
+    glass2: Color(0xFF2A2C2F),
+    circle: Color(0xFF26282B),
+    blue: Color(0xFFE6E6E6),
+    btn: Color(0xFF3A3D42),
+    btnHover: Color(0xFF474B51),
+    blueTx: Color(0xFFE6E6E6),
+    blueTint: Color(0xFF2F3237),
+    okTx: Color(0xFF7FD69A),
+    okTint: Color(0xFF1C3324),
+    okSolid: Color(0xFF3FAF63),
+    ngTx: Color(0xFFFF9A9E),
+    ngTint: Color(0xFF3A1F21),
+    ngSolid: Color(0xFFE5484D),
+    warnTx: Color(0xFFFFC271),
+    warnTint: Color(0xFF3A2C17),
+    warnSolid: Color(0xFFE0921E),
+    grayTint: Color(0xFF2A2C2F),
+    kbd: Color(0xFF26282B),
+    navOn: Color(0xFFE6E6E6),
+    navOnTx: Color(0xFF111214),
+    navTx: Color(0xFFC6C6C6),
+    track: Color(0xFF34363A),
+    mesh1: Color(0x00000000),
+    mesh2: Color(0x00000000),
+    mesh3: Color(0x00000000),
+    rowSel: Color(0xFF2B2F35),
+    band: Color(0xFF191A1C),
+    line: Color(0xFF2E3033),
+    lineStrong: Color(0xFF3C3F43),
+    shadow: [],
+    shadowSm: [],
+  );
+
   /// Text colour of a result shown on its tint.
   Color categoryText(CheckCategory c) => switch (c) {
     CheckCategory.pass => okTx,
@@ -350,5 +453,15 @@ String get monoFontFamily => Platform.isWindows
     ? 'monospace'
     : 'DejaVu Sans Mono';
 
-TextStyle baseTextStyle(AppColors c) =>
-    TextStyle(fontFamily: uiFontFamily, fontFamilyFallback: uiFontFallback, fontSize: 14, height: 1.35, color: c.tx, decoration: TextDecoration.none);
+/// The industrial style uses the Windows UI fonts (Segoe UI, Microsoft
+/// YaHei), and the bundled Inter on other systems.
+const _industrialFallback = ['Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Noto Sans SC', 'Inter', ...uiFontFallback];
+
+TextStyle baseTextStyle(AppColors c) => TextStyle(
+  fontFamily: c.industrial && Platform.isWindows ? 'Segoe UI' : uiFontFamily,
+  fontFamilyFallback: c.industrial ? _industrialFallback : uiFontFallback,
+  fontSize: c.industrial ? 13.5 : 14,
+  height: 1.35,
+  color: c.tx,
+  decoration: TextDecoration.none,
+);

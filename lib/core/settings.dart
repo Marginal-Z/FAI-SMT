@@ -261,6 +261,9 @@ class BoardStyle {
       );
 }
 
+/// Interface styles: the original design, and the flat industrial one.
+enum ThemeStyle { modern, industrial }
+
 class AppSettings {
   AppSettings({
     BoardStyle? board,
@@ -273,6 +276,7 @@ class AppSettings {
     this.uiScale = 0,
     this.tourDone = false,
     this.navLabels = false,
+    this.themeStyle = ThemeStyle.modern,
     List<PartModelRule>? partRules,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate(),
@@ -298,6 +302,9 @@ class AppSettings {
   /// The page bar shows names next to its icons.
   bool navLabels;
 
+  /// Interface style: the original (modern) look or the industrial one.
+  ThemeStyle themeStyle;
+
   /// Part library models chosen by the user for specific parts.
   List<PartModelRule> partRules;
 
@@ -312,6 +319,7 @@ class AppSettings {
     'uiScale': uiScale,
     'tourDone': tourDone,
     'navLabels': navLabels,
+    'themeStyle': themeStyle.name,
     'partRules': [for (final r in partRules) r.toJson()],
   };
 
@@ -334,6 +342,7 @@ class AppSettings {
     uiScale: (j['uiScale'] as num?)?.toDouble() ?? 0,
     tourDone: j['tourDone'] == true,
     navLabels: j['navLabels'] == true,
+    themeStyle: ThemeStyle.values.firstWhere((t) => t.name == j['themeStyle'], orElse: () => ThemeStyle.modern),
     partRules: [for (final r in (j['partRules'] as List?) ?? const []) if (r is Map) PartModelRule.fromJson(r.cast())],
   );
 

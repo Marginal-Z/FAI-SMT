@@ -590,9 +590,9 @@ class _StatCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? fg.withValues(alpha: 0.55) : const Color(0x00000000), width: 1.5),
-          boxShadow: selected ? [BoxShadow(color: glow, offset: const Offset(0, 10), blurRadius: 26)] : c.shadowSm,
+          borderRadius: c.r(20),
+          border: Border.all(color: selected ? fg.withValues(alpha: 0.55) : (c.industrial ? c.lineStrong : const Color(0x00000000)), width: selected || !c.industrial ? 1.5 : 1),
+          boxShadow: selected && !c.industrial ? [BoxShadow(color: glow, offset: const Offset(0, 10), blurRadius: 26)] : c.shadowSm,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -720,7 +720,7 @@ class _HeaderRow extends StatelessWidget {
     Text t(String key) => Text(s.t(key), maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(18)),
+      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(18)),
       child: _gridRow([
         Text('#', style: style),
         t('col_pn'),
@@ -788,7 +788,7 @@ class _ResultRow extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: c.r(18),
         ),
         child: _gridRow([
           Text(
@@ -862,7 +862,7 @@ class _RowCard extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: c.r(18),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -936,7 +936,7 @@ class _ConfirmPill extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: large ? 18 : 12),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(large ? 20 : 15),
+            borderRadius: c.r(large ? 20 : 15),
             border: Border.all(color: border, width: 1.2),
           ),
           child: Row(
@@ -1184,7 +1184,7 @@ class EmptyState extends StatelessWidget {
             width: 72,
             height: 72,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: c.glass, shape: BoxShape.circle, boxShadow: c.shadowSm),
+            decoration: BoxDecoration(color: c.glass, shape: BoxShape.circle, boxShadow: c.shadowSm, border: c.cardBorder),
             child: Icon(icon, size: 30, color: c.tx2),
           ),
           const SizedBox(height: 18),

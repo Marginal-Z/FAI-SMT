@@ -72,7 +72,7 @@ class DCard extends StatelessWidget {
     return Container(
       padding: padding,
       clipBehavior: clip ? Clip.antiAlias : Clip.none,
-      decoration: BoxDecoration(color: color ?? c.card, borderRadius: BorderRadius.circular(radius), boxShadow: shadow ?? c.shadow),
+      decoration: BoxDecoration(color: color ?? c.card, borderRadius: c.r(radius), boxShadow: c.industrial ? null : (shadow ?? c.shadow), border: c.cardBorder),
       child: child,
     );
   }
@@ -101,7 +101,7 @@ class GlassButton extends StatelessWidget {
         height: size,
         padding: label == null ? null : const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: hover ? c.glass2 : c.glass, borderRadius: BorderRadius.circular(size / 2), boxShadow: c.shadowSm),
+        decoration: BoxDecoration(color: hover ? c.glass2 : c.glass, borderRadius: c.r(size / 2), boxShadow: c.shadowSm, border: c.cardBorder),
         child: label == null
             ? LucideIcon(icon!, size: iconSize, color: c.tx, stroke: 1.7)
             : Row(
@@ -166,7 +166,7 @@ class PillButton extends StatelessWidget {
         final primary = kind == PillKind.primary;
         final bg = switch (kind) {
           PillKind.primary => hover && enabled ? c.btnHover : c.btn,
-          PillKind.soft => hover && enabled ? c.glass2 : c.hover,
+          PillKind.soft => c.industrial ? (hover && enabled ? c.hover : c.card) : (hover && enabled ? c.glass2 : c.hover),
           PillKind.ghost => hover && enabled ? c.hover : const Color(0x00000000),
           PillKind.glass => hover && enabled ? c.glass2 : c.glass,
         };
@@ -181,8 +181,12 @@ class PillButton extends StatelessWidget {
               padding: padding ?? EdgeInsets.symmetric(horizontal: height >= 44 ? 22 : 16),
               decoration: BoxDecoration(
                 color: bg,
-                borderRadius: BorderRadius.circular(height / 2),
-                boxShadow: primary && enabled
+                borderRadius: c.r(height / 2),
+                // Industrial style: outlined, no glow.
+                border: c.industrial && kind != PillKind.ghost ? Border.all(color: primary ? c.btnHover : c.lineStrong) : null,
+                boxShadow: c.industrial
+                    ? null
+                    : primary && enabled
                     ? const [BoxShadow(color: Color(0x5C0071E3), offset: Offset(0, 8), blurRadius: 22)]
                     : kind == PillKind.glass
                     ? c.shadowSm
@@ -230,7 +234,7 @@ class KeyHint extends StatelessWidget {
     height: 24,
     padding: const EdgeInsets.symmetric(horizontal: 9),
     alignment: Alignment.center,
-    decoration: BoxDecoration(color: const Color(0x38FFFFFF), borderRadius: BorderRadius.circular(8)),
+    decoration: BoxDecoration(color: const Color(0x38FFFFFF), borderRadius: AppTheme.of(context).r(8)),
     child: Text(
       text,
       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFFFFFFF)),
@@ -249,7 +253,7 @@ class Kbd extends StatelessWidget {
     final c = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(color: c.kbd, borderRadius: BorderRadius.circular(5)),
+      decoration: BoxDecoration(color: c.kbd, borderRadius: c.r(5)),
       child: Text(
         text,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.tx),
@@ -298,14 +302,18 @@ class GradientTile extends StatelessWidget {
     // 145deg: from the top-left towards the bottom-right, slightly steeper.
     final angle = (145 - 90) * math.pi / 180;
     final begin = Alignment(-math.cos(angle), -math.sin(angle));
+    final c = AppTheme.of(context);
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        gradient: LinearGradient(begin: begin, end: -begin, colors: [colors.$1, colors.$2]),
-        boxShadow: [BoxShadow(color: glow, offset: Offset(0, size / 6), blurRadius: size * 0.4)],
-      ),
+      // Industrial style: a flat graphite square (grey while a file is missing).
+      decoration: c.industrial
+          ? BoxDecoration(borderRadius: c.r(radius), color: colors == gray ? const Color(0xFF606060) : c.btn)
+          : BoxDecoration(
+              borderRadius: c.r(radius),
+              gradient: LinearGradient(begin: begin, end: -begin, colors: [colors.$1, colors.$2]),
+              boxShadow: [BoxShadow(color: glow, offset: Offset(0, size / 6), blurRadius: size * 0.4)],
+            ),
       alignment: Alignment.center,
       child: Stack(
         clipBehavior: Clip.none,
@@ -337,8 +345,8 @@ class TintTile extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: tint ?? c.blueTint, borderRadius: BorderRadius.circular(radius)),
-      child: LucideIcon(icon, size: iconSize, color: color ?? c.blueTx),
+      decoration: BoxDecoration(color: c.industrial ? c.btn : (tint ?? c.blueTint), borderRadius: c.r(radius)),
+      child: LucideIcon(icon, size: iconSize, color: c.industrial ? const Color(0xFFFFFFFF) : (color ?? c.blueTx)),
     );
   }
 }
@@ -356,7 +364,7 @@ class DBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     height: height,
     padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(height / 2)),
+    decoration: BoxDecoration(color: background, borderRadius: AppTheme.of(context).r(height / 2)),
     child: Center(
       widthFactor: 1,
       child: Text(
@@ -379,7 +387,7 @@ class DotChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-    decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(9)),
+    decoration: BoxDecoration(color: background, borderRadius: AppTheme.of(context).r(9)),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -429,7 +437,7 @@ class ToolTile extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: c.r(18),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -470,7 +478,7 @@ class RadioPill extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: c.r(15),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -513,7 +521,7 @@ class SegmentedPill<T> extends StatelessWidget {
     final c = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: c.hover, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(color: c.hover, borderRadius: c.r(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -529,7 +537,7 @@ class SegmentedPill<T> extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: on ? c.solid : (hover ? c.hover : null),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: c.r(16),
                     boxShadow: on ? const [BoxShadow(color: Color(0x1A000000), offset: Offset(0, 2), blurRadius: 8)] : null,
                   ),
                   child: Text(
@@ -568,7 +576,7 @@ class TrackBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(height / 2),
+      borderRadius: c.r(height / 2),
       child: SizedBox(
         height: height,
         child: Stack(
@@ -578,7 +586,7 @@ class TrackBar extends StatelessWidget {
               widthFactor: value.clamp(0.0, 1.0),
               heightFactor: 1,
               child: DecoratedBox(
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(height / 2)),
+                decoration: BoxDecoration(color: color, borderRadius: c.r(height / 2)),
               ),
             ),
           ],
@@ -656,10 +664,12 @@ class _PillSearchState extends State<PillSearch> {
           height: widget.height,
           padding: const EdgeInsets.only(left: 16, right: 16),
           decoration: BoxDecoration(
-            color: widget.flat ? c.hover : c.glass,
-            borderRadius: BorderRadius.circular(widget.height / 2),
+            color: c.industrial ? c.card : (widget.flat ? c.hover : c.glass),
+            borderRadius: c.r(widget.height / 2),
             boxShadow: widget.flat ? null : c.shadowSm,
-            border: _focus.hasFocus ? Border.all(color: c.blue, width: 2) : null,
+            border: _focus.hasFocus
+                ? Border.all(color: c.blue, width: c.industrial ? 1.5 : 2)
+                : (c.industrial ? Border.all(color: c.lineStrong) : null),
           ),
           child: Row(
             children: [

@@ -88,7 +88,7 @@ class _ModelGridState extends State<_ModelGrid> {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: c.r(14),
           border: Border.all(color: active ? c.accent.withValues(alpha: 0.6) : c.border),
         ),
         child: Text(
@@ -116,7 +116,7 @@ class _ModelGridState extends State<_ModelGrid> {
                     return Container(
                       decoration: BoxDecoration(
                         color: c.well,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: c.r(18),
                         border: Border.all(
                           color: active
                               ? c.blue

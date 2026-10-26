@@ -196,4 +196,24 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+
+  // Industrial style.
+  for (final (name, mod, ng) in [('check', Module.check, false), ('check_ng', Module.check, true), ('cad', Module.cad, false), ('board', Module.board, false)]) {
+    testWidgets('industrial $name', (tester) async {
+      final s = demoState(dark: false);
+      s.settings.themeStyle = ThemeStyle.industrial;
+      s.setModule(mod);
+      if (ng) {
+        s.setFilter(CheckCategory.ng);
+        s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
+      }
+      await shot(tester, s, 'industrial_$name');
+    });
+  }
+  testWidgets('industrial dark check', (tester) async {
+    final s = demoState();
+    s.settings.themeStyle = ThemeStyle.industrial;
+    await shot(tester, s, 'industrial_check_dark');
+  });
+
 }

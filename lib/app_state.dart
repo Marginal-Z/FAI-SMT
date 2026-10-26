@@ -268,6 +268,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setThemeStyle(ThemeStyle v) {
+    settings.themeStyle = v;
+    persist();
+    notifyListeners();
+  }
+
   void setNavLabels(bool v) {
     settings.navLabels = v;
     persist();

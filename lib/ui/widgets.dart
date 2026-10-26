@@ -102,7 +102,7 @@ class _HoverableState extends State<Hoverable> {
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                     decoration: BoxDecoration(
                       color: const Color(0xEE1D1D1F),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: AppTheme.of(context).r(8),
                       boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3))],
                     ),
                     child: Text(
@@ -160,7 +160,7 @@ class FlatButton extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
               decoration: BoxDecoration(
                 color: bg,
-                borderRadius: BorderRadius.circular(h / 2),
+                borderRadius: c.r(h / 2),
                 boxShadow: primary && enabled ? const [BoxShadow(color: Color(0x4D0071E3), offset: Offset(0, 6), blurRadius: 16)] : null,
               ),
               child: Row(
@@ -214,7 +214,7 @@ class IconBtn extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(size / 2),
+          borderRadius: c.r(size / 2),
         ),
         child: Icon(
           icon,
@@ -271,7 +271,7 @@ class TabItem extends StatelessWidget {
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(color: active ? accent : c.hover, borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: active ? accent : c.hover, borderRadius: c.r(8)),
                 child: Text(
                   '$count',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: active ? const Color(0xFFFFFFFF) : c.textDim),
@@ -298,7 +298,7 @@ class RefChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(9)),
+      decoration: BoxDecoration(color: soft, borderRadius: AppTheme.of(context).r(9)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -338,7 +338,7 @@ class ResultBadge extends StatelessWidget {
       height: 26,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(13)),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: AppTheme.of(context).r(13)),
       child: Text(
         text,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.24, color: color),
@@ -397,7 +397,7 @@ class _TextInputState extends State<TextInput> {
           padding: EdgeInsets.symmetric(horizontal: multi ? 14 : 14, vertical: multi ? 10 : 0),
           decoration: BoxDecoration(
             color: c.hover,
-            borderRadius: BorderRadius.circular(multi ? 16 : 18),
+            borderRadius: c.r(multi ? 16 : 18),
             border: Border.all(color: _focus.hasFocus ? c.blue : const Color(0x00000000), width: 2),
           ),
           child: Row(
@@ -464,7 +464,7 @@ class CheckBox extends StatelessWidget {
               height: 15,
               decoration: BoxDecoration(
                 color: value ? c.accent : c.input,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: c.r(2),
                 border: Border.all(
                   color: value
                       ? c.accent
@@ -525,7 +525,7 @@ class Segmented<T> extends StatelessWidget {
     final c = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: c.hover, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(color: c.hover, borderRadius: c.r(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -541,7 +541,7 @@ class Segmented<T> extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: on ? c.solid : (hover ? c.hover : null),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: c.r(18),
                     boxShadow: on ? const [BoxShadow(color: Color(0x1A000000), offset: Offset(0, 2), blurRadius: 8)] : null,
                   ),
                   child: Text(
@@ -664,7 +664,7 @@ Future<T?> showAppDialog<T>(BuildContext context, {required String title, requir
                 width: width.clamp(0, MediaQuery.sizeOf(ctx).width - 24).toDouble(),
                 constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height - 48),
                 clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(26), boxShadow: c.shadow),
+                decoration: BoxDecoration(color: c.solid, borderRadius: c.r(26), boxShadow: c.shadow, border: c.cardBorder),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -765,7 +765,7 @@ class FilterPill extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: BorderRadius.circular(m.compactControl / 2),
+          borderRadius: c.r(m.compactControl / 2),
           border: Border.all(color: active ? tone.withValues(alpha: 0.75) : c.border),
         ),
         child: Row(
@@ -909,8 +909,8 @@ class SurfaceCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(26),
-        border: borderColor == null ? null : Border.all(color: borderColor!),
+        borderRadius: c.r(26),
+        border: borderColor == null ? c.cardBorder : Border.all(color: borderColor!),
         boxShadow: c.shadow,
       ),
       child: child,
@@ -976,7 +976,7 @@ class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
                     child: Container(
                       width: widget.width < 150 ? 150 : widget.width,
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(18), boxShadow: c.shadow),
+                      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(18), boxShadow: c.shadow, border: c.cardBorder),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -996,7 +996,7 @@ class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
                                       : hover
                                       ? c.hover
                                       : null,
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: c.r(12),
                                 ),
                                 child: Text(
                                   label,
@@ -1027,8 +1027,9 @@ class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
             padding: const EdgeInsets.only(left: 16, right: 14),
             decoration: BoxDecoration(
               color: widget.flat ? (hover ? Color.alphaBlend(c.hover, c.hover) : c.hover) : (hover ? c.glass2 : c.glass),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: c.r(22),
               boxShadow: widget.flat ? null : c.shadowSm,
+              border: c.industrial ? Border.all(color: c.lineStrong) : null,
             ),
             child: Row(
               children: [
@@ -1092,7 +1093,7 @@ class PageBanner extends StatelessWidget {
       height: 104,
       decoration: BoxDecoration(
         color: c.panel,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: c.r(12),
         border: Border.all(color: c.border),
       ),
       clipBehavior: Clip.antiAlias,

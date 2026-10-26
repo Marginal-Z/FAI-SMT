@@ -222,7 +222,7 @@ class _TourOverlayState extends State<TourOverlay> {
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
                 decoration: BoxDecoration(
                   color: c.solid,
-                  borderRadius: BorderRadius.circular(26),
+                  borderRadius: c.r(26),
                   boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 48, offset: Offset(0, 18))],
                 ),
                 child: Column(
@@ -237,7 +237,7 @@ class _TourOverlayState extends State<TourOverlay> {
                             child: Container(
                               height: 3,
                               margin: const EdgeInsets.only(right: 2),
-                              decoration: BoxDecoration(color: i <= step ? c.blue : c.track, borderRadius: BorderRadius.circular(2)),
+                              decoration: BoxDecoration(color: i <= step ? c.blue : c.track, borderRadius: c.r(2)),
                             ),
                           ),
                       ],

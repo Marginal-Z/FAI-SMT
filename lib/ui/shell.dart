@@ -37,7 +37,7 @@ class AppHeader extends StatelessWidget {
     final nav = Container(
       key: tourTargets.tabs,
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: c.glass, borderRadius: BorderRadius.circular(999), boxShadow: c.shadowSm),
+      decoration: BoxDecoration(color: c.glass, borderRadius: c.r(999), boxShadow: c.shadowSm, border: c.cardBorder),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -61,7 +61,7 @@ class AppHeader extends StatelessWidget {
                         : hover
                         ? c.hover
                         : null,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: c.r(18),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -88,7 +88,7 @@ class AppHeader extends StatelessWidget {
               width: 32,
               height: 36,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: c.r(16)),
               child: LucideIcon(labels ? Lucide.chevronLeft : Lucide.chevronRight, size: 16, color: c.tx2, stroke: 2.2),
             ),
           ),
@@ -167,7 +167,7 @@ class _LanguageButtonState extends State<_LanguageButton> {
                     child: Container(
                       width: 168,
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: c.solid, borderRadius: BorderRadius.circular(18), boxShadow: c.shadow),
+                      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(18), boxShadow: c.shadow, border: c.cardBorder),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -186,7 +186,7 @@ class _LanguageButtonState extends State<_LanguageButton> {
                                       : hover
                                       ? c.hover
                                       : null,
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: c.r(12),
                                 ),
                                 child: Row(
                                   children: [
@@ -242,8 +242,10 @@ class AppFooter extends StatelessWidget {
         Text(label, style: style),
       ],
     );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 16, 32, 16),
+    // Industrial style: a grey status bar with a top rule.
+    return Container(
+      padding: c.industrial ? const EdgeInsets.fromLTRB(16, 7, 16, 7) : const EdgeInsets.fromLTRB(32, 16, 32, 16),
+      decoration: c.industrial ? BoxDecoration(color: c.dark ? c.solid : const Color(0xFFF2F2F2), border: Border(top: BorderSide(color: c.dark ? c.lineStrong : const Color(0xFF8C8C8C)))) : null,
       child: Row(
         children: [
           Container(
@@ -339,6 +341,65 @@ class PhoneNavBar extends StatelessWidget {
       for (final mod in Module.values) (moduleIcons[mod]!, s.t(moduleLabels[mod]!), state.module == mod && !state.settingsOpen, () => state.setModule(mod), tourTargets.module(mod)),
       (Lucide.gear, s.t('mod_settings'), state.settingsOpen, () => state.openSettings(), null),
     ];
+    final ind = c.industrial;
+    final items = Row(
+      children: [
+        for (final (icon, label, on, onTap, key) in tabs)
+          Expanded(
+            child: Hoverable(
+              key: key,
+              onTap: onTap,
+              builder: (context, hover, _) {
+                final color = ind ? (on ? c.navOnTx : c.tx2) : (on ? c.blueTx : c.tx);
+                final BoxDecoration deco;
+                if (ind) {
+                  deco = BoxDecoration(borderRadius: c.r(4), color: on ? c.navOn : (hover ? c.hover : null));
+                } else if (on) {
+                  deco = BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    color: c.dark ? const Color(0x24FFFFFF) : const Color(0x8CFFFFFF),
+                    border: Border.all(color: c.dark ? const Color(0x33FFFFFF) : const Color(0xCCFFFFFF), width: 0.8),
+                    boxShadow: [BoxShadow(color: Color.fromRGBO(0, 0, 0, c.dark ? 0.25 : 0.08), blurRadius: 10, offset: const Offset(0, 3))],
+                  );
+                } else {
+                  deco = BoxDecoration(borderRadius: BorderRadius.circular(28), color: hover ? c.hover : null);
+                }
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  height: ind ? 52 : 56,
+                  decoration: deco,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      LucideIcon(icon, size: 22, color: color, stroke: on ? 2.2 : 1.8),
+                      const SizedBox(height: 3),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: color),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+    // Industrial style: a flat bar along the bottom edge with a top rule.
+    if (ind) {
+      return Container(
+        key: tourTargets.tabs,
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+        decoration: BoxDecoration(
+          color: c.card,
+          border: Border(top: BorderSide(color: c.lineStrong)),
+        ),
+        child: items,
+      );
+    }
     final radius = BorderRadius.circular(34);
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
@@ -357,49 +418,7 @@ class PhoneNavBar extends StatelessWidget {
             filter: ImageFilter.compose(outer: ImageFilter.blur(sigmaX: 22, sigmaY: 22), inner: const ColorFilter.matrix(_saturate)),
             child: CustomPaint(
               painter: _GlassPainter(dark: c.dark, radius: 34),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Row(
-                  children: [
-                    for (final (icon, label, on, onTap, key) in tabs)
-                      Expanded(
-                        child: Hoverable(
-                          key: key,
-                          onTap: onTap,
-                          builder: (context, hover, _) {
-                            final color = on ? c.blueTx : c.tx;
-                            return AnimatedContainer(
-                              duration: const Duration(milliseconds: 260),
-                              curve: Curves.easeOutCubic,
-                              height: 56,
-                              decoration: on
-                                  ? BoxDecoration(
-                                      borderRadius: BorderRadius.circular(28),
-                                      color: c.dark ? const Color(0x24FFFFFF) : const Color(0x8CFFFFFF),
-                                      border: Border.all(color: c.dark ? const Color(0x33FFFFFF) : const Color(0xCCFFFFFF), width: 0.8),
-                                      boxShadow: [BoxShadow(color: Color.fromRGBO(0, 0, 0, c.dark ? 0.25 : 0.08), blurRadius: 10, offset: const Offset(0, 3))],
-                                    )
-                                  : BoxDecoration(borderRadius: BorderRadius.circular(28), color: hover ? c.hover : null),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  LucideIcon(icon, size: 22, color: color, stroke: on ? 2.2 : 1.8),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 10.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: color),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              child: Padding(padding: const EdgeInsets.all(6), child: items),
             ),
           ),
         ),

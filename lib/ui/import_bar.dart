@@ -225,8 +225,8 @@ class _ImportCardState extends State<_ImportCard> {
         padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
         decoration: BoxDecoration(
           color: _dragging || (hover && f == null) ? Color.alphaBlend(c.blueTint, c.card) : c.card,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: widget.next || _dragging ? c.blue : const Color(0x00000000), width: 1.5),
+          borderRadius: c.r(22),
+          border: Border.all(color: widget.next || _dragging ? c.blue : (c.industrial ? c.lineStrong : const Color(0x00000000)), width: widget.next || _dragging || !c.industrial ? 1.5 : 1),
           boxShadow: c.shadowSm,
         ),
         child: Row(
@@ -255,7 +255,7 @@ class _ImportCardState extends State<_ImportCard> {
                       const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                        decoration: BoxDecoration(color: widget.optional ? c.grayTint : c.blueTint, borderRadius: BorderRadius.circular(999)),
+                        decoration: BoxDecoration(color: widget.optional ? c.grayTint : c.blueTint, borderRadius: c.r(999)),
                         child: Text(
                           widget.optional ? s.t('in_optional_chip') : s.t('in_required_chip'),
                           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, height: 1.5, color: widget.optional ? c.tx2 : c.blueTx),
@@ -354,7 +354,7 @@ class ImportActions extends StatelessWidget {
     );
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 16),
-      decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(22), boxShadow: c.shadowSm),
+      decoration: BoxDecoration(color: c.card, borderRadius: c.r(22), boxShadow: c.shadowSm, border: c.cardBorder),
       child: compact
           // Phones: export and clear as round icon buttons beside Run.
           ? Row(
