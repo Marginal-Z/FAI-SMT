@@ -1,5 +1,5 @@
-/// Rules module: exclusions, alternates and general check options, edited
-/// in place and saved to the settings file.
+/// Rules the user enters: exclusions, alternates and ignored designators,
+/// all empty until filled in and saved.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -28,9 +28,6 @@ class _RulesPageState extends State<RulesPage> {
   final _prefixes = TextEditingController();
   final _ignore = TextEditingController();
   final _subs = TextEditingController();
-  final _program = TextEditingController();
-  late bool _noRefs;
-  late bool _qty;
   bool _saved = false;
 
   @override
@@ -44,14 +41,11 @@ class _RulesPageState extends State<RulesPage> {
     _prefixes.text = r.excludePrefixes.join('\n');
     _ignore.text = r.ignoreRefPatterns.join('\n');
     _subs.text = r.substitutes.entries.map((e) => '${e.key}=${e.value.join(',')}').join('\n');
-    _program.text = r.programKeywords.join('\n');
-    _noRefs = r.excludeNoRefs;
-    _qty = r.checkQty;
   }
 
   @override
   void dispose() {
-    for (final c in [_keywords, _prefixes, _ignore, _subs, _program]) {
+    for (final c in [_keywords, _prefixes, _ignore, _subs]) {
       c.dispose();
     }
     super.dispose();
@@ -71,9 +65,6 @@ class _RulesPageState extends State<RulesPage> {
       excludePrefixes: _lines(_prefixes.text),
       ignoreRefPatterns: _lines(_ignore.text),
       substitutes: subs,
-      programKeywords: _lines(_program.text),
-      excludeNoRefs: _noRefs,
-      checkQty: _qty,
     );
   }
 
@@ -106,17 +97,14 @@ class _RulesPageState extends State<RulesPage> {
               child: Text(s.t('rules_keywords_empty'), style: TextStyle(color: c.textFaint, fontSize: 12)),
             ),
           field(s.t('rules_prefixes'), TextInput(controller: _prefixes, maxLines: 4, mono: true)),
-          field(s.t('rules_program'), TextInput(controller: _program, maxLines: 3)),
         ],
       RulesSection.alternates => [
           field(s.t('rules_subs'), TextInput(controller: _subs, maxLines: 14, mono: true, hint: 'K1101-AAAA=K1101-BBBB,K1101-CCCC')),
           Text(s.t('rules_subs_note'), style: TextStyle(color: c.textFaint, fontSize: 12)),
         ],
       RulesSection.general => [
-          CheckBox(value: _noRefs, label: s.t('rules_exclude_norefs'), onChanged: (v) => setState(() => _noRefs = v)),
-          CheckBox(value: _qty, label: s.t('rules_check_qty'), onChanged: (v) => setState(() => _qty = v)),
-          const SizedBox(height: 16),
-          field(s.t('rules_ignore_refs'), TextInput(controller: _ignore, maxLines: 6, mono: true)),
+          field(s.t('rules_ignore_refs'), TextInput(controller: _ignore, maxLines: 6, mono: true, hint: s.t('rules_ignore_hint'))),
+          Text(s.t('rules_user_only'), style: TextStyle(color: c.textFaint, fontSize: 12)),
         ],
     };
     final (glyph, title) = switch (section) {

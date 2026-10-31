@@ -22,6 +22,20 @@ import 'package:smt_fai/l10n/strings.dart';
 
 Grid g(List<List<String>> rows) => Grid('s', rows);
 
+CheckReport checkOf(List<BomItem> bom, List<StationItem> st, [CheckRules? rules, List<Placement>? placements]) =>
+    runCheck(bom: bom, stations: st, rules: rules ?? CheckRules(), placements: placements).report;
+
+List<String> codes(CheckRow r) => r.reasons.map((e) => e.code).toList();
+
+/// Every reason code the station engine produces.
+const engineCodes = [
+  'e_nothing_to_compare', 'e_bom_no_refs', 'e_not_loaded', 'e_missing', 'e_wrong_part', 'e_also_loaded', 'e_both_sides', //
+  'e_extra', 'e_extra_other_line', 'e_bom_qty', 'e_bom_dup', 'e_bom_shared', 'e_station_qty', 'e_desc', 'e_station_dup',
+  'e_coord_missing', 'e_side_mismatch', 'e_alt_bom', 'e_alt_station', 'e_alt_rules', 'e_not_in_bom', 'e_not_in_bom_no_refs',
+  'e_refs_not_in_bom', 'e_alt_outside', 'e_same_desc', 'e_slot_shared', 'excl_keyword', 'excl_prefix',
+  'd_parse_bad_qty', 'd_parse_bad_xy', 'd_parse_dup_ref', 'd_coord_extra',
+];
+
 void main() {
   group('refdes', () {
     test('splits mixed separators and expands ranges', () {
@@ -97,7 +111,7 @@ void main() {
       StationItem(partNo: 'P-X', side: StationSide.b, slot: '7', refs: ['L1']),
     ];
     // Exclusion keywords are only what the user saved; none by default.
-    final report = runCheck(bom, stations, CheckRules(excludeKeywords: ['插件']));
+    final report = checkOf(bom, stations, CheckRules(excludeKeywords: ['插件']));
     CheckRow row(String pn) => report.rows.firstWhere((r) => r.partNo == pn);
 
     test('categories are disjoint and sum to the total', () {
@@ -119,24 +133,64 @@ void main() {
     test('missing and extra designators are NG with reasons', () {
       final r = row('P-C');
       expect(r.category, CheckCategory.ng);
-      expect(r.reasons.map((e) => e.code), containsAll(['station_missing_refs', 'station_extra_refs']));
-      expect(r.reasons.firstWhere((e) => e.code == 'station_missing_refs').args['refs'], 'C2');
+      expect(codes(r), containsAll(['e_missing', 'e_extra']));
+      expect(r.reasons.firstWhere((e) => e.code == 'e_missing').args['refs'], 'C2');
     });
-    test('exclusions', () {
+    test('exclusions come only from user rules', () {
+      // No designators and not loaded: nothing to compare.
       expect(row('P-PCB').category, CheckCategory.excluded);
+      expect(codes(row('P-PCB')), ['e_nothing_to_compare']);
       expect(row('P-DIP').category, CheckCategory.excluded);
-      expect(row('P-DIP').reasons.single.code, 'excl_keyword');
+      expect(codes(row('P-DIP')), ['excl_keyword']);
+      // Without the keyword the through-hole part is simply not loaded.
+      final plain = checkOf(bom, stations).rows.firstWhere((r) => r.partNo == 'P-DIP');
+      expect(plain.category, CheckCategory.ng);
+      expect(codes(plain), ['e_not_loaded']);
     });
     test('station part not in BOM', () {
       final r = row('P-X');
       expect(r.category, CheckCategory.ng);
-      expect(r.reasons.first.code, 'not_in_bom');
+      expect(r.reasons.first.code, 'e_not_in_bom');
     });
     test('qty mismatch', () {
-      final rep = runCheck([BomItem(partNo: 'A', name: 'x', qty: 3, refs: ['R1', 'R2'])],
-          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1', 'R2'])], CheckRules());
+      final rep = checkOf([BomItem(partNo: 'A', name: 'x', qty: 3, refs: ['R1', 'R2'])],
+          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1', 'R2'])]);
       expect(rep.rows.single.category, CheckCategory.ng);
-      expect(rep.rows.single.reasons.single.code, 'qty_mismatch');
+      expect(codes(rep.rows.single), ['e_bom_qty']);
+    });
+    test('a designator loaded with an unrelated part', () {
+      final rep = checkOf([BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])], [StationItem(partNo: 'B', side: StationSide.a, slot: '1', refs: ['R1'])]);
+      final a = rep.rows.firstWhere((r) => r.partNo == 'A');
+      expect(codes(a), ['e_wrong_part']);
+      expect(a.bomRefs.single.state, RefState.conflict);
+      expect(codes(rep.rows.firstWhere((r) => r.partNo == 'B')), ['e_not_in_bom']);
+    });
+    test('relations come from the station related-part column or the user table', () {
+      final bom = [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])];
+      final related = checkOf(bom, [StationItem(partNo: 'B', side: StationSide.a, refs: ['R1'], relatedTo: 'A')]);
+      expect(related.rows.single.category, CheckCategory.substitute);
+      expect(codes(related.rows.single), ['e_alt_station']);
+      final table = checkOf(bom, [StationItem(partNo: 'B', side: StationSide.a, refs: ['R1'])], CheckRules(substitutes: {'A': ['B']}));
+      expect(codes(table.rows.single), ['e_alt_rules']);
+    });
+    test('slot shared, both sides, station quantity and description', () {
+      final rep = checkOf([
+        BomItem(partNo: 'A', name: '电阻 10K', qty: 2, refs: ['R1', 'R2']),
+        BomItem(partNo: 'B', name: '电容 1uF', qty: 1, refs: ['C1']),
+      ], [
+        StationItem(partNo: 'A', side: StationSide.a, slot: '1', desc: '电阻 1K', qty: 3, refs: ['R1', 'R2']),
+        StationItem(partNo: 'A', side: StationSide.b, slot: '5', refs: ['R2']),
+        StationItem(partNo: 'B', side: StationSide.a, slot: '1', refs: ['C1']),
+      ]);
+      final a = rep.rows.firstWhere((r) => r.partNo == 'A');
+      expect(codes(a), containsAll(['e_both_sides', 'e_station_qty', 'e_desc', 'e_slot_shared', 'e_station_dup']));
+      expect(codes(rep.rows.firstWhere((r) => r.partNo == 'B')), ['e_slot_shared']);
+    });
+    test('ignored designators are only the user\'s', () {
+      final bom = [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])];
+      final st = [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1', 'MARK1'])];
+      expect(codes(checkOf(bom, st).rows.single), ['e_extra']);
+      expect(checkOf(bom, st, CheckRules(ignoreRefPatterns: ['MARK*'])).rows.single.category, CheckCategory.pass);
     });
 
     test('CAD file joins coordinates with merged list', () {
@@ -157,17 +211,17 @@ void main() {
       expect(grid.rows[1], ['3U3', '1.235', '2', '270', 'DDR3L', 'P-DDR', 'BOTTOM', '1']);
       final text = buildCad(placements, report, CadTemplate(format: CadFormat.text, delimiter: ','), CheckRules()).text;
       expect(text.split('\r\n')[1], '3U3,1.235,2.000,270,DDR3L,P-DDR,BOTTOM,1');
-      expect(cad.notInBomRefs, ['TP1']);
+      expect(cad.notInBomRefs, ['MARK1', 'TP1']);
+      expect(buildCad(placements, report, CadTemplate(), CheckRules(ignoreRefPatterns: ['MARK*'])).notInBomRefs, ['TP1']);
       expect(cad.noCoordRefs, contains('R1'));
     });
   });
 
   group('exports and strings', () {
     test('check workbook round-trips through the reader', () {
-      final report = runCheck(
+      final report = checkOf(
           [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])],
-          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])],
-          CheckRules());
+          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])]);
       final bytes = exportCheckWorkbook(
           report,
           ExportLabels(
@@ -189,19 +243,17 @@ void main() {
 
     test('confirmations go to the report and survive a re-check', () {
       final state = AppState(AppSettings(), Directory.systemTemp.path);
-      final report = runCheck(
+      final report = checkOf(
           [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])],
-          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])],
-          CheckRules());
+          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])]);
       state.report = report;
       state.setConfirmed(report.rows, true);
       state.setConfirmNote(report.rows.first, 'ok by QA');
       expect(state.confirmedCount(CheckCategory.pass), 1);
       // Same content in a new report keeps the sign-off.
-      final again = runCheck(
+      final again = checkOf(
           [BomItem(partNo: 'A', name: 'x', qty: 1, refs: ['R1'])],
-          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])],
-          CheckRules());
+          [StationItem(partNo: 'A', side: StationSide.a, refs: ['R1'])]);
       state.report = again;
       expect(state.confirmationOf(again.rows.first)?.note, 'ok by QA');
       final bytes = exportCheckWorkbook(
@@ -229,15 +281,12 @@ void main() {
       }
     });
 
-    test('every reason and parse code is translated', () {
-      const codes = [
-        'not_on_station', 'station_missing_refs', 'station_extra_refs', 'bom_no_refs', 'bom_dup_refs',
-        'bom_ref_conflict', 'station_ref_conflict', 'ref_both_sides', 'qty_mismatch', 'alt_used',
-        'not_in_bom', 'alt_outside_main', 'ref_belongs_to', 'excl_keyword', 'excl_prefix', 'excl_no_refs',
-        'parse_bad_qty', 'parse_bad_xy', 'parse_dup_ref', 'err_xls_unsupported', 'err_read_failed', 'err_empty',
-        'err_parse_no_header_bom', 'err_parse_no_header_station', 'err_parse_no_header_coord',
-      ];
-      for (final c in codes) {
+    test('every reason and parse code is translated and explained', () {
+      for (final c in engineCodes) {
+        expect(Texts.has(c), isTrue, reason: c);
+        expect(Texts.has('why_$c'), isTrue, reason: 'why_$c');
+      }
+      for (final c in ['parse_bad_qty', 'parse_bad_xy', 'parse_dup_ref', 'err_xls_unsupported', 'err_read_failed', 'err_empty', 'err_parse_no_header_bom', 'err_parse_no_header_station', 'err_parse_no_header_coord']) {
         expect(Texts.has(c), isTrue, reason: c);
       }
     });
@@ -248,7 +297,7 @@ void main() {
       expect(splitRefs('8R20,8R\n23,1\nC39'), ['8R20', '8R23', '1C39']);
       expect(splitRefs('2R1 3R6\n10R2'), ['2R1', '3R6', '10R2']);
     });
-    test('station alternates listed under the main row', () {
+    test('a row is never an alternate because of where it sits', () {
       final st = parseStation([
         g([
           ['站位', '料号', '关联料号', '物料描述', '数量', '位号'],
@@ -256,21 +305,22 @@ void main() {
           ['', 'P-DDR-ALT', 'P-DDR-ALT', 'DDR alt', '', ''],
         ])
       ], StationSide.a).items;
-      expect(st.single.slot, '11-B-2');
-      expect(st.single.alternates, ['P-DDR-ALT']);
-      final rep = runCheck([BomItem(partNo: 'P-DDR', name: 'DDR', qty: 1, refs: ['3U2'])], st, CheckRules());
-      expect(rep.rows.single.category, CheckCategory.substitute);
-      expect(rep.rows.single.reasons.single.code, 'alt_listed');
+      expect(st.map((s) => s.partNo), ['P-DDR', 'P-DDR-ALT']);
+      expect(st.first.slot, '11-B-2');
+      final rep = checkOf([BomItem(partNo: 'P-DDR', name: 'DDR', qty: 1, refs: ['3U2'])], st);
+      expect(rep.rows.firstWhere((r) => r.partNo == 'P-DDR').category, CheckCategory.pass);
+      expect(codes(rep.rows.firstWhere((r) => r.partNo == 'P-DDR-ALT')), ['e_not_in_bom_no_refs']);
+      // Registered in the BOM's alternates column, it is accounted for.
+      final listed = checkOf([BomItem(partNo: 'P-DDR', name: 'DDR', qty: 1, refs: ['3U2'], alternates: ['P-DDR-ALT'])], st);
+      expect(listed.rows.map((r) => r.partNo), ['P-DDR']);
     });
-    test('blank part placed as programmed part', () {
-      final rep = runCheck([
+    test('two BOM lines on one designator are reported, not guessed', () {
+      final rep = checkOf([
         BomItem(partNo: 'FW', name: 'PRG F/W 烧录后', qty: 1, refs: ['4U1']),
         BomItem(partNo: 'EMMC', name: '贴片IC EMMC', qty: 1, refs: ['4U1']),
-      ], [StationItem(partNo: 'FW', side: StationSide.a, refs: ['4U1'])], CheckRules());
-      expect(rep.rows.firstWhere((r) => r.partNo == 'FW').category, CheckCategory.pass);
-      final emmc = rep.rows.firstWhere((r) => r.partNo == 'EMMC');
-      expect(emmc.category, CheckCategory.excluded);
-      expect(emmc.reasons.single.code, 'excl_programmed');
+      ], [StationItem(partNo: 'FW', side: StationSide.a, refs: ['4U1'])]);
+      expect(codes(rep.rows.firstWhere((r) => r.partNo == 'FW')), ['e_bom_shared']);
+      expect(codes(rep.rows.firstWhere((r) => r.partNo == 'EMMC')), containsAll(['e_wrong_part', 'e_bom_shared']));
     });
     test('coordinate headers with /mm units and Orientation', () {
       final p = parseCoordinates([
@@ -562,71 +612,32 @@ void main() {
     });
   });
 
-  group('discrepancies', () {
+  group('findings', () {
     test('description, coordinates and side are cross-checked', () {
       final bom = [
         BomItem(partNo: 'A', name: '贴片电感', spec: 'UR0420', qty: 2, refs: ['L1', 'L2']),
       ];
       final st = [StationItem(partNo: 'A', side: StationSide.a, slot: '9-17', desc: '贴片电感 4040', refs: ['L1', 'L2'])];
-      final rep = runCheck(bom, st, CheckRules());
-      final ds = findDiscrepancies(
-        bom: bom,
-        stations: st,
-        report: rep,
-        rules: CheckRules(),
-        placements: [
-          Placement(ref: 'L1', x: 0, y: 0, side: BoardSide.bottom),
-          Placement(ref: 'NC9', x: 1, y: 1),
-        ],
-      );
-      final codes = ds.map((d) => d.code).toList();
-      expect(codes, containsAll(['d_desc_mismatch', 'd_coord_missing', 'd_side_mismatch', 'd_coord_extra']));
-      expect(ds.firstWhere((d) => d.code == 'd_coord_missing').subject, 'L2');
+      final out = runCheck(bom: bom, stations: st, rules: CheckRules(), placements: [
+        Placement(ref: 'L1', x: 0, y: 0, side: BoardSide.bottom),
+        Placement(ref: 'NC9', x: 1, y: 1),
+      ]);
+      final ds = out.findings;
+      expect(ds.map((d) => d.code), containsAll(['e_desc', 'e_coord_missing', 'e_side_mismatch', 'd_coord_extra']));
+      expect(ds.firstWhere((d) => d.code == 'e_coord_missing').refs, ['L2']);
       expect(ds.first.severity, Severity.error);
+      expect(out.report.rows.single.category, CheckCategory.ng);
+      expect(out.report.merged.every((m) => m.category == CheckCategory.ng), isTrue);
       for (final d in ds) {
         expect(Texts.has(d.code), isTrue, reason: d.code);
         expect(Texts.has('why_${d.code}'), isTrue, reason: 'why_${d.code}');
       }
     });
-
-    test('every check reason has an explanation', () {
-      for (final code in [
-        'not_on_station', 'station_missing_refs', 'station_extra_refs', 'bom_no_refs', 'bom_dup_refs', 'bom_ref_conflict',
-        'station_ref_conflict', 'ref_both_sides', 'qty_mismatch', 'alt_used', 'alt_listed', 'not_in_bom', 'alt_outside_main',
-        'ref_belongs_to', 'excl_keyword', 'excl_prefix', 'excl_no_refs', 'excl_parent', 'excl_programmed',
-        'd_parse_bad_qty', 'd_parse_bad_xy', 'd_parse_dup_ref', 'd_parse_station_qty', 'd_station_dup',
-      ]) {
-        expect(Texts.has('why_$code'), isTrue, reason: code);
-      }
-    });
   });
 
   group('1.2.1', () {
-    test('part-level findings make the row NG with a reason', () {
-      final bom = [BomItem(partNo: 'A', name: '贴片电感 UR0420', qty: 2, refs: ['L1', 'L2'])];
-      final st = [StationItem(partNo: 'A', side: StationSide.a, slot: '9-17', desc: '贴片电感 4040', refs: ['L1', 'L2'])];
-      final raw = runCheck(bom, st, CheckRules());
-      expect(raw.rows.single.category, CheckCategory.pass);
-      final found = findDiscrepancies(
-        bom: bom,
-        stations: st,
-        report: raw,
-        rules: CheckRules(),
-        placements: [Placement(ref: 'L1', x: 0, y: 0, side: BoardSide.top)],
-      );
-      final folded = foldIntoReport(raw, found);
-      final row = folded.rows.single;
-      expect(row.category, CheckCategory.ng);
-      expect(row.reasons.map((r) => r.code), containsAll(['d_desc_mismatch', 'row_coord_missing']));
-      expect(folded.merged.every((m) => m.category == CheckCategory.ng), isTrue);
-      // The list does not repeat folded reasons as BOM↔station findings.
-      final again = findDiscrepancies(bom: bom, stations: st, report: folded, rules: CheckRules());
-      expect(again.where((d) => d.code.startsWith('row_')), isEmpty);
-    });
-
     test('CAD output keeps every placed part, SMD flag or not', () {
-      final rep = runCheck([BomItem(partNo: 'ST', name: '贴片螺柱', qty: 1, refs: ['J4'])],
-          [StationItem(partNo: 'ST', side: StationSide.a, refs: ['J4'])], CheckRules());
+      final rep = checkOf([BomItem(partNo: 'ST', name: '贴片螺柱', qty: 1, refs: ['J4'])], [StationItem(partNo: 'ST', side: StationSide.a, refs: ['J4'])]);
       final cad = buildCad([Placement(ref: 'J4', x: 2, y: 2, smd: false)], rep, CadTemplate(), CheckRules());
       expect(cad.cells.map((r) => r.first), ['J4']);
     });

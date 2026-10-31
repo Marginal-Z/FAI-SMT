@@ -9,27 +9,24 @@ import 'package:path/path.dart' as p;
 import 'part_library.dart';
 import 'parsers.dart';
 
+/// Rules the user entered in Settings. All of them are empty by default:
+/// nothing is excluded, related or ignored unless the user says so.
 class CheckRules {
   CheckRules({
     List<String>? excludeKeywords,
     List<String>? excludePrefixes,
     List<String>? ignoreRefPatterns,
     Map<String, List<String>>? substitutes,
-    List<String>? programKeywords,
-    this.excludeNoRefs = true,
-    this.checkQty = true,
   }) : excludeKeywords = excludeKeywords ?? [],
        excludePrefixes = excludePrefixes ?? [],
-       ignoreRefPatterns = ignoreRefPatterns ?? List.of(defaultIgnoreRefs),
-       substitutes = substitutes ?? {},
-       programKeywords = programKeywords ?? List.of(defaultProgramKeywords);
+       ignoreRefPatterns = ignoreRefPatterns ?? [],
+       substitutes = substitutes ?? {};
 
   /// Bumped when the meaning of saved rules changes.
-  static const schema = 2;
+  static const schema = 3;
 
-  /// Exclusion keywords that earlier versions filled in. They are no longer
-  /// a default: an untouched copy of this list is dropped when loading, so
-  /// only keywords the user entered and saved apply.
+  /// Values that earlier versions filled in by themselves. An untouched copy
+  /// is dropped when loading, so only what the user entered applies.
   static const legacyExcludeKeywords = [
     'PCB',
     '锡膏',
@@ -48,15 +45,10 @@ class CheckRules {
     '插件',
     '散热膏',
   ];
-  static const defaultIgnoreRefs = ['MARK*', 'FID*', 'FM*'];
-  static const defaultProgramKeywords = ['烧录', 'PRG', 'F/W'];
+  static const legacyIgnoreRefs = ['MARK*', 'FID*', 'FM*'];
 
-  /// A BOM line whose name contains one of these is a programmed part. When it
-  /// is on the line, the blank part sharing its designators is not loaded
-  /// separately and goes to Excluded.
-  List<String> programKeywords;
-
-  /// BOM lines whose 品名/规格 contain one of these are not SMT materials.
+  /// BOM lines whose 品名/规格 contain one of these, and that the line does
+  /// not load, are excluded.
   List<String> excludeKeywords;
 
   /// BOM lines whose part number starts with one of these are excluded.
@@ -65,14 +57,9 @@ class CheckRules {
   /// Designators ignored everywhere (fiducials etc.); `*` is a wildcard.
   List<String> ignoreRefPatterns;
 
-  /// Main part number -> approved alternates, in addition to the BOM's own.
+  /// Main part number -> approved alternates, in addition to what the files
+  /// declare themselves.
   Map<String, List<String>> substitutes;
-
-  /// BOM lines without 插件位置 are excluded instead of reported as NG.
-  bool excludeNoRefs;
-
-  /// Compare BOM 组成用量 with the number of designators.
-  bool checkQty;
 
   bool isIgnoredRef(String ref) => ignoreRefPatterns.any((pat) {
     final re = RegExp('^${RegExp.escape(pat.trim().toUpperCase()).replaceAll(r'\*', '.*')}\$');
@@ -85,28 +72,23 @@ class CheckRules {
     'excludePrefixes': excludePrefixes,
     'ignoreRefPatterns': ignoreRefPatterns,
     'substitutes': substitutes,
-    'programKeywords': programKeywords,
-    'excludeNoRefs': excludeNoRefs,
-    'checkQty': checkQty,
   };
 
   factory CheckRules.fromJson(Map<String, dynamic> j) => CheckRules(
-    excludeKeywords: _savedKeywords(j),
+    excludeKeywords: _unlessLegacy(j, 'excludeKeywords', legacyExcludeKeywords, before: 2),
     excludePrefixes: (j['excludePrefixes'] as List?)?.cast<String>(),
-    ignoreRefPatterns: (j['ignoreRefPatterns'] as List?)?.cast<String>(),
+    ignoreRefPatterns: _unlessLegacy(j, 'ignoreRefPatterns', legacyIgnoreRefs, before: 3),
     substitutes: (j['substitutes'] as Map?)?.map((k, v) => MapEntry(k as String, (v as List).cast<String>())),
-    programKeywords: (j['programKeywords'] as List?)?.cast<String>(),
-    excludeNoRefs: j['excludeNoRefs'] as bool? ?? true,
-    checkQty: j['checkQty'] as bool? ?? true,
   );
 }
 
-List<String>? _savedKeywords(Map<String, dynamic> j) {
-  final saved = (j['excludeKeywords'] as List?)?.cast<String>();
+/// A saved list, or empty when it is exactly what versions before schema
+/// [before] filled in by themselves.
+List<String>? _unlessLegacy(Map<String, dynamic> j, String key, List<String> legacy, {required int before}) {
+  final saved = (j[key] as List?)?.cast<String>();
   if (saved == null) return null;
-  final untouched = j['schema'] == null &&
-      saved.length == CheckRules.legacyExcludeKeywords.length &&
-      saved.every(CheckRules.legacyExcludeKeywords.contains);
+  final schema = j['schema'] as int? ?? 1;
+  final untouched = schema < before && saved.length == legacy.length && saved.every(legacy.contains);
   return untouched ? [] : saved;
 }
 

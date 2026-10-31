@@ -1,341 +1,395 @@
-/// BOM vs station-list check engine.
+/// BOM ↔ station-list engine.
+///
+/// It has no built-in rules: what each file says is compared designator by
+/// designator, and only rules the user typed in (exclusion keywords and
+/// prefixes, alternates table, ignored designators — all empty by default)
+/// change the outcome. Relations between part numbers come from the files
+/// themselves (a BOM alternates column, a station related-part column) or
+/// from the user's alternates table; never from where a row sits.
 library;
 
+import 'discrepancies.dart';
 import 'models.dart';
 import 'refdes.dart';
 import 'settings.dart';
 
-class _StationAgg {
-  _StationAgg(this.partNo);
+/// Rows (one per BOM line plus station part numbers the BOM lacks), the
+/// designator list for the CAD file, and every finding.
+class CheckOutcome {
+  CheckOutcome(this.report, this.findings);
 
-  final String partNo;
-  final Set<String> refs = {};
-  final Map<String, StationSide> sideOf = {};
-  final Map<String, String> slotOf = {};
-  final Set<StationSide> sides = {};
-  final List<String> slots = [];
-
-  /// Alternates the station list declares for this part, with their slot.
-  final Map<String, String> listedAlts = {};
-  String desc = '';
+  final CheckReport report;
+  final List<Discrepancy> findings;
 }
 
-/// Compares the BOM with the merged station lists A and B.
-///
-/// Every BOM line yields one row; station part numbers that no BOM line
-/// accounts for yield extra NG rows. Categories are disjoint.
-CheckReport runCheck(List<BomItem> bom, List<StationItem> stations, CheckRules rules) {
-  // ---- Aggregate station rows per part number.
-  final agg = <String, _StationAgg>{};
-  final refOwners = <String, Set<String>>{}; // ref -> station part numbers
-  final refSides = <String, Set<StationSide>>{};
-  final stationAlts = <String, Set<String>>{}; // main PN -> alternates
+/// Where a relation between two part numbers was read.
+enum _Via { bom, station, rules }
+
+String _join(Iterable<String> refs) => sortedRefs(refs).join(', ');
+
+String _qty(double q) => q == q.roundToDouble() ? q.toInt().toString() : '$q';
+
+String _norm(String s) => s.toUpperCase().replaceAll(RegExp(r'[\s_\-,，;；/()（）:：]+'), '');
+
+/// One designator as the station lists place it.
+class _Placed {
+  _Placed(this.item);
+
+  final StationItem item;
+  String get pn => item.partNo;
+}
+
+CheckOutcome runCheck({
+  required List<BomItem> bom,
+  required List<StationItem> stations,
+  required CheckRules rules,
+  List<Placement>? placements,
+  List<ParseIssue> bomIssues = const [],
+  List<ParseIssue> stationAIssues = const [],
+  List<ParseIssue> stationBIssues = const [],
+  List<ParseIssue> coordIssues = const [],
+}) {
+  bool keep(String r) => !rules.isIgnoredRef(r);
+
+  // ---- What each file says.
+  final bomByPn = {for (final b in bom) b.partNo: b};
+  final bomOwners = <String, List<String>>{}; // ref -> BOM part numbers
+  for (final b in bom) {
+    for (final r in b.refs.where(keep)) {
+      final o = bomOwners.putIfAbsent(r, () => []);
+      if (!o.contains(b.partNo)) o.add(b.partNo);
+    }
+  }
+  final placed = <String, List<_Placed>>{}; // ref -> station rows placing it
+  final stByPn = <String, List<StationItem>>{};
   for (final s in stations) {
-    for (final alt in s.alternates) {
-      stationAlts.putIfAbsent(s.partNo, () => {}).add(alt);
-    }
-    if (s.relatedTo.isNotEmpty) stationAlts.putIfAbsent(s.relatedTo, () => {}).add(s.partNo);
-    final a = agg.putIfAbsent(s.partNo, () => _StationAgg(s.partNo));
-    if (a.desc.isEmpty) a.desc = s.desc;
-    a.sides.add(s.side);
-    if (s.slot.isNotEmpty && !a.slots.contains(s.slot)) a.slots.add(s.slot);
-    for (final alt in s.alternates) {
-      a.listedAlts.putIfAbsent(alt, () => s.slot);
-    }
-    for (final r in s.refs) {
-      if (rules.isIgnoredRef(r)) continue;
-      a.refs.add(r);
-      a.sideOf.putIfAbsent(r, () => s.side);
-      if (s.slot.isNotEmpty) a.slotOf.putIfAbsent(r, () => s.slot);
-      refOwners.putIfAbsent(r, () => {}).add(s.partNo);
-      refSides.putIfAbsent(r, () => {}).add(s.side);
+    stByPn.putIfAbsent(s.partNo, () => []).add(s);
+    for (final r in s.refs.where(keep)) {
+      placed.putIfAbsent(r, () => []).add(_Placed(s));
     }
   }
 
-  // ---- Alternate relations: BOM column + user table.
-  final altsOf = <String, Set<String>>{};
-  for (final b in bom) {
-    altsOf.putIfAbsent(b.partNo, () => {}).addAll(b.alternates);
-    altsOf[b.partNo]!.addAll(rules.substitutes[b.partNo]?.map((e) => e.toUpperCase()) ?? const []);
-    altsOf[b.partNo]!.addAll(stationAlts[b.partNo] ?? const {});
-  }
-  bool related(String a, String b) =>
-      a == b || (altsOf[a]?.contains(b) ?? false) || (altsOf[b]?.contains(a) ?? false);
-
-  // ---- Blank parts placed as a programmed part (烧录料) sharing their designators.
-  final programmedBy = <String, String>{}; // blank PN -> programmed PN
-  for (final p in bom) {
-    if (agg[p.partNo] == null || !_matchesAny('${p.name} ${p.spec}', rules.programKeywords)) continue;
-    final refs = p.refs.toSet();
-    for (final b in bom) {
-      if (b == p || b.refs.isEmpty || agg.containsKey(b.partNo) || _hasAltOnLine(b, altsOf, agg)) continue;
-      if (refs.containsAll(b.refs)) programmedBy[b.partNo] = p.partNo;
-    }
+  // ---- Relations found in the files or entered by the user.
+  final subs = {for (final e in rules.substitutes.entries) e.key.toUpperCase(): e.value.map((v) => v.toUpperCase()).toSet()};
+  _Via? relation(String bomPn, String stPn) {
+    if ((bomByPn[bomPn]?.alternates ?? const []).contains(stPn)) return _Via.bom;
+    if ((stByPn[stPn] ?? const []).any((s) => s.relatedTo == bomPn)) return _Via.station;
+    if ((subs[bomPn]?.contains(stPn) ?? false) || (subs[stPn]?.contains(bomPn) ?? false)) return _Via.rules;
+    return null;
   }
 
-  // ---- BOM-wide designator ownership, to catch a designator on two lines.
-  final bomRefOwners = <String, Set<String>>{};
-  for (final b in bom) {
-    if (programmedBy.containsKey(b.partNo)) continue;
-    for (final r in b.refs) {
-      bomRefOwners.putIfAbsent(r, () => {}).add(b.partNo);
-    }
-  }
+  final placeSet = {for (final p in placements ?? const <Placement>[]) p.ref: p};
 
   final rows = <CheckRow>[];
   final merged = <MergedRef>[];
-  final consumed = <String, Set<String>>{}; // station PN -> refs accounted for
+  final explained = <String, Set<String>>{}; // station PN -> refs reported on a BOM line
 
   for (final b in bom) {
-    final bomRefs = b.refs.where((r) => !rules.isIgnoredRef(r)).toList();
-    final main = agg[b.partNo];
+    final reasons = <Reason>[];
+    final refs = b.refs.where(keep).toList();
+    final refSet = refs.toSet();
+    final own = stByPn[b.partNo] ?? const <StationItem>[];
+    final ownRefs = {for (final s in own) ...s.refs.where(keep)};
 
-    final programmed = programmedBy[b.partNo];
-    if (programmed != null) {
+    // User exclusions apply only to what the line does not load.
+    final onLine = own.isNotEmpty || refSet.any((r) => placed.containsKey(r));
+    final excl = onLine ? null : _excluded(b, rules);
+    if (excl != null || (refSet.isEmpty && !onLine)) {
       rows.add(CheckRow(
         category: CheckCategory.excluded,
         partNo: b.partNo,
         description: b.description,
         bomQty: b.qty,
         smtQty: 0,
-        bomRefs: [for (final r in sortedRefs(bomRefs)) RefMark(r, RefState.alternate)],
-        smtPartNos: [programmed],
-        reasons: [Reason('excl_programmed', {'pn': programmed}, true)],
+        bomRefs: [for (final r in sortedRefs(refSet)) RefMark(r, RefState.missing)],
+        reasons: [excl ?? const Reason('e_nothing_to_compare', {}, true)],
       ));
       continue;
     }
 
-    // Exclusion applies only to materials that are not loaded on the line.
-    if (main == null && !_hasAltOnLine(b, altsOf, agg)) {
-      final excl = _exclusionReason(b, bomRefs, rules);
-      if (excl != null) {
-        rows.add(CheckRow(
-          category: CheckCategory.excluded,
-          partNo: b.partNo,
-          description: b.description,
-          bomQty: b.qty,
-          smtQty: 0,
-          bomRefs: [for (final r in sortedRefs(bomRefs)) RefMark(r, RefState.missing)],
-          reasons: [excl],
-        ));
+    // ---- Designator by designator.
+    final state = <String, RefState>{};
+    final missing = <String>[], bothSides = <String>[];
+    final wrong = <String, List<String>>{}; // station PN -> refs
+    final multi = <String, List<String>>{};
+    final alt = <String, (List<String>, _Via)>{};
+    final loadedBy = <String, StationItem>{};
+    for (final r in refSet) {
+      final at = placed[r] ?? const <_Placed>[];
+      if (at.isEmpty) {
+        missing.add(r);
+        state[r] = RefState.missing;
         continue;
       }
+      final pns = {for (final p in at) p.pn};
+      if ({for (final p in at) p.item.side}.length > 1) bothSides.add(r);
+      if (pns.contains(b.partNo)) {
+        loadedBy[r] = at.firstWhere((p) => p.pn == b.partNo).item;
+        state[r] = RefState.ok;
+        for (final other in pns.where((p) => p != b.partNo)) {
+          multi.putIfAbsent(other, () => []).add(r);
+          explained.putIfAbsent(other, () => {}).add(r);
+        }
+        continue;
+      }
+      final related = at.where((p) => relation(b.partNo, p.pn) != null).toList();
+      if (related.isNotEmpty) {
+        final p = related.first;
+        final entry = alt.putIfAbsent(p.pn, () => (<String>[], relation(b.partNo, p.pn)!));
+        entry.$1.add(r);
+        loadedBy[r] = p.item;
+        state[r] = RefState.alternate;
+        explained.putIfAbsent(p.pn, () => {}).add(r);
+        for (final o in pns.where((x) => x != p.pn)) {
+          multi.putIfAbsent(o, () => []).add(r);
+          explained.putIfAbsent(o, () => {}).add(r);
+        }
+        continue;
+      }
+      for (final p in pns) {
+        wrong.putIfAbsent(p, () => []).add(r);
+        explained.putIfAbsent(p, () => {}).add(r);
+      }
+      loadedBy[r] = at.first.item;
+      state[r] = RefState.conflict;
+    }
+    for (final r in bothSides) {
+      state[r] = RefState.conflict;
+    }
+    final extra = ownRefs.difference(refSet);
+
+    if (refSet.isEmpty) reasons.add(const Reason('e_bom_no_refs'));
+    if (own.isEmpty && alt.isEmpty && wrong.isEmpty && refSet.isNotEmpty && missing.length == refSet.length) {
+      reasons.add(Reason('e_not_loaded', {'refs': _join(missing)}));
+    } else if (missing.isNotEmpty) {
+      reasons.add(Reason('e_missing', {'refs': _join(missing)}));
+    }
+    for (final e in wrong.entries) {
+      reasons.add(Reason('e_wrong_part', {'refs': _join(e.value), 'pn': e.key}));
+    }
+    for (final e in multi.entries) {
+      reasons.add(Reason('e_also_loaded', {'refs': _join(e.value), 'pn': e.key}));
+    }
+    if (bothSides.isNotEmpty) reasons.add(Reason('e_both_sides', {'refs': _join(bothSides)}));
+    if (extra.isNotEmpty) {
+      final elsewhere = extra.where(bomOwners.containsKey).toList();
+      final unknown = extra.where((r) => !bomOwners.containsKey(r)).toList();
+      if (unknown.isNotEmpty) reasons.add(Reason('e_extra', {'refs': _join(unknown)}));
+      if (elsewhere.isNotEmpty) {
+        reasons.add(Reason('e_extra_other_line', {'refs': _join(elsewhere), 'pn': elsewhere.expand((r) => bomOwners[r]!).toSet().join(', ')}));
+      }
     }
 
-    final reasons = <Reason>[];
-    final bomSet = bomRefs.toSet();
-    final mainRefs = main?.refs ?? <String>{};
-    final altCover = <String, String>{}; // ref -> alternate PN
-    final usedAlts = <String>[];
-    for (final alt in altsOf[b.partNo] ?? const <String>{}) {
-      final a = agg[alt];
-      if (a == null || alt == b.partNo) continue;
-      final covered = a.refs.intersection(bomSet).difference(mainRefs);
-      if (covered.isEmpty) continue;
-      usedAlts.add(alt);
-      for (final r in covered) {
-        altCover[r] = alt;
-      }
-      consumed.putIfAbsent(alt, () => {}).addAll(covered);
+    // ---- The BOM line itself.
+    if (b.qty != null && refSet.isNotEmpty && (b.qty! - refSet.length).abs() > 1e-6) {
+      reasons.add(Reason('e_bom_qty', {'qty': _qty(b.qty!), 'n': '${refSet.length}'}));
     }
-    if (main != null) consumed.putIfAbsent(b.partNo, () => {}).addAll(mainRefs);
-
-    final smtSet = {...mainRefs, ...altCover.keys};
-    final missing = bomSet.difference(smtSet);
-    final extra = mainRefs.difference(bomSet);
-    final conflicts = smtSet
-        .where((r) => (refOwners[r] ?? const {}).any((o) => !related(o, b.partNo)))
-        .toSet();
-    final bothSides = smtSet.where((r) => (refSides[r]?.length ?? 0) > 1).toSet();
-
-    if (bomRefs.isEmpty) {
-      reasons.add(const Reason('bom_no_refs'));
+    if (refs.length != refSet.length) {
+      final seen = <String>{};
+      reasons.add(Reason('e_bom_dup', {'refs': _join(refs.where((r) => !seen.add(r)))}));
     }
-    if (main == null && usedAlts.isEmpty) {
-      reasons.add(const Reason('not_on_station'));
-    } else {
-      if (missing.isNotEmpty) {
-        reasons.add(Reason('station_missing_refs', {'refs': _join(missing)}));
-      }
-      if (extra.isNotEmpty) {
-        reasons.add(Reason('station_extra_refs', {'refs': _join(extra)}));
-      }
-    }
-    final dupInLine = _duplicates(bomRefs);
-    if (dupInLine.isNotEmpty) {
-      reasons.add(Reason('bom_dup_refs', {'refs': _join(dupInLine)}));
-    }
-    final crossBom = bomSet.where((r) => (bomRefOwners[r]?.length ?? 0) > 1).toSet();
-    if (crossBom.isNotEmpty) {
-      final others = crossBom.expand((r) => bomRefOwners[r]!).where((p) => p != b.partNo).toSet();
-      reasons.add(Reason('bom_ref_conflict', {'refs': _join(crossBom), 'pn': others.join(', ')}));
-    }
-    if (conflicts.isNotEmpty) {
-      final others = conflicts
-          .expand((r) => refOwners[r]!)
-          .where((o) => !related(o, b.partNo))
-          .toSet();
-      reasons.add(Reason('station_ref_conflict', {'refs': _join(conflicts), 'pn': others.join(', ')}));
-    }
-    if (bothSides.isNotEmpty) {
-      reasons.add(Reason('ref_both_sides', {'refs': _join(bothSides)}));
-    }
-    if (rules.checkQty && b.qty != null && bomRefs.isNotEmpty) {
-      final q = b.qty!;
-      if ((q - bomSet.length).abs() > 1e-6) {
-        reasons.add(Reason('qty_mismatch', {'qty': _fmtQty(q), 'n': '${bomSet.length}'}));
-      }
-    }
-    for (final alt in usedAlts) {
-      final refs = altCover.entries.where((e) => e.value == alt).map((e) => e.key);
-      reasons.add(Reason('alt_used', {'pn': alt, 'refs': _join(refs)}, true));
-    }
-    final listed = <String, String>{};
-    for (final pn in [b.partNo, ...usedAlts]) {
-      for (final e in agg[pn]?.listedAlts.entries ?? const <MapEntry<String, String>>[]) {
-        if (e.key != b.partNo && !usedAlts.contains(e.key)) listed.putIfAbsent(e.key, () => e.value);
-      }
-    }
-    for (final e in listed.entries) {
-      reasons.add(Reason('alt_listed', {'pn': e.key, 'slot': e.value}, true));
+    final shared = refSet.where((r) => bomOwners[r]!.length > 1).toList();
+    if (shared.isNotEmpty) {
+      reasons.add(Reason('e_bom_shared', {'refs': _join(shared), 'pn': shared.expand((r) => bomOwners[r]!).where((p) => p != b.partNo).toSet().join(', ')}));
     }
 
-    final hasError = reasons.any((r) => !r.info);
-    final category = hasError
+    // ---- The station rows loading this part number.
+    final descSeen = <String>{};
+    final listed = <String, List<String>>{}; // ref -> slots
+    for (final s in own) {
+      final n = s.refs.where(keep).toSet().length;
+      if (s.qty != null && n > 0 && (s.qty! - n).abs() > 1e-6) {
+        reasons.add(Reason('e_station_qty', {'slot': s.slot, 'qty': _qty(s.qty!), 'n': '$n'}));
+      }
+      if (s.desc.isNotEmpty && b.description.isNotEmpty && descSeen.add(_norm(s.desc))) {
+        final sd = _norm(s.desc), bd = _norm(b.description);
+        if (!(sd == bd || bd.contains(sd) || sd.contains(bd))) {
+          reasons.add(Reason('e_desc', {'station': s.desc, 'bom': b.description, 'slot': s.slot}));
+        }
+      }
+      for (final r in s.refs.where(keep)) {
+        listed.putIfAbsent(r, () => []).add(s.slot);
+      }
+    }
+    final twice = listed.entries.where((e) => e.value.length > 1).toList();
+    if (twice.isNotEmpty) {
+      reasons.add(Reason('e_station_dup', {'refs': _join(twice.map((e) => e.key)), 'slots': twice.expand((e) => e.value).toSet().join(', ')}));
+    }
+
+    // ---- Coordinates.
+    if (placements != null) {
+      final noXy = refSet.where((r) => !placeSet.containsKey(r)).toList();
+      if (noXy.isNotEmpty) reasons.add(Reason('e_coord_missing', {'refs': _join(noXy)}));
+      final sideOff = [
+        for (final r in refSet)
+          if (placeSet[r] != null && placeSet[r]!.side != BoardSide.unknown && loadedBy[r] != null && (placeSet[r]!.side == BoardSide.top) != (loadedBy[r]!.side == StationSide.a)) r,
+      ];
+      if (sideOff.isNotEmpty) reasons.add(Reason('e_side_mismatch', {'refs': _join(sideOff)}));
+    }
+
+    for (final e in alt.entries) {
+      // The code names where the relation was read (BOM, station list, user table).
+      reasons.add(Reason('e_alt_${e.value.$2.name}', {'pn': e.key, 'refs': _join(e.value.$1)}, true));
+    }
+
+    final category = reasons.any((r) => !r.info)
         ? CheckCategory.ng
-        : usedAlts.isNotEmpty || listed.isNotEmpty
+        : alt.isNotEmpty
             ? CheckCategory.substitute
             : CheckCategory.pass;
-
-    RefState stateOf(String r) {
-      if (conflicts.contains(r) || bothSides.contains(r)) return RefState.conflict;
-      if (altCover.containsKey(r)) return RefState.alternate;
-      if (mainRefs.contains(r)) return RefState.ok;
-      return RefState.missing;
-    }
-
-    final sides = <StationSide>{...?main?.sides};
-    final slots = <String>[...?main?.slots];
-    for (final alt in usedAlts) {
-      sides.addAll(agg[alt]!.sides);
-      slots.addAll(agg[alt]!.slots);
-    }
-
+    final smtSet = {...ownRefs.intersection(refSet), ...extra, for (final e in alt.values) ...e.$1};
+    final sources = [...own, for (final pn in alt.keys) ...?stByPn[pn]];
     rows.add(CheckRow(
       category: category,
       partNo: b.partNo,
       description: b.description,
       bomQty: b.qty,
       smtQty: smtSet.length,
-      bomRefs: [for (final r in sortedRefs(bomSet)) RefMark(r, stateOf(r))],
-      smtRefs: [
-        for (final r in sortedRefs(smtSet))
-          RefMark(r, extra.contains(r) ? RefState.extra : stateOf(r))
-      ],
-      smtPartNos: [if (main != null) b.partNo, ...usedAlts],
-      sides: sides,
-      slots: slots,
+      bomRefs: [for (final r in sortedRefs(refSet)) RefMark(r, state[r]!)],
+      smtRefs: [for (final r in sortedRefs(smtSet)) RefMark(r, extra.contains(r) ? RefState.extra : state[r] ?? RefState.ok)],
+      smtPartNos: [if (own.isNotEmpty) b.partNo, ...alt.keys],
+      sides: {for (final s in sources) s.side},
+      slots: {for (final s in sources) if (s.slot.isNotEmpty) s.slot}.toList(),
       reasons: reasons,
     ));
-
-    for (final r in sortedRefs(bomSet)) {
-      final alt = altCover[r];
-      final src = alt != null ? agg[alt] : (mainRefs.contains(r) ? main : null);
+    for (final r in sortedRefs(refSet)) {
+      final s = loadedBy[r];
       merged.add(MergedRef(
         ref: r,
         bomPartNo: b.partNo,
-        smtPartNo: alt ?? (src != null ? b.partNo : ''),
+        smtPartNo: s?.partNo ?? '',
         description: b.description,
         category: category,
-        side: src?.sideOf[r],
-        slot: src?.slotOf[r] ?? '',
+        side: s?.side,
+        slot: s?.slot ?? '',
       ));
     }
   }
 
-  // ---- Station part numbers (or parts of them) no BOM line accounts for.
-  final bomPns = {for (final b in bom) b.partNo};
-  final bomAllRefs = bomRefOwners.keys.toSet();
-  for (final a in agg.values) {
-    final left = a.refs.difference(consumed[a.partNo] ?? const {});
-    if (bomPns.contains(a.partNo)) continue; // extras already reported on its line
-    final isAlt = altsOf.values.any((s) => s.contains(a.partNo));
-    if (left.isEmpty && isAlt) continue;
-    if (left.isEmpty && a.refs.isNotEmpty) continue;
+  // ---- Station part numbers the BOM does not have.
+  for (final e in stByPn.entries) {
+    final pn = e.key;
+    if (bomByPn.containsKey(pn)) continue;
+    final items = e.value;
+    final allRefs = {for (final s in items) ...s.refs.where(keep)};
+    final left = allRefs.difference(explained[pn] ?? const {});
+    final relatedTo = bom.where((b) => relation(b.partNo, pn) != null).map((b) => b.partNo).toList();
+    // A registered alternate whose designators are all accounted for.
+    if (relatedTo.isNotEmpty && left.isEmpty) continue;
     final reasons = <Reason>[
-      Reason(isAlt ? 'alt_outside_main' : 'not_in_bom', {'refs': _join(left)}),
+      if (allRefs.isEmpty) const Reason('e_not_in_bom_no_refs') else Reason('e_not_in_bom', {'refs': _join(allRefs)}),
     ];
-    final inBomElsewhere = left.where(bomAllRefs.contains).toSet();
-    if (inBomElsewhere.isNotEmpty) {
-      final owners = inBomElsewhere.expand((r) => bomRefOwners[r]!).toSet();
-      reasons.add(Reason('ref_belongs_to', {'refs': _join(inBomElsewhere), 'pn': owners.join(', ')}));
+    final notInBom = left.where((r) => !bomOwners.containsKey(r)).toList();
+    // Worth saying only when some of its designators do exist in the BOM.
+    if (notInBom.isNotEmpty && notInBom.length < allRefs.length) reasons.add(Reason('e_refs_not_in_bom', {'refs': _join(notInBom)}));
+    if (relatedTo.isNotEmpty) {
+      reasons.add(Reason('e_alt_outside', {'pn': relatedTo.join(', '), 'refs': _join(left)}));
+    } else {
+      // A hint from the descriptions, never a decision.
+      final desc = items.map((s) => s.desc).firstWhere((d) => d.isNotEmpty, orElse: () => '');
+      final like = desc.isEmpty ? const <BomItem>[] : bom.where((b) => b.description.isNotEmpty && _norm(b.description) == _norm(desc)).toList();
+      if (like.isNotEmpty) reasons.add(Reason('e_same_desc', {'pn': like.map((b) => b.partNo).join(', ')}, true));
     }
     rows.add(CheckRow(
       category: CheckCategory.ng,
-      partNo: a.partNo,
-      description: a.desc,
-      bomQty: null,
-      smtQty: left.length,
-      smtRefs: [for (final r in sortedRefs(left)) RefMark(r, RefState.extra)],
-      smtPartNos: [a.partNo],
-      sides: a.sides,
-      slots: a.slots,
+      partNo: pn,
+      description: items.map((s) => s.desc).firstWhere((d) => d.isNotEmpty, orElse: () => ''),
+      smtQty: allRefs.length,
+      smtRefs: [for (final r in sortedRefs(allRefs)) RefMark(r, RefState.extra)],
+      smtPartNos: [pn],
+      sides: {for (final s in items) s.side},
+      slots: {for (final s in items) if (s.slot.isNotEmpty) s.slot}.toList(),
       reasons: reasons,
     ));
-    for (final r in sortedRefs(left)) {
-      if (bomAllRefs.contains(r)) continue; // already merged under its BOM line
-      merged.add(MergedRef(
-        ref: r,
-        bomPartNo: '',
-        smtPartNo: a.partNo,
-        description: a.desc,
-        category: CheckCategory.ng,
-        side: a.sideOf[r],
-        slot: a.slotOf[r] ?? '',
-      ));
+    for (final r in sortedRefs(notInBom)) {
+      final s = items.firstWhere((s) => s.refs.contains(r));
+      merged.add(MergedRef(ref: r, bomPartNo: '', smtPartNo: pn, description: s.desc, category: CheckCategory.ng, side: s.side, slot: s.slot));
+    }
+  }
+
+  // ---- One slot loaded with two part numbers on the same side.
+  final slotPns = <(StationSide, String), Set<String>>{};
+  for (final s in stations) {
+    if (s.slot.isNotEmpty) slotPns.putIfAbsent((s.side, s.slot), () => {}).add(s.partNo);
+  }
+  final slotIssue = <String, List<Reason>>{};
+  for (final e in slotPns.entries.where((e) => e.value.length > 1)) {
+    for (final pn in e.value) {
+      slotIssue.putIfAbsent(pn, () => []).add(Reason('e_slot_shared', {'slot': e.key.$2, 'pn': e.value.where((p) => p != pn).join(', ')}));
+    }
+  }
+  for (var i = 0; i < rows.length; i++) {
+    final extra = slotIssue[rows[i].partNo];
+    if (extra != null && rows[i].category != CheckCategory.excluded) rows[i] = rows[i].asNg(extra);
+  }
+  if (slotIssue.isNotEmpty) {
+    final ng = {for (final r in rows) if (r.category == CheckCategory.ng) r.partNo};
+    for (var i = 0; i < merged.length; i++) {
+      if (ng.contains(merged[i].bomPartNo)) merged[i] = merged[i].withCategory(CheckCategory.ng);
     }
   }
 
   merged.sort((x, y) => compareRefs(x.ref, y.ref));
-  return CheckReport(rows, merged);
+  final report = CheckReport(rows, merged);
+
+  // ---- Findings: every reason, file problems, coordinates nobody places.
+  final findings = <Discrepancy>[
+    for (final row in rows)
+      for (final r in row.reasons)
+        Discrepancy(
+          severity: severityOf(r),
+          source: _sourceOf(r.code),
+          code: r.code,
+          subject: row.partNo,
+          args: r.args,
+          refs: r.args['refs']?.split(', ').where((e) => e.isNotEmpty).toList() ?? const [],
+        ),
+  ];
+  void parsed(List<ParseIssue> issues, Source source) {
+    for (final i in issues) {
+      findings.add(Discrepancy(
+        severity: Severity.warning,
+        source: source,
+        code: 'd_${i.code}',
+        subject: i.row == null ? '-' : '#${i.row}',
+        args: {'row': '${i.row ?? ''}', 'detail': i.detail},
+      ));
+    }
+  }
+
+  parsed(bomIssues, Source.bom);
+  parsed(stationAIssues, Source.stationA);
+  parsed(stationBIssues, Source.stationB);
+  parsed(coordIssues, Source.coords);
+  if (placements != null) {
+    final known = {...bomOwners.keys, ...placed.keys};
+    final extra = sortedRefs(placements.map((p) => p.ref).where((r) => !known.contains(r) && keep(r)));
+    if (extra.isNotEmpty) {
+      findings.add(Discrepancy(severity: Severity.info, source: Source.coords, code: 'd_coord_extra', subject: '', args: {'n': '${extra.length}'}, refs: extra));
+    }
+  }
+  const order = {Severity.error: 0, Severity.warning: 1, Severity.info: 2};
+  findings.sort((a, b) {
+    final s = order[a.severity]!.compareTo(order[b.severity]!);
+    return s != 0 ? s : compareRefs(a.subject, b.subject);
+  });
+  return CheckOutcome(report, findings);
 }
 
-bool _hasAltOnLine(BomItem b, Map<String, Set<String>> altsOf, Map<String, _StationAgg> agg) =>
-    (altsOf[b.partNo] ?? const {}).any(agg.containsKey);
+Source _sourceOf(String code) => switch (code) {
+      'e_bom_no_refs' || 'e_bom_qty' || 'e_bom_dup' || 'e_bom_shared' || 'excl_keyword' || 'excl_prefix' || 'e_nothing_to_compare' => Source.bom,
+      'e_station_qty' || 'e_station_dup' || 'e_slot_shared' || 'e_not_in_bom' || 'e_not_in_bom_no_refs' || 'e_refs_not_in_bom' => Source.stations,
+      'e_coord_missing' || 'e_side_mismatch' => Source.coords,
+      _ => Source.cross,
+    };
 
-bool _matchesAny(String text, List<String> keywords) {
-  final t = text.toUpperCase();
-  return keywords.any((k) => k.trim().isNotEmpty && t.contains(k.trim().toUpperCase()));
-}
-
-Reason? _exclusionReason(BomItem b, List<String> refs, CheckRules rules) {
-  if (refs.isEmpty && b.qty == 0) return const Reason('excl_parent', {}, true);
+Reason? _excluded(BomItem b, CheckRules rules) {
   final text = '${b.name} ${b.spec}'.toUpperCase();
   for (final k in rules.excludeKeywords) {
-    if (k.trim().isNotEmpty && text.contains(k.trim().toUpperCase())) {
-      return Reason('excl_keyword', {'kw': k.trim()}, true);
-    }
+    if (k.trim().isNotEmpty && text.contains(k.trim().toUpperCase())) return Reason('excl_keyword', {'kw': k.trim()}, true);
   }
   for (final p in rules.excludePrefixes) {
-    if (p.trim().isNotEmpty && b.partNo.startsWith(p.trim().toUpperCase())) {
-      return Reason('excl_prefix', {'prefix': p.trim()}, true);
-    }
-  }
-  if (refs.isEmpty && rules.excludeNoRefs) {
-    return const Reason('excl_no_refs', {}, true);
+    if (p.trim().isNotEmpty && b.partNo.startsWith(p.trim().toUpperCase())) return Reason('excl_prefix', {'prefix': p.trim()}, true);
   }
   return null;
 }
-
-List<String> _duplicates(List<String> refs) {
-  final seen = <String>{};
-  final dup = <String>{};
-  for (final r in refs) {
-    if (!seen.add(r)) dup.add(r);
-  }
-  return sortedRefs(dup);
-}
-
-String _join(Iterable<String> refs) => sortedRefs(refs).join(', ');
-
-String _fmtQty(double q) => q == q.roundToDouble() ? q.toInt().toString() : q.toString();
