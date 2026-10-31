@@ -1,4 +1,6 @@
-/// Header-row detection and column mapping by keyword aliases.
+/// Header-row detection and column mapping by keyword aliases, used for
+/// coordinate files (BOMs and station lists are recognised from their
+/// contents, see smart_table.dart).
 library;
 
 import 'table_reader.dart';
@@ -107,24 +109,6 @@ Map<String, (int, int)> _mapRow(List<String> row, List<FieldSpec> fields) {
 }
 
 class Fields {
-  static const bom = [
-    FieldSpec('partNo', ['料件编号', '料号', '子件料号', '元件料号', '物料编码', '物料编号', '料件', 'Part No', 'PartNumber', 'Part Number', 'PN', 'Item'], required: true, exclude: ['主件', 'parent', '替代', '取代']),
-    FieldSpec('name', ['品名', '物料名称', '名称', 'Name', 'Item Name'], exclude: ['主件']),
-    FieldSpec('spec', ['规格', '物料描述', '描述', '规格描述', 'Spec', 'Specification', 'Description']),
-    FieldSpec('qty', ['组成用量', '用量', '数量', '单位用量', 'Qty', 'Quantity', 'Usage']),
-    FieldSpec('refs', ['插件位置', '位号', '零件位置', '位置', '插件位号', 'Designator', 'Reference', 'RefDes', 'Location'], required: true),
-    FieldSpec('alt', ['替代料号', '替代料', '取替代料号', '取替代料件', '取代料号', 'Alternate', 'Substitute']),
-  ];
-
-  static const station = [
-    FieldSpec('slot', ['站位', '料站', '站号', '站位号', '料架', 'Feeder', 'Slot', 'Station', 'Location No']),
-    FieldSpec('partNo', ['料号', '物料编码', '料件编号', '物料编号', '物料料号', 'Part No', 'PartNumber', 'Part Number', 'PN', 'Component'], required: true, exclude: ['关联', '主料', 'BOM']),
-    FieldSpec('related', ['关联料号', '主料号', 'BOM料号', 'Related PN', 'Main PN']),
-    FieldSpec('desc', ['物料描述', '描述', '规格', '品名', '物料名称', 'Description', 'Spec', 'Comment']),
-    FieldSpec('qty', ['数量', '用量', '点数', '贴装数量', 'Qty', 'Quantity', 'Count']),
-    FieldSpec('refs', ['位号', '插件位置', '贴装位号', '位置', 'Designator', 'Reference', 'RefDes', 'Location'], required: true),
-  ];
-
   static const coords = [
     FieldSpec('ref', ['Designator', '位号', 'RefDes', 'Ref', 'Reference', 'Part Designator', 'Name', '元件位号', 'Location'], required: true),
     FieldSpec('x', ['Center-X', 'Mid X', 'MidX', 'Center X', 'CenterX', 'X', 'X坐标', 'PosX', 'Pos X', 'LocationX', 'Ref X', 'Ref-X'], required: true),

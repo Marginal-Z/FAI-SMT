@@ -303,8 +303,10 @@ String _placeLabel(Strings s, _Place place) {
   }
   return s.t(switch (place.module!) {
     Module.check => 'mod_check',
+    Module.compare => 'mod_compare',
     Module.cad => 'mod_cad',
     Module.board => 'mod_board',
+    Module.ai => 'mod_ai',
   });
 }
 

@@ -18,13 +18,19 @@ class CheckRules {
     List<String>? programKeywords,
     this.excludeNoRefs = true,
     this.checkQty = true,
-  }) : excludeKeywords = excludeKeywords ?? List.of(defaultExcludeKeywords),
+  }) : excludeKeywords = excludeKeywords ?? [],
        excludePrefixes = excludePrefixes ?? [],
        ignoreRefPatterns = ignoreRefPatterns ?? List.of(defaultIgnoreRefs),
        substitutes = substitutes ?? {},
        programKeywords = programKeywords ?? List.of(defaultProgramKeywords);
 
-  static const defaultExcludeKeywords = [
+  /// Bumped when the meaning of saved rules changes.
+  static const schema = 2;
+
+  /// Exclusion keywords that earlier versions filled in. They are no longer
+  /// a default: an untouched copy of this list is dropped when loading, so
+  /// only keywords the user entered and saved apply.
+  static const legacyExcludeKeywords = [
     'PCB',
     '锡膏',
     '锡条',
@@ -74,6 +80,7 @@ class CheckRules {
   });
 
   Map<String, dynamic> toJson() => {
+    'schema': schema,
     'excludeKeywords': excludeKeywords,
     'excludePrefixes': excludePrefixes,
     'ignoreRefPatterns': ignoreRefPatterns,
@@ -84,13 +91,60 @@ class CheckRules {
   };
 
   factory CheckRules.fromJson(Map<String, dynamic> j) => CheckRules(
-    excludeKeywords: (j['excludeKeywords'] as List?)?.cast<String>(),
+    excludeKeywords: _savedKeywords(j),
     excludePrefixes: (j['excludePrefixes'] as List?)?.cast<String>(),
     ignoreRefPatterns: (j['ignoreRefPatterns'] as List?)?.cast<String>(),
     substitutes: (j['substitutes'] as Map?)?.map((k, v) => MapEntry(k as String, (v as List).cast<String>())),
     programKeywords: (j['programKeywords'] as List?)?.cast<String>(),
     excludeNoRefs: j['excludeNoRefs'] as bool? ?? true,
     checkQty: j['checkQty'] as bool? ?? true,
+  );
+}
+
+List<String>? _savedKeywords(Map<String, dynamic> j) {
+  final saved = (j['excludeKeywords'] as List?)?.cast<String>();
+  if (saved == null) return null;
+  final untouched = j['schema'] == null &&
+      saved.length == CheckRules.legacyExcludeKeywords.length &&
+      saved.every(CheckRules.legacyExcludeKeywords.contains);
+  return untouched ? [] : saved;
+}
+
+/// Where the independent AI check sends its request.
+enum AiProvider { anthropic, openai }
+
+/// Connection settings of the AI check. It is a separate feature: nothing it
+/// returns feeds the local check results.
+class AiSettings {
+  AiSettings({this.provider = AiProvider.anthropic, this.baseUrl = '', this.apiKey = '', this.model = '', this.prompt = ''});
+
+  static const defaultAnthropicUrl = 'https://api.anthropic.com';
+  static const defaultAnthropicModel = 'claude-opus-5-5';
+
+  AiProvider provider;
+
+  /// API root; empty uses the provider default (Anthropic only).
+  String baseUrl;
+  String apiKey;
+
+  /// Empty uses the provider default (Anthropic only).
+  String model;
+
+  /// Extra instructions the user saved; empty uses the built-in request.
+  String prompt;
+
+  String get effectiveUrl => baseUrl.trim().isNotEmpty ? baseUrl.trim() : (provider == AiProvider.anthropic ? defaultAnthropicUrl : '');
+  String get effectiveModel => model.trim().isNotEmpty ? model.trim() : (provider == AiProvider.anthropic ? defaultAnthropicModel : '');
+  bool get configured => apiKey.trim().isNotEmpty && effectiveUrl.isNotEmpty && effectiveModel.isNotEmpty;
+
+  Map<String, dynamic> toJson() => {'provider': provider.name, 'baseUrl': baseUrl, 'apiKey': apiKey, 'model': model, 'prompt': prompt};
+
+  factory AiSettings.fromJson(Map<String, dynamic> j) => AiSettings(
+    provider: AiProvider.values.firstWhere((p) => p.name == j['provider'], orElse: () => AiProvider.anthropic),
+    baseUrl: j['baseUrl'] as String? ?? '',
+    apiKey: j['apiKey'] as String? ?? '',
+    model: j['model'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
   );
 }
 
@@ -269,6 +323,7 @@ class AppSettings {
     BoardStyle? board,
     CheckRules? rules,
     CadTemplate? cad,
+    AiSettings? ai,
     this.language = 'zh',
     this.theme = ThemePref.system,
     this.autoUpdate = true,
@@ -280,12 +335,14 @@ class AppSettings {
     List<PartModelRule>? partRules,
   }) : rules = rules ?? CheckRules(),
        cad = cad ?? CadTemplate(),
+       ai = ai ?? AiSettings(),
        board = board ?? BoardStyle(),
        partRules = partRules ?? [];
 
   BoardStyle board;
   CheckRules rules;
   CadTemplate cad;
+  AiSettings ai;
   String language;
   ThemePref theme;
 
@@ -312,6 +369,7 @@ class AppSettings {
     'rules': rules.toJson(),
     'board': board.toJson(),
     'cad': cad.toJson(),
+    'ai': ai.toJson(),
     'language': language,
     'theme': theme.name,
     'autoUpdate': autoUpdate,
@@ -327,6 +385,7 @@ class AppSettings {
     rules: j['rules'] is Map ? CheckRules.fromJson((j['rules'] as Map).cast()) : null,
     board: j['board'] is Map ? BoardStyle.fromJson((j['board'] as Map).cast()) : null,
     cad: j['cad'] is Map ? CadTemplate.fromJson((j['cad'] as Map).cast()) : null,
+    ai: j['ai'] is Map ? AiSettings.fromJson((j['ai'] as Map).cast()) : null,
     language: j['language'] as String? ?? 'zh',
     theme: ThemePref.values.firstWhere(
       (t) => t.name == j['theme'],

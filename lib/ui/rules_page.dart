@@ -99,7 +99,12 @@ class _RulesPageState extends State<RulesPage> {
 
     final body = switch (section) {
       RulesSection.exclusion => [
-          field(s.t('rules_keywords'), TextInput(controller: _keywords, maxLines: 8)),
+          field(s.t('rules_keywords'), TextInput(controller: _keywords, maxLines: 8, hint: s.t('rules_keywords_hint'))),
+          if (widget.state.settings.rules.excludeKeywords.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Text(s.t('rules_keywords_empty'), style: TextStyle(color: c.textFaint, fontSize: 12)),
+            ),
           field(s.t('rules_prefixes'), TextInput(controller: _prefixes, maxLines: 4, mono: true)),
           field(s.t('rules_program'), TextInput(controller: _program, maxLines: 3)),
         ],

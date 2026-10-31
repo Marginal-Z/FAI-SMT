@@ -16,10 +16,16 @@ import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
 
-const moduleLabels = {Module.check: 'mod_check', Module.cad: 'mod_cad', Module.board: 'mod_board'};
+const moduleLabels = {Module.check: 'mod_check', Module.compare: 'mod_compare', Module.cad: 'mod_cad', Module.board: 'mod_board', Module.ai: 'mod_ai'};
 
 /// Drawn icon of each page in the page bar.
-const moduleIcons = {Module.check: Lucide.clipboardCheck, Module.cad: Lucide.fileText, Module.board: Lucide.cpu};
+const moduleIcons = {
+  Module.check: Lucide.clipboardCheck,
+  Module.compare: Lucide.gitCompare,
+  Module.cad: Lucide.fileText,
+  Module.board: Lucide.cpu,
+  Module.ai: Lucide.sparkles,
+};
 
 /// Desktop header: the page bar at the top left (icons; the arrow shows or
 /// hides their names) and the round actions at the right.

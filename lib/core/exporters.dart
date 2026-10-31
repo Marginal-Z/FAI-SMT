@@ -320,3 +320,46 @@ Object _rot(double r) {
   if (v < 0) v += 360;
   return v == v.roundToDouble() ? v.toInt() : v;
 }
+
+/// One worksheet of a generic report workbook: [rows] starts with the header
+/// row; [fills] colours the cell at (row, column) with a hex colour.
+class SheetData {
+  SheetData(this.name, this.rows, {this.widths = const [], this.fills = const {}});
+
+  final String name;
+  final List<List<String>> rows;
+  final List<double> widths;
+  final Map<(int, int), String> fills;
+}
+
+/// Workbook with a bold header row on every sheet (compare results, the
+/// analysis report, the designator map, recognised columns).
+Uint8List exportSheetsWorkbook(List<SheetData> sheets) {
+  final book = Excel.createExcel();
+  final defaultSheet = book.getDefaultSheet();
+  final head = CellStyle(
+    bold: true,
+    backgroundColorHex: ExcelColor.fromHexString('#E5E7EB'),
+    horizontalAlign: HorizontalAlign.Center,
+  );
+  for (final data in sheets) {
+    final sheet = book[data.name];
+    for (var r = 0; r < data.rows.length; r++) {
+      sheet.appendRow([for (final v in data.rows[r]) TextCellValue(v)]);
+      if (r == 0) {
+        for (var c = 0; c < data.rows[0].length; c++) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0)).cellStyle = head;
+        }
+      }
+    }
+    for (final e in data.fills.entries) {
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: e.key.$2, rowIndex: e.key.$1)).cellStyle =
+          CellStyle(backgroundColorHex: ExcelColor.fromHexString(e.value));
+    }
+    for (var c = 0; c < data.widths.length; c++) {
+      sheet.setColumnWidth(c, data.widths[c]);
+    }
+  }
+  if (defaultSheet != null && !sheets.any((s) => s.name == defaultSheet)) book.delete(defaultSheet);
+  return Uint8List.fromList(book.encode()!);
+}

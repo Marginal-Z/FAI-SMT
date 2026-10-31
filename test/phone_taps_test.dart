@@ -78,7 +78,9 @@ void main() {
     await tester.pumpAndSettle();
     if (state.selected != null) state.select(null);
     await tester.pumpAndSettle();
-    // A filter menu opens and closes.
+    // A filter menu opens and closes (the filters sit at the top of the list).
+    await tester.drag(find.byType(ListView).first, const Offset(0, 3000));
+    await tester.pumpAndSettle();
     await _tapText(tester, '全部');
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();

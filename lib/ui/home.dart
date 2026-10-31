@@ -7,9 +7,11 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import 'actions.dart';
+import 'ai_view.dart';
 import 'board_view.dart';
 import 'cad_view.dart';
 import 'check_view.dart';
+import 'compare_view.dart';
 import 'design.dart';
 import 'settings_page.dart';
 import 'shell.dart';
@@ -66,8 +68,10 @@ class HomeWindow extends StatelessWidget {
             final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
             return switch (state.module) {
               Module.check => CheckView(state: state, cards: compact),
+              Module.compare => CompareView(state: state, compact: compact),
               Module.cad => CadView(state: state, compact: compact),
               Module.board => BoardView(state: state),
+              Module.ai => AiView(state: state, compact: compact),
             };
           },
         );
