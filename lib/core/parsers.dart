@@ -95,10 +95,11 @@ ParseResult<BomItem> parseBom(List<Grid> sheets, {TableLayout? layout}) {
 /// Station list for one side / line, its columns recognised from their
 /// contents (or taken from [layout]).
 ///
-/// * A row with a part number but no slot and no designators lists an
-///   alternate of the row above (how the line's station tool writes 替代料).
 /// * A row without a part number continues the previous row's designators.
-/// * `关联料号` different from `料号` means the row loads an alternate of it.
+/// * A related-part column (关联料号) that differs from the part number
+///   records which part the row stands in for.
+/// * Every other row is taken as it is — rows are never reinterpreted by
+///   their position.
 /// * When the list has a side column (TOP / BOT, A / B 面), each row takes
 ///   its side from it; otherwise every row is on [side].
 ParseResult<StationItem> parseStation(List<Grid> sheets, StationSide side, {TableLayout? layout}) {
@@ -117,15 +118,10 @@ ParseResult<StationItem> parseStation(List<Grid> sheets, StationSide side, {Tabl
       if (items.isNotEmpty && refs.isNotEmpty) items.last.refs.addAll(refs);
       continue;
     }
-    if (slot.isEmpty && refs.isEmpty && items.isNotEmpty) {
-      final main = items.last;
-      if (pn != main.partNo && !main.alternates.contains(pn)) main.alternates.add(pn);
-      continue;
-    }
     final qtyText = map.get(row, 'qty');
     final qty = qtyText.isEmpty ? null : parseNumber(qtyText);
-    if (qty != null && refs.isNotEmpty && qty != refs.length) {
-      issues.add(ParseIssue('parse_station_qty', row: rowNo, detail: '$pn ($qtyText / ${refs.length})'));
+    if (qtyText.isNotEmpty && qty == null) {
+      issues.add(ParseIssue('parse_bad_qty', row: rowNo, detail: qtyText));
     }
     final related = map.get(row, 'related').toUpperCase();
     final rowSide = switch (parseSide(map.get(row, 'side'))) {

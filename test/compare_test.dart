@@ -132,8 +132,8 @@ void main() {
       final res = compareBomStations(bom, [...a, ...b], CheckRules(), mode: CompareMode.bomStationAB);
       final c = res.rows.firstWhere((r) => r.cells['pn'] == 'K1-0002');
       expect(c.category, CheckCategory.ng);
-      expect(c.reasons.map((e) => e.code), contains('station_missing_refs'));
-      expect(res.findings.any((d) => d.code == 'station_missing_refs'), isTrue);
+      expect(c.reasons.map((e) => e.code), contains('e_missing'));
+      expect(res.findings.any((d) => d.code == 'e_missing'), isTrue);
     });
   });
 
@@ -173,6 +173,13 @@ void main() {
       expect(CheckRules.fromJson({'excludeKeywords': ['PCB', '锡膏']}).excludeKeywords, ['PCB', '锡膏']);
       final saved = CheckRules(excludeKeywords: [...CheckRules.legacyExcludeKeywords]).toJson();
       expect(CheckRules.fromJson(saved).excludeKeywords, CheckRules.legacyExcludeKeywords);
+    });
+    test('old built-in ignore list is dropped, nothing is built in any more', () {
+      final r = CheckRules();
+      expect([r.excludeKeywords, r.excludePrefixes, r.ignoreRefPatterns, r.substitutes.keys], everyElement(isEmpty));
+      expect(CheckRules.fromJson({'schema': 2, 'ignoreRefPatterns': CheckRules.legacyIgnoreRefs}).ignoreRefPatterns, isEmpty);
+      expect(CheckRules.fromJson({'schema': 2, 'ignoreRefPatterns': ['MARK*']}).ignoreRefPatterns, ['MARK*']);
+      expect(CheckRules.fromJson(CheckRules(ignoreRefPatterns: [...CheckRules.legacyIgnoreRefs]).toJson()).ignoreRefPatterns, CheckRules.legacyIgnoreRefs);
     });
     test('AI settings survive a save', () {
       final s = AppSettings(ai: AiSettings(provider: AiProvider.openai, baseUrl: 'https://x/v1', apiKey: 'k', model: 'm'));

@@ -44,18 +44,14 @@ class StationItem {
     this.desc = '',
     this.qty,
     List<String>? refs,
-    List<String>? alternates,
     this.relatedTo = '',
     this.sourceRow = 0,
-  })  : refs = refs ?? [],
-        alternates = alternates ?? [];
+  }) : refs = refs ?? [];
 
   final String partNo;
 
-  /// Alternates listed under this row (rows with no slot and no designators).
-  final List<String> alternates;
-
-  /// 关联料号 when it differs from [partNo]: this row loads an alternate of it.
+  /// Related part (关联料号) when it differs from [partNo]: this row stands
+  /// in for that part.
   final String relatedTo;
   final StationSide side;
   final String slot;

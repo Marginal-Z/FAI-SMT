@@ -539,11 +539,9 @@ class AppState extends ChangeNotifier {
     if (bom == null) throw UserMessage('msg_need_bom');
     if (stationA == null && stationB == null) throw UserMessage('msg_need_station');
     final stations = [...?stationA?.result.items, ...?stationB?.result.items];
-    final raw = runCheck(bom!.result.items, stations, settings.rules);
-    _discrepancies = findDiscrepancies(
+    final outcome = runCheck(
       bom: bom!.result.items,
       stations: stations,
-      report: raw,
       rules: settings.rules,
       placements: coords?.result.items,
       bomIssues: bom!.result.issues,
@@ -551,7 +549,8 @@ class AppState extends ChangeNotifier {
       stationBIssues: stationB?.result.issues ?? const [],
       coordIssues: coords?.result.issues ?? const [],
     );
-    report = foldIntoReport(raw, _discrepancies!);
+    _discrepancies = outcome.findings;
+    report = outcome.report;
     checkedAt = DateTime.now();
     _cad = null;
     selected = null;

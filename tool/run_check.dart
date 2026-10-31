@@ -24,15 +24,17 @@ Future<void> main(List<String> a) async {
     }
     st.addAll(r.items);
   }
-  final rep = runCheck(bom.items, st, CheckRules());
+  final coords = a.length > 3 ? parseCoordinates(await readTableFile(a[3])) : null;
+  final out = runCheck(bom: bom.items, stations: st, rules: CheckRules(), placements: coords?.items, coordIssues: coords?.issues ?? const []);
+  final rep = out.report;
   for (final c in CheckCategory.values) {
     print('${c.name}: ${rep.count(c)}');
   }
   for (final r in rep.rows.where((r) => r.category != CheckCategory.pass)) {
     print('[${r.category.name}] ${r.partNo} ${r.description.length > 30 ? r.description.substring(0, 30) : r.description} | ${r.reasons.map((x) => s.t(x.code, x.args)).join('; ')}');
   }
-  if (a.length > 3) {
-    final c = parseCoordinates(await readTableFile(a[3]));
+  if (coords != null) {
+    final c = coords;
     print('Coords: ${c.items.length}, columns ${c.columns}, issues ${c.issues.length}');
     final cad = buildCad(c.items, rep, CadTemplate(), CheckRules());
     print('CAD rows ${cad.rows.length}; no coord ${cad.noCoordRefs}; not in BOM ${cad.notInBomRefs.length}; unknown side ${cad.unknownSide.length}');
@@ -43,7 +45,7 @@ Future<void> main(List<String> a) async {
       layers.putIfAbsent(side, () => {}).update(r.placement.side, (n) => n + 1, ifAbsent: () => 1);
     }
     print('station side -> coordinate layer: $layers');
-    final ds = findDiscrepancies(bom: bom.items, stations: st, report: rep, rules: CheckRules(), placements: c.items, coordIssues: c.issues);
+    final ds = out.findings;
     for (final v in Severity.values) {
       print('${v.name}: ${ds.where((d) => d.severity == v).length}');
     }

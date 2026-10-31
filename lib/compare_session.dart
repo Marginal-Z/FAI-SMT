@@ -220,11 +220,11 @@ class CompareSession extends ChangeNotifier {
         // List B is side B throughout, even with a side column of its own.
         final stB = [
           for (final s in b.stations)
-            StationItem(partNo: s.partNo, side: StationSide.b, slot: s.slot, desc: s.desc, qty: s.qty, refs: s.refs, alternates: s.alternates, relatedTo: s.relatedTo, sourceRow: s.sourceRow),
+            StationItem(partNo: s.partNo, side: StationSide.b, slot: s.slot, desc: s.desc, qty: s.qty, refs: s.refs, relatedTo: s.relatedTo, sourceRow: s.sourceRow),
         ];
         final stA = [
           for (final s in a.stations)
-            StationItem(partNo: s.partNo, side: StationSide.a, slot: s.slot, desc: s.desc, qty: s.qty, refs: s.refs, alternates: s.alternates, relatedTo: s.relatedTo, sourceRow: s.sourceRow),
+            StationItem(partNo: s.partNo, side: StationSide.a, slot: s.slot, desc: s.desc, qty: s.qty, refs: s.refs, relatedTo: s.relatedTo, sourceRow: s.sourceRow),
         ];
         next = compareBomStations(bomA.bom, [...stA, ...stB], rules,
             mode: mode, bomIssues: bomA.issues, stationAIssues: a.issues, stationBIssues: b.issues, files: _fileNames);

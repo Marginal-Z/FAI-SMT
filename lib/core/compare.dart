@@ -89,11 +89,6 @@ class CompareResult {
   int get edited => rows.where((r) => r.edited).length;
 }
 
-/// Reasons that are worth checking but are not outright errors.
-const _warningCodes = {'cmp_desc', 'cmp_field', 'cmp_alt_diff', 'cmp_qty_refs', 'cmp_dup_refs'};
-
-Severity severityOf(Reason r) => r.info ? Severity.info : (_warningCodes.contains(r.code) ? Severity.warning : Severity.error);
-
 String _join(Iterable<String> refs) => sortedRefs(refs).join(', ');
 
 String _qty(double? q) => q == null ? '' : (q == q.roundToDouble() ? q.toInt().toString() : '$q');
@@ -127,7 +122,7 @@ Map<String, List<Reason>> _selfCheck(List<BomItem> bom, String side, CheckRules 
     final reasons = <Reason>[];
     final refs = b.refs.where((r) => !rules.isIgnoredRef(r)).toList();
     final set = refs.toSet();
-    if (rules.checkQty && b.qty != null && set.isNotEmpty && (b.qty! - set.length).abs() > 1e-6) {
+    if (b.qty != null && set.isNotEmpty && (b.qty! - set.length).abs() > 1e-6) {
       reasons.add(Reason('cmp_qty_refs', {'side': side, 'qty': _qty(b.qty), 'n': '${set.length}'}));
     }
     if (set.length != refs.length) {
@@ -401,7 +396,7 @@ void _sort(List<Discrepancy> out) {
 }
 
 /// BOM against one station list (sides taken from its side column, if any)
-/// or against lists A and B, with the station check engine.
+/// or against lists A and B, with the station engine ([runCheck]).
 CompareResult compareBomStations(
   List<BomItem> bom,
   List<StationItem> stations,
@@ -412,21 +407,18 @@ CompareResult compareBomStations(
   List<ParseIssue> stationBIssues = const [],
   Map<String, String> files = const {},
 }) {
-  final raw = runCheck(bom, stations, rules);
-  final found = findDiscrepancies(
+  final outcome = runCheck(
     bom: bom,
     stations: stations,
-    report: raw,
     rules: rules,
     bomIssues: bomIssues,
     stationAIssues: stationAIssues,
     stationBIssues: stationBIssues,
   );
-  final report = foldIntoReport(raw, found);
   final twoSides = mode == CompareMode.bomStationAB || stations.any((s) => s.side == StationSide.b);
   var n = 0;
   final rows = [
-    for (final r in report.rows)
+    for (final r in outcome.report.rows)
       ResultRow(
         id: 'r${n++}',
         category: r.category,
@@ -434,7 +426,7 @@ CompareResult compareBomStations(
         cells: {
           'pn': r.partNo,
           'desc': r.description,
-          'bomQty': _qty(r.bomQty),
+          'bomQty': r.bomQty == null ? '' : _qty(r.bomQty),
           'smtQty': r.smtQty?.toString() ?? '',
           'bomRefs': r.bomRefs.map((m) => m.ref).join(','),
           'smtRefs': r.smtRefs.map((m) => m.ref).join(','),
@@ -444,5 +436,5 @@ CompareResult compareBomStations(
         },
       ),
   ];
-  return CompareResult(mode: mode, rows: rows, findings: found, files: files);
+  return CompareResult(mode: mode, rows: rows, findings: outcome.findings, files: files);
 }
