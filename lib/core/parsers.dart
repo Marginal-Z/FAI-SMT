@@ -4,6 +4,7 @@ library;
 import 'columns.dart';
 import 'models.dart';
 import 'refdes.dart';
+import 'smart_table.dart';
 import 'table_reader.dart';
 
 class ParseException implements Exception {
@@ -27,12 +28,16 @@ Map<String, String> _headerNames(ColumnMap map) => {
         e.key: map.headerRow >= 0 ? map.sheet.cell(map.headerRow, e.value) : '#${e.value + 1}'
     };
 
-/// T100 BOM. Rows without a part number but with designators continue the
-/// previous line (long 插件位置 cells are often wrapped onto several rows), and
-/// repeated part numbers are merged.
-ParseResult<BomItem> parseBom(List<Grid> sheets) {
-  final map = detectColumns(sheets, Fields.bom);
-  if (map == null) throw ParseException('parse_no_header_bom');
+/// BOM. The columns are recognised from their contents ([detectTable]), or
+/// taken from [layout] when the user has adjusted them. Rows without a part
+/// number but with designators continue the previous line (long 插件位置
+/// cells are often wrapped onto several rows), and repeated part numbers are
+/// merged.
+ParseResult<BomItem> parseBom(List<Grid> sheets, {TableLayout? layout}) {
+  final found = layout ?? detectTable(sheets, TableKind.bom);
+  if (found == null || !found.usable) throw ParseException('parse_no_header_bom');
+  final map = found.toColumnMap();
+  final others = found.otherColumns;
   final byPn = <String, BomItem>{};
   final issues = <ParseIssue>[];
   BomItem? last;
@@ -76,22 +81,30 @@ ParseResult<BomItem> parseBom(List<Grid> sheets) {
       refs: refs,
       alternates: alts.toList(),
       sourceRow: rowNo,
+      extras: {
+        for (final e in others.entries)
+          if (e.key < row.length && row[e.key].trim().isNotEmpty) e.value: unwrapText(row[e.key]),
+      },
     );
     byPn[pn] = item;
     last = item;
   }
-  return ParseResult(byPn.values.toList(), issues: issues, columns: _headerNames(map));
+  return ParseResult(byPn.values.toList(), issues: issues, columns: _headerNames(map), layout: found);
 }
 
-/// Station list for one side / line.
+/// Station list for one side / line, its columns recognised from their
+/// contents (or taken from [layout]).
 ///
 /// * A row with a part number but no slot and no designators lists an
 ///   alternate of the row above (how the line's station tool writes 替代料).
 /// * A row without a part number continues the previous row's designators.
 /// * `关联料号` different from `料号` means the row loads an alternate of it.
-ParseResult<StationItem> parseStation(List<Grid> sheets, StationSide side) {
-  final map = detectColumns(sheets, Fields.station);
-  if (map == null) throw ParseException('parse_no_header_station');
+/// * When the list has a side column (TOP / BOT, A / B 面), each row takes
+///   its side from it; otherwise every row is on [side].
+ParseResult<StationItem> parseStation(List<Grid> sheets, StationSide side, {TableLayout? layout}) {
+  final found = layout ?? detectTable(sheets, TableKind.station);
+  if (found == null || !found.usable) throw ParseException('parse_no_header_station');
+  final map = found.toColumnMap();
   final items = <StationItem>[];
   final issues = <ParseIssue>[];
   var rowNo = map.headerRow + 1;
@@ -115,18 +128,23 @@ ParseResult<StationItem> parseStation(List<Grid> sheets, StationSide side) {
       issues.add(ParseIssue('parse_station_qty', row: rowNo, detail: '$pn ($qtyText / ${refs.length})'));
     }
     final related = map.get(row, 'related').toUpperCase();
+    final rowSide = switch (parseSide(map.get(row, 'side'))) {
+      BoardSide.top => StationSide.a,
+      BoardSide.bottom => StationSide.b,
+      BoardSide.unknown => side,
+    };
     items.add(StationItem(
       partNo: pn,
-      side: side,
+      side: rowSide,
       slot: slot,
-      desc: unwrapText(map.get(row, 'desc')),
+      desc: unwrapText([map.get(row, 'desc'), map.get(row, 'desc2')].where((e) => e.isNotEmpty).join(' ')),
       qty: qty,
       refs: refs,
       relatedTo: related == pn ? '' : related,
       sourceRow: rowNo,
     ));
   }
-  return ParseResult(items, issues: issues, columns: _headerNames(map));
+  return ParseResult(items, issues: issues, columns: _headerNames(map), layout: found);
 }
 
 enum CoordUnit { auto, mm, mil, inch }

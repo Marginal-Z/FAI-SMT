@@ -96,7 +96,8 @@ void main() {
       StationItem(partNo: 'P-C', side: StationSide.b, slot: '6', refs: ['C1', 'C9']),
       StationItem(partNo: 'P-X', side: StationSide.b, slot: '7', refs: ['L1']),
     ];
-    final report = runCheck(bom, stations, CheckRules());
+    // Exclusion keywords are only what the user saved; none by default.
+    final report = runCheck(bom, stations, CheckRules(excludeKeywords: ['插件']));
     CheckRow row(String pn) => report.rows.firstWhere((r) => r.partNo == pn);
 
     test('categories are disjoint and sum to the total', () {

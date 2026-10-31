@@ -7,6 +7,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'ai_session.dart';
+import 'compare_session.dart';
 import 'core/checker.dart';
 import 'core/discrepancies.dart';
 import 'core/exporters.dart';
@@ -42,7 +44,9 @@ class UserMessage implements Exception {
 }
 
 /// Function modules. Each ribbon tab opens exactly one module page.
-enum Module { check, cad, board }
+/// [compare] is the BOM ↔ BOM / BOM ↔ station list compare; [ai] the
+/// independent AI check.
+enum Module { check, compare, cad, board, ai }
 
 /// Sections of the full-screen settings page.
 enum SettingsSection { appearance, board, library, rules, guide, about }
@@ -65,7 +69,16 @@ enum BoardColoring { real, type, status }
 enum CheckPageView { materials, discrepancies }
 
 class AppState extends ChangeNotifier {
-  AppState(this.settings, this.settingsDir);
+  AppState(this.settings, this.settingsDir) {
+    compare.addListener(notifyListeners);
+    ai.addListener(notifyListeners);
+  }
+
+  /// Compare page (its own files and result).
+  late final CompareSession compare = CompareSession(() => settings.rules);
+
+  /// AI check page: independent of every local result.
+  late final AiSession ai = AiSession(() => settings.ai, persist);
 
   AppSettings settings;
   final String settingsDir;
@@ -554,6 +567,11 @@ class AppState extends ChangeNotifier {
   void updateRules(CheckRules rules) {
     settings.rules = rules;
     persist();
+    try {
+      compare.rerun();
+    } on UserMessage {
+      // The compare page shows its own file problems.
+    }
     if (report != null) {
       runCheckNow();
     } else {

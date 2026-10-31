@@ -116,6 +116,15 @@ class Lucide {
     'M10 22h4',
   ]);
   static const play = Lucide(['*m6 3 14 9-14 9V3z']);
+  static const stop = Lucide(['*rect 6 6 12 12 2']);
+  static const gitCompare = Lucide(['circle 18 18 3', 'circle 6 6 3', 'M13 6h3a2 2 0 0 1 2 2v7', 'M11 18H8a2 2 0 0 1-2-2V9']);
+  static const sparkles = Lucide([
+    'M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z',
+    'M20 3v4',
+    'M22 5h-4',
+  ]);
+  static const pencil = Lucide(['M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z', 'm15 5 4 4']);
+  static const undo = Lucide(['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13']);
 }
 
 class LucideIcon extends StatelessWidget {

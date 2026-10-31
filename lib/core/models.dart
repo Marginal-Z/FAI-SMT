@@ -1,6 +1,8 @@
 /// Domain models shared by parsers, the check engine and exporters.
 library;
 
+import 'smart_table.dart';
+
 /// One BOM line after merging continuation rows.
 class BomItem {
   BomItem({
@@ -11,10 +13,16 @@ class BomItem {
     List<String>? refs,
     List<String>? alternates,
     this.sourceRow = 0,
+    Map<String, String>? extras,
   })  : refs = refs ?? [],
-        alternates = alternates ?? [];
+        alternates = alternates ?? [],
+        extras = extras ?? {};
 
   final String partNo;
+
+  /// Values of the columns with no recognised role, by header text
+  /// (manufacturer, package …), compared field by field between two BOMs.
+  final Map<String, String> extras;
   String name;
   String spec;
   double? qty;
@@ -100,13 +108,16 @@ class ParseIssue {
 }
 
 class ParseResult<T> {
-  ParseResult(this.items, {this.issues = const [], this.columns = const {}});
+  ParseResult(this.items, {this.issues = const [], this.columns = const {}, this.layout});
 
   final List<T> items;
   final List<ParseIssue> issues;
 
   /// Detected field -> header text, shown to the user for transparency.
   final Map<String, String> columns;
+
+  /// Recognised table (BOM and station lists).
+  final TableLayout? layout;
 }
 
 /// Category of a check row. Every row belongs to exactly one category, so the

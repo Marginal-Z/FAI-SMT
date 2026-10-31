@@ -9,7 +9,7 @@ import 'settings.dart';
 
 enum Severity { error, warning, info }
 
-enum Source { bom, stationA, stationB, stations, coords, cross }
+enum Source { bom, stationA, stationB, stations, coords, cross, bomA, bomB }
 
 class Discrepancy {
   const Discrepancy({

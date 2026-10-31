@@ -114,7 +114,7 @@ Future<void> exportReport(BuildContext context, AppState state) async {
     ],
   });
   if (!context.mounted) return;
-  await _save(context, '${state.exportBaseName}_check.xlsx', bytes, ['xlsx']);
+  await saveFile(context, '${state.exportBaseName}_check.xlsx', bytes, ['xlsx']);
 }
 
 Future<void> exportCad(BuildContext context, AppState state) async {
@@ -139,10 +139,11 @@ Future<void> exportCad(BuildContext context, AppState state) async {
   }
   final cad = state.cad!;
   final t = state.settings.cad;
-  await _save(context, '${state.exportBaseName}_FAI.${t.fileExtension}', cad.encode(), [t.fileExtension]);
+  await saveFile(context, '${state.exportBaseName}_FAI.${t.fileExtension}', cad.encode(), [t.fileExtension]);
 }
 
-Future<void> _save(BuildContext context, String name, Uint8List bytes, List<String> exts) async {
+/// Asks where to save [bytes] and writes them; reports the saved path.
+Future<void> saveFile(BuildContext context, String name, Uint8List bytes, List<String> exts) async {
   final s = Strings.of(context);
   try {
     final uri = await FilePicker.saveFile(
