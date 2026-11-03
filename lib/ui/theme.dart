@@ -5,7 +5,6 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
-import '../core/models.dart';
 
 /// Colour tokens. The named design tokens (bg, card, glass, blue …) follow
 /// the SMT-FAI design; the older names map onto them for the parts of the
@@ -326,42 +325,6 @@ class AppColors {
     shadow: [],
     shadowSm: [],
   );
-
-  /// Text colour of a result shown on its tint.
-  Color categoryText(CheckCategory c) => switch (c) {
-    CheckCategory.pass => okTx,
-    CheckCategory.ng => ngTx,
-    CheckCategory.excluded => tx2,
-    CheckCategory.substitute => warnTx,
-  };
-
-  Color category(CheckCategory c) => switch (c) {
-    CheckCategory.pass => pass,
-    CheckCategory.ng => ng,
-    CheckCategory.excluded => excluded,
-    CheckCategory.substitute => substitute,
-  };
-
-  Color categorySoft(CheckCategory c) => switch (c) {
-    CheckCategory.pass => passSoft,
-    CheckCategory.ng => ngSoft,
-    CheckCategory.excluded => excludedSoft,
-    CheckCategory.substitute => substituteSoft,
-  };
-
-  Color refState(RefState s) => switch (s) {
-    RefState.ok => pass,
-    RefState.missing => ng,
-    RefState.extra => ng,
-    RefState.alternate => substitute,
-    RefState.conflict => ng,
-  };
-
-  Color refStateSoft(RefState s) => switch (s) {
-    RefState.ok => passSoft,
-    RefState.alternate => substituteSoft,
-    _ => ngSoft,
-  };
 }
 
 /// Size scale: touch screens (Android tablets) get larger targets.

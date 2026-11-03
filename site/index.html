@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SMT-FAI · BOM 站位表核对与 FAI 坐标生成</title>
-<meta name="description" content="SMT-FAI：T100 BOM 与贴片机站位表自动核对，一键生成 FAI i450 首件检验坐标文件，PCB 导航图实物对照。支持 Windows、Android、Linux，离线运行。">
-<meta property="og:title" content="SMT-FAI · BOM 站位表核对与 FAI 坐标生成">
-<meta property="og:description" content="T100 BOM 与站位表自动核对，一键生成 FAI i450 坐标文件。">
+<title>SMT-FAI · BOM 与 BOM 核对</title>
+<meta name="description" content="SMT-FAI：单 BOM 与 A-BOM + B-BOM 按内容自动识别列、逐料号核对、差异高亮，可选 AI 分析。支持 Windows、Android、Linux。">
+<meta property="og:title" content="SMT-FAI · BOM 与 BOM 核对">
+<meta property="og:description" content="单 BOM 与 A-BOM + B-BOM 逐料号核对，差异高亮，可选 AI 分析。">
 <meta property="og:image" content="assets/check.webp">
 <meta name="theme-color" content="#f5f5f7">
 <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -87,7 +87,7 @@ header.nav.scrolled{background:var(--glass);backdrop-filter:saturate(180%) blur(
 .eyebrow{font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--blueTx);text-transform:uppercase}
 h1{font-size:clamp(36px,6.4vw,76px);line-height:1.08;letter-spacing:-.035em;margin:16px auto 22px;font-weight:700}
 .nw{white-space:nowrap}
-h1 .grad{background:linear-gradient(120deg,#0071e3,#7a5cff 55%,#ff6a3d);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1 .grad{color:var(--blue)}
 .lead{font-size:clamp(17px,2vw,21px);color:var(--tx2);max-width:700px;margin:0 auto;line-height:1.55;text-wrap:balance}
 h2,h3,.sec-head p{text-wrap:balance}
 .hero .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:34px}
@@ -253,23 +253,22 @@ footer a:hover{color:var(--tx)}
 <main>
 <section class="hero" style="padding-top:64px">
   <div class="wrap">
-    <div class="eyebrow rv">SMT 首件检验 · BOM 核对 · FAI 坐标</div>
-    <h1 class="rv"><span class="nw">BOM 与站位表核对，</span><br><span class="grad nw">一步到位。</span></h1>
-    <p class="lead rv">导入 T100 BOM 与贴片机站位表，几秒内找出缺料、多料、数量不符和替代料；一键生成 FAI i450 坐标文件，并在 PCB 导航图上对照实物。</p>
+    <div class="eyebrow rv">SMT BOM 核对 · 按内容识别 · AI 分析</div>
+    <h1 class="rv"><span class="nw">BOM 与 BOM 核对，</span><br><span class="grad nw">一眼看清差异。</span></h1>
+    <p class="lead rv">导入单 BOM 与 A-BOM、B-BOM，A 与 B 合并后逐料号核对物料描述、用量、位号和其他列。列按内容自动识别，差异单元格直接填色；打开 AI 核对，还能得到一份分析结果。</p>
     <div class="actions rv">
       <a class="btn primary" href="#download" id="heroDl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg><span>免费下载</span></a>
       <a class="btn ghost" href="#tutorial">查看使用教程</a>
     </div>
-    <div class="meta rv"><span id="verLine">最新版本 v1.6.0</span> · Windows · Android · Linux · 完全离线运行</div>
+    <div class="meta rv"><span id="verLine">最新版本 v1.8.0</span> · Windows · Android · Linux · 本地核对不联网</div>
     <div class="hero-shot rv">
       <div class="shot"><img class="only-light" src="assets/check.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面" fetchpriority="high"><img class="only-dark" src="assets/check-dark.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面（深色）" loading="lazy"></div>
-      <div class="shot float"><img src="assets/board-3d.webp" width="1440" height="1000" alt="PCB 导航图" loading="lazy"></div>
     </div>
     <div class="stats">
-      <div class="stat rv"><b>3</b><span>步完成首件核对</span></div>
-      <div class="stat rv"><b>64</b><span>种真实元件模型</span></div>
+      <div class="stat rv"><b>3</b><span>份文件：单 BOM · A · B</span></div>
+      <div class="stat rv"><b>4</b><span>类结果，差异逐格高亮</span></div>
+      <div class="stat rv"><b>2</b><span>种 AI 接口：OpenAI 兼容 · Anthropic</span></div>
       <div class="stat rv"><b>3</b><span>大平台 · x64 与 ARM64</span></div>
-      <div class="stat rv"><b>0</b><span>数据上传，全部本地处理</span></div>
     </div>
   </div>
 </section>
@@ -278,33 +277,33 @@ footer a:hover{color:var(--tx)}
   <div class="wrap">
     <div class="sec-head rv">
       <div class="eyebrow">功能</div>
-      <h2>为 SMT 产线首件检验而生</h2>
-      <p>从文件导入到坐标输出，每一步都为产线工程师的真实流程设计。</p>
+      <h2>为 BOM 核对而生</h2>
+      <p>不再写死核对规则，不再依赖表头名称：读懂表格内容，再逐项比较。</p>
     </div>
 
     <div class="feature rv">
       <div class="text">
-        <div class="tile t-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></div>
-        <h3>拖入文件，立即检查</h3>
-        <p>在 BOM 核对页顶部把 T100 BOM、A 面与 B 面站位表直接拖入卡片。每个文件导入后自动识别工作表和列，并立即显示检查结果。</p>
+        <div class="tile t-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div>
+        <h3>按内容识别每一列</h3>
+        <p>位号列看「R1,R2」这样的位号，用量列看是否与位号数一致，料号列看唯一编码，描述列看较长文字。表头叫什么都行，没有表头也能读。</p>
         <ul class="checks">
-          <li>支持 .xlsx / .csv / .txt，自动识别表头位置</li>
-          <li>插件位置中的换行、逗号、空格和范围写法都能识别</li>
-          <li>替代料可写在下一行或「关联料号」列</li>
+          <li>支持 .xlsx / .csv / .txt，表头前可以有标题行</li>
+          <li>品名 + 规格等多列描述自动拼接，位号续行自动归位</li>
+          <li>鼠标停在卡片上即可查看每列被识别成什么</li>
         </ul>
       </div>
-      <div class="shot"><img src="assets/files.webp" width="1440" height="1000" alt="文件导入" loading="lazy"></div>
+      <div class="shot"><img src="assets/files.webp" width="1440" height="900" alt="导入文件" loading="lazy"></div>
     </div>
 
     <div class="feature rev rv">
       <div class="text">
-        <div class="tile t-orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg></div>
-        <h3>每一处差异，都有原因</h3>
-        <p>PASS、NG、已排除物料、替代料分区统计。NG 项逐条写明原因：缺少位号、多出位号、数量不符、不在 BOM 中、描述不一致。</p>
+        <div class="tile t-orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></div>
+        <h3>描述只比参数，其余一字不差</h3>
+        <p>物料描述只比较英文与数字组成的参数：中文名称多一个字、少一个字或一长一短都算一致。用量、位号和其他列必须百分之百相同。</p>
         <ul class="checks">
-          <li>人工确认与备注，确认记录写入 Excel 报告</li>
-          <li>差异清单汇总 BOM、站位表与坐标之间的全部不一致</li>
-          <li>按面别、结果、确认状态筛选，料号与位号模糊搜索</li>
+          <li>差异单元格填色，不同的字符加粗高亮</li>
+          <li>位号列出 A+B 缺少、多出以及挂在其他料号下的</li>
+          <li>名称不同或无表头的列按内容自动配对比较</li>
         </ul>
       </div>
       <div class="shot"><img src="assets/check-dark.webp" width="1440" height="900" alt="BOM 核对（深色模式）" loading="lazy"></div>
@@ -312,41 +311,27 @@ footer a:hover{color:var(--tx)}
 
     <div class="feature rv">
       <div class="text">
-        <div class="tile t-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div>
-        <h3>一键生成 FAI i450 坐标</h3>
-        <p>导入 EDA 坐标文件，单位自动识别，按 FAI i450 导入模板输出 Location、X、Y、Angle、Specification、PartNo、Layer、Qty。</p>
+        <div class="tile t-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L19 10l-5.2 2.1L12 17l-1.8-4.9L5 10l5.2-2.1z"/><path d="M19 15v4M17 17h4"/></svg></div>
+        <h3>AI 核对，一个开关</h3>
+        <p>在设置里接入 OpenAI 兼容接口或 Anthropic，在核对页打开开关。每次核对后，AI 给出总结与逐条发现，例如等价写法、用量与位号矛盾。</p>
         <ul class="checks">
-          <li>mm / mil / inch 自动识别，也可手动指定</li>
-          <li>列顺序、表头、分隔符、编码、小数位均可自定义</li>
-          <li>生成检查：位号匹配、重复位号、坐标有效性与面别一致性</li>
+          <li>支持 OpenAI、DeepSeek、通义千问、Kimi、Ollama、vLLM 等</li>
+          <li>AI 标记的料号紫色标识，点击发现跳到对应料号</li>
+          <li>分析结果一并写入 Excel 报告</li>
         </ul>
       </div>
-      <div class="shot"><img src="assets/cad.webp" width="1440" height="900" alt="CAD 坐标" loading="lazy"></div>
-    </div>
-
-    <div class="feature rev rv">
-      <div class="text">
-        <div class="tile t-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg></div>
-        <h3>PCB 导航图，所见即所贴</h3>
-        <p>按真实尺寸和角度绘制每一个元件，NG 位号红框标出。2D 平面或 3D 立体视图，缩放、旋转、镜像查看底面。</p>
-        <ul class="checks">
-          <li>拥挤元件自动缩小显示，坐标始终不变</li>
-          <li>实物配色、元件类型、核对结果三种着色</li>
-          <li>悬停查看位号、坐标、料号；右键更换元件模型</li>
-        </ul>
-      </div>
-      <div class="shot"><img src="assets/board.webp" width="1440" height="1000" alt="PCB 导航图" loading="lazy"></div>
+      <div class="shot"><img src="assets/ai.webp" width="1440" height="900" alt="AI 分析结果" loading="lazy"></div>
     </div>
 
     <div class="grid">
-      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h4>核对规则</h4><p>排除关键字、编程件、替代料对照和忽略位号，按工厂习惯配置。</p></div>
-      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14M12 6v14M8 8v12M4 4v16"/></svg></div><h4>元件模型库</h4><p>64 种模型覆盖阻容感、二极管、LED、晶体管、各类 IC、连接器与屏蔽框。</p></div>
-      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6m0 6-3-3m3 3 3-3"/></svg></div><h4>Excel 报告</h4><p>核对结果、原因、人工确认和备注一键导出，便于存档与追溯。</p></div>
+      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6m0 6-3-3m3 3 3-3"/></svg></div><h4>Excel 报告</h4><p>两边的值并排列出，差异单元格填黄色，AI 说明填紫色。</p></div>
+      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></div><h4>单 BOM 与 A+B</h4><p>只有 A-BOM 时直接核对；有 B-BOM 时先合并，用量相加、位号合并。</p></div>
       <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div><h4>自动更新</h4><p>启动时检查新版本，Windows 与 Android 可在应用内直接升级安装。</p></div>
-      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></div><h4>深色模式</h4><p>浅色、深色或跟随系统，长时间在产线使用也不刺眼。</p></div>
+      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></div><h4>两种扁平风格</h4><p>现代与工业风格，浅色、深色或跟随系统。</p></div>
       <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div><h4>中文 · English · ไทย</h4><p>界面、报告与使用说明支持三种语言，随时切换。</p></div>
-      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></div><h4>新手引导</h4><p>22 步引导逐一打开对应功能并高亮实际控件，内置示例数据演示。</p></div>
-      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div><h4>平板与触屏</h4><p>界面随屏幕自动缩放，双指缩放旋转导航图，长按更换模型。</p></div>
+      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></div><h4>新手引导</h4><p>内置示例 BOM，逐步高亮实际控件演示完整流程。</p></div>
+      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div><h4>手机与平板</h4><p>手机、平板竖屏与横屏各有专属布局。</p></div>
+      <div class="card rv"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h4>本地优先</h4><p>本地核对不联网；只有开启 AI 核对才发送数据到你配置的接口。</p></div>
     </div>
   </div>
 </section>
@@ -356,17 +341,16 @@ footer a:hover{color:var(--tx)}
     <div class="sec-head rv">
       <div class="eyebrow">使用教程</div>
       <h2>五分钟上手</h2>
-      <p>从安装到输出 FAI 坐标文件的完整流程。软件内「设置 → 使用说明」也可随时查看，或点击右上角问号重新开始新手引导。</p>
+      <p>从安装到导出核对报告的完整流程。软件内「设置 → 使用说明」也可随时查看，或点击右上角问号重新开始新手引导。</p>
     </div>
     <div class="tut">
       <nav class="toc" aria-label="教程目录">
         <a href="#s1"><i>1</i>安装软件</a>
         <a href="#s2"><i>2</i>导入文件</a>
-        <a href="#s3"><i>3</i>核对与确认</a>
-        <a href="#s4"><i>4</i>生成 FAI 坐标</a>
-        <a href="#s5"><i>5</i>PCB 导航图</a>
-        <a href="#s6"><i>6</i>规则与设置</a>
-        <a href="#s7"><i>7</i>快捷键</a>
+        <a href="#s3"><i>3</i>核对规则</a>
+        <a href="#s4"><i>4</i>查看结果</a>
+        <a href="#s5"><i>5</i>AI 核对</a>
+        <a href="#s6"><i>6</i>导出与快捷键</a>
       </nav>
       <div class="steps">
         <article class="step rv" id="s1">
@@ -379,87 +363,70 @@ footer a:hover{color:var(--tx)}
             <tr><td><b>Android</b></td><td>安装 <code>android-universal.apk</code>（或与设备架构对应的 APK）。首次安装需在系统中允许「安装未知来源应用」。</td></tr>
             <tr><td><b>Linux</b></td><td><code>sudo apt install ./SMT-FAI-版本-linux-x64.deb</code>，或解压 tar.gz 运行 <code>smt_fai</code>。</td></tr>
           </table>
-          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span>以后升级直接安装新版本即可覆盖，设置与核对规则会保留；软件也会在启动时自动提示新版本。</span></div>
+          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span>以后升级直接安装新版本即可覆盖，设置会保留；软件也会在启动时自动提示新版本。</span></div>
         </article>
 
         <article class="step rv" id="s2">
           <div class="no">STEP 2</div>
           <h3>导入文件</h3>
-          <p>在「BOM 核对」页顶部，把文件拖到对应卡片上，或点击卡片选择文件。BOM 与站位表 A 为必需，单面板可不导入站位表 B。</p>
+          <p>把文件拖到核对页顶部对应的卡片上，或点击卡片选择文件。</p>
           <table class="spec">
-            <tr><th>文件</th><th>需要的列</th></tr>
-            <tr><td><b>T100 BOM</b></td><td>料件编号、品名（规格）、组成用量、插件位置。其他列会被忽略。</td></tr>
-            <tr><td><b>站位表 A / B</b></td><td>站位、料号、物料描述、数量、位号。替代料可放在下一行（站位与位号留空），或写在「关联料号」列。</td></tr>
-            <tr><td><b>坐标文件</b></td><td>位号、X、Y、角度、面别（可选）。在「CAD 坐标」页导入，支持常见 EDA 导出的 .csv / .txt / .xlsx / .pos。</td></tr>
+            <tr><th>卡片</th><th>说明</th></tr>
+            <tr><td><b>单 BOM</b></td><td>核对的基准，必需。</td></tr>
+            <tr><td><b>A-BOM 文件</b></td><td>必需。</td></tr>
+            <tr><td><b>B-BOM 文件</b></td><td>可选。有 B-BOM 时，A 与 B 先合并（同一料号用量相加、位号合并），再与单 BOM 核对。</td></tr>
           </table>
-          <p style="margin-top:16px">每张卡片会立即显示「文件检查结果」：格式、工作表、识别到的列和数据数量。显示「检查通过」后点底部的 <b>开始核对</b>（<kbd>F5</kbd>）。</p>
-          <div class="shot"><img src="assets/files.webp" width="1440" height="1000" alt="" loading="lazy"></div>
+          <p style="margin-top:16px">不需要固定的表头：料号、描述、用量、位号按内容识别，其他列（品牌、类别等）也会参与比较。卡片显示「检查通过」以及料号数、列数；鼠标停在上面可查看每列的识别结果与提示。</p>
+          <div class="shot"><img src="assets/files.webp" width="1440" height="900" alt="" loading="lazy"></div>
         </article>
 
         <article class="step rv" id="s3">
           <div class="no">STEP 3</div>
-          <h3>核对与人工确认</h3>
-          <ol>
-            <li>顶部统计卡显示 <b>PASS / NG / 已排除物料 / 替代料 / 差异清单</b> 数量，点击卡片即可筛选该类。</li>
-            <li>点击表格中的一行，右侧卡片列出 BOM 用量、SMT 数量、面别、站位以及每一条问题原因和说明。</li>
-            <li>核对无误的项目点「确认」，可填写备注；表头的「人工确认」可一次确认当前列表。</li>
-            <li>点「差异清单」查看 BOM、站位表 A/B、坐标文件之间的全部不一致。</li>
-            <li>PASS 无需人工确认；NG、已排除物料、替代料核对无误后点「确认」并可填写备注。</li>
-            <li>点 <b>导出 Excel</b>（<kbd>Ctrl</kbd>+<kbd>E</kbd>）保存核对报告，确认记录与备注会一并写入。</li>
-          </ol>
-          <div class="shot"><img src="assets/check.webp" width="1440" height="900" alt="" loading="lazy"></div>
+          <h3>核对规则</h3>
+          <table class="spec">
+            <tr><th>项目</th><th>规则</th></tr>
+            <tr><td><b>物料描述</b></td><td>只比较英文字母与数字组成的参数（区分大小写、顺序不限）；中文名称多一个字、少一个字或长短不同都视为一致。</td></tr>
+            <tr><td><b>用量 · 位号</b></td><td>必须完全相同。</td></tr>
+            <tr><td><b>其他列</b></td><td>两边都有的列逐字比较；只有一边有的列不比较，并在筛选栏旁列出。</td></tr>
+            <tr><td><b>料号</b></td><td>只在一边出现的标为「仅单 BOM」或「仅 A+B」。</td></tr>
+          </table>
+          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span>例：<code>贴片电阻 10K ±1% 0402</code> 与 <code>贴片电阻器，10K ±1% 0402</code> 一致；<code>10uF 6.3V</code> 与 <code>10uF 10V</code> 不一致。</span></div>
         </article>
 
         <article class="step rv" id="s4">
           <div class="no">STEP 4</div>
-          <h3>生成 FAI 坐标</h3>
+          <h3>查看结果</h3>
           <ol>
-            <li>打开「CAD 坐标」页，点「导入文件」选择坐标文件。</li>
-            <li>坐标单位默认自动识别，若识别不准可选 mm、mil 或 inch。</li>
-            <li>CAD 格式默认 FAI CAD（.xlsx），与 FAI i450 导入模板一致；点齿轮可调整列顺序、表头、分隔符、编码和小数位。</li>
-            <li>右侧「生成检查」显示位号匹配、重复位号、坐标有效性和面别一致性。点 <b>生成 CAD</b>（<kbd>Ctrl</kbd>+<kbd>G</kbd>）保存文件。</li>
+            <li>点 <b>开始核对</b>（<kbd>F5</kbd>）。顶部统计卡显示 <b>一致 / 有差异 / 仅单 BOM / 仅 A+B</b> 数量，点击卡片筛选。</li>
+            <li>表格中不一致的单元格填色，不同的字符加粗高亮；位号标出 A+B 缺少（缺）和多出（多）的。</li>
+            <li>点击一行，右侧逐列对比单 BOM 与 A+B 的值，并显示来源行号。</li>
+            <li>按料号、位号或描述搜索，按结果筛选。</li>
           </ol>
-          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span>存在未确认的 NG 项时会先提示；全部 NG 人工确认后生成不再提示。</span></div>
-          <div class="shot"><img src="assets/cad.webp" width="1440" height="900" alt="" loading="lazy"></div>
+          <div class="shot"><img src="assets/check.webp" width="1440" height="900" alt="" loading="lazy"></div>
         </article>
 
         <article class="step rv" id="s5">
           <div class="no">STEP 5</div>
-          <h3>PCB 导航图</h3>
+          <h3>AI 核对</h3>
           <ol>
-            <li><b>数据源</b>：使用当前核对数据，或直接打开已生成的 CAD 坐标文件。</li>
-            <li><b>显示面</b>：所有面 / TOP 面 / BOT 面；查看底面时建议打开「镜像」。</li>
-            <li><b>视图</b>：左转、右转 90°，适应窗口，复位，全屏（<kbd>F11</kbd>，<kbd>Esc</kbd> 退出）。滚轮或双指缩放，拖动平移，双击适应窗口。</li>
-            <li><b>元件显示</b>：2D 平面或 3D 立体。3D 默认俯视，右键拖动旋转、倾斜视角，右下角一键切换俯视 / 斜视。</li>
-            <li><b>着色</b>：实物配色、元件类型或核对结果；「配色」可自定义颜色与板子背景。</li>
-            <li><b>位号定位</b>：在工具栏右侧输入位号并回车，导航图自动缩放定位到该元件并发光闪烁。</li>
-            <li>鼠标悬停查看位号、坐标、料号；右键（触屏长按）元件可更换元件模型。</li>
+            <li>打开「设置 → AI 核对」，选择 <b>OpenAI 兼容</b>（OpenAI、DeepSeek、通义千问、Kimi、Ollama、vLLM 等）或 <b>Anthropic</b>。</li>
+            <li>填写接口地址（留空为官方地址）、API Key 与模型，点 <b>测试连接</b>。</li>
+            <li>在核对页打开「AI 核对」开关。之后每次核对完成都会自动分析，结果显示在表格右侧。</li>
+            <li>AI 标记的料号带紫色标识；点击一条发现即可跳到对应料号。</li>
           </ol>
-          <div class="shot"><img src="assets/board-3d.webp" width="1440" height="1000" alt="" loading="lazy"></div>
+          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span>AI 核对会把两份 BOM 的料号、描述、用量和位号发送到你配置的接口。涉及保密资料时请使用公司内部部署的模型。</span></div>
+          <div class="shot"><img src="assets/settings-ai.webp" width="1440" height="900" alt="" loading="lazy"></div>
         </article>
 
         <article class="step rv" id="s6">
           <div class="no">STEP 6</div>
-          <h3>规则与设置</h3>
-          <p>点击右上角齿轮按钮打开设置列表，点击一项进入对应页面：</p>
-          <ol>
-            <li><b>核对规则</b>：排除关键字（如 PCB、锡膏、标签）、排除料号前缀、编程件关键字、替代料对照表（<code>原料号=替代料1,替代料2</code>）、忽略位号和数量检查开关。</li>
-            <li><b>元件库</b>：浏览 64 种元件模型，查看按位号、料号或封装指定的自定义模型。</li>
-            <li><b>导航图配色</b>：元件颜色、板子背景、2D / 3D 默认显示。</li>
-            <li><b>外观</b>：主题、界面缩放与语言。<b>关于</b>：版本信息、检查更新与自动检查开关。</li>
-          </ol>
-          <div class="shot"><img src="assets/library.webp" width="1440" height="900" alt="" loading="lazy"></div>
-        </article>
-
-        <article class="step rv" id="s7">
-          <div class="no">STEP 7</div>
-          <h3>快捷键</h3>
+          <h3>导出与快捷键</h3>
+          <p>点 <b>导出 Excel</b>（<kbd>Ctrl</kbd>+<kbd>E</kbd>）保存核对报告：每个料号一行，两边的描述、用量、位号和其他列并排，结果按状态填色，差异单元格填黄色，AI 说明填紫色；开启 AI 时附带「AI 分析」工作表。</p>
           <table class="spec">
             <tr><th>按键</th><th>功能</th></tr>
             <tr><td><kbd>F5</kbd></td><td>开始核对</td></tr>
-            <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>导出核对报告（Excel）</td></tr>
-            <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>生成 CAD 坐标文件</td></tr>
-            <tr><td><kbd>F11</kbd> / <kbd>Esc</kbd></td><td>导航图进入 / 退出全屏</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>导出 Excel 报告</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>关闭设置</td></tr>
           </table>
         </article>
       </div>
@@ -520,20 +487,20 @@ footer a:hover{color:var(--tx)}
       <h2>还有疑问？</h2>
     </div>
     <div class="faq">
-      <details class="rv"><summary>文件会上传到服务器吗？</summary><p>不会。BOM、站位表和坐标文件都只在本机读取和处理，报告也保存在你选择的位置。软件只在检查更新时访问 GitHub Releases 获取版本信息。</p></details>
+      <details class="rv"><summary>文件会上传到服务器吗？</summary><p>本地核对不会：BOM 只在本机读取和处理，报告保存在你选择的位置。只有打开 AI 核对时，核对数据才会发送到你在设置中配置的 AI 接口。软件另外只在检查更新时访问 GitHub Releases。</p></details>
+      <details class="rv"><summary>表头名称和我们的不一样，能识别吗？</summary><p>可以。料号、描述、用量、位号按单元格内容识别，表头写法不同甚至没有表头都能读取。鼠标停在导入卡片的状态上，可以看到每一列被识别成了什么。</p></details>
+      <details class="rv"><summary>描述只差几个中文字，为什么还显示差异？</summary><p>说明英文或数字参数不同，包括大小写（如 10K 与 10k）。不同的字符会加粗高亮。中文部分本身不参与比较。</p></details>
+      <details class="rv"><summary>AI 核对支持哪些模型？</summary><p>任意 OpenAI 兼容接口（OpenAI、DeepSeek、通义千问、Kimi、智谱、Ollama、vLLM 等）和 Anthropic。在「设置 → AI 核对」中填写地址、Key 和模型，点「测试连接」确认。</p></details>
       <details class="rv"><summary>Android 提示「签名不一致」或「与现有软件包冲突」？</summary><p>1.3.0 及更早版本使用的是临时调试签名。从 1.4.0 起所有 APK 使用同一正式签名，请先卸载旧版本再安装一次，之后的版本都可以直接覆盖升级。</p></details>
       <details class="rv"><summary>Windows 安装时出现 SmartScreen 提示？</summary><p>安装程序暂未进行商业代码签名，首次运行可能提示「Windows 已保护你的电脑」。点击「更多信息 → 仍要运行」即可。安装包均由公开的 GitHub Actions 构建。</p></details>
-      <details class="rv"><summary>支持哪些文件格式？旧版 .xls 可以吗？</summary><p>支持 .xlsx、.csv、.txt；坐标文件另支持 .pos 等常见 EDA 格式。旧版 .xls 请在 Excel 中另存为 .xlsx 后导入。</p></details>
-      <details class="rv"><summary>替代料怎么写才能被识别？</summary><p>站位表中可把替代料放在主料的下一行（站位与位号留空），或写在「关联料号」列；也可以在「设置 → 核对规则 → 替代料」中按 <code>原料号=替代料1,替代料2</code> 维护对照表。</p></details>
-      <details class="rv"><summary>导航图上的元件模型不准确怎么办？</summary><p>导航图按位号前缀、封装名和规格描述自动识别模型。识别不准时，右键（触屏长按）该元件即可改用其他模型，可按位号、料号或封装应用，之后自动生效。</p></details>
     </div>
   </div>
 </section>
 
 <div class="wrap">
   <div class="cta rv">
-    <h2>让首件检验更快、更准</h2>
-    <p>免费 · 离线 · 跨平台</p>
+    <h2>让 BOM 核对更快、更准</h2>
+    <p>免费 · 本地核对 · 跨平台</p>
     <a class="btn primary" href="#download">立即下载</a>
   </div>
 </div>
@@ -553,7 +520,7 @@ footer a:hover{color:var(--tx)}
 
 <script>
 (function(){
-  var REPO='Marginal-Z/FAI-SMT', FALLBACK='1.6.0';
+  var REPO='Marginal-Z/FAI-SMT', FALLBACK='1.8.0';
   document.getElementById('yr').textContent=new Date().getFullYear();
 
   // Theme toggle (remembered per browser).

@@ -1,5 +1,5 @@
-/// Settings: a list of pages (appearance, navigator colours, rules, part
-/// library, user guide, about with software update).
+/// Settings: a list of pages (appearance, AI check API, user guide, about
+/// with software update).
 library;
 
 import 'dart:ffi' show Abi;
@@ -9,18 +9,17 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
-import '../core/footprints.dart';
+import '../core/ai_check.dart';
 import '../core/settings.dart';
 import '../core/updater.dart';
 import '../l10n/strings.dart';
 import '../version.dart';
-import 'board_view.dart';
+import 'check_view.dart' show aiText;
 import 'design.dart';
 import 'guide_page.dart';
-import 'library_page.dart';
 import 'lucide.dart';
-import 'rules_page.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'ui_scale.dart';
 import 'widgets.dart';
 
@@ -41,11 +40,9 @@ class SettingsScreen extends StatelessWidget {
 
     final title = s.t(_titles[section]!);
     final content = switch (section) {
-      SettingsSection.rules => RulesPage(state: state),
-      SettingsSection.library => PartLibraryPage(state: state),
       SettingsSection.guide => GuidePage(state: state),
       SettingsSection.appearance => _Section(child: _Appearance(state: state)),
-      SettingsSection.board => _Section(child: _BoardColors(state: state)),
+      SettingsSection.ai => _Section(child: _AiSettings(key: tourTargets.aiSettings, state: state)),
       SettingsSection.about => _Section(child: _About(state: state)),
     };
     return Padding(
@@ -95,9 +92,7 @@ class SettingsScreen extends StatelessWidget {
 
 const _titles = {
   SettingsSection.appearance: 'set_appearance',
-  SettingsSection.board: 'set_board_colors',
-  SettingsSection.library: 'set_library',
-  SettingsSection.rules: 'set_rules',
+  SettingsSection.ai: 'set_ai',
   SettingsSection.guide: 'set_guide',
   SettingsSection.about: 'set_about',
 };
@@ -117,11 +112,15 @@ class _SettingsList extends StatelessWidget {
     final groups = [
       [
         (SettingsSection.appearance, Lucide.brush, const Color(0xFF5E5CE6), s.t('set_appearance_hint'), null),
-        (SettingsSection.board, Lucide.palette, const Color(0xFFFF9F0A), s.t('set_board_hint'), null),
       ],
       [
-        (SettingsSection.rules, Lucide.shield, const Color(0xFF34C759), s.t('set_rules_hint'), null),
-        (SettingsSection.library, Lucide.library, const Color(0xFF0A84FF), s.t('set_library_hint'), null),
+        (
+          SettingsSection.ai,
+          Lucide.sparkles,
+          const Color(0xFF8E5CF6),
+          state.settings.ai.ready ? s.t('set_ai_hint_ready', {'m': state.settings.ai.modelName}) : s.t('set_ai_hint'),
+          null,
+        ),
       ],
       [
         (SettingsSection.guide, Lucide.book, const Color(0xFF30B0C7), s.t('set_guide_hint'), null),
@@ -655,371 +654,202 @@ class _UpdatePanel extends StatelessWidget {
   }
 }
 
-const _kindLabels = [
-  (PartKind.resistor, 'type_resistor'),
-  (PartKind.capacitor, 'type_capacitor'),
-  (PartKind.inductor, 'type_inductor'),
-  (PartKind.diode, 'type_diode'),
-  (PartKind.led, 'type_led'),
-  (PartKind.transistor, 'type_transistor'),
-  (PartKind.ic, 'type_ic'),
-  (PartKind.crystal, 'type_crystal'),
-  (PartKind.connector, 'type_connector'),
-  (PartKind.electromech, 'type_electromech'),
-  (PartKind.mechanical, 'type_mechanical'),
-  (PartKind.testPoint, 'type_testpoint'),
-  (PartKind.fiducial, 'type_fiducial'),
-  (PartKind.other, 'type_others'),
-];
-
-String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
-
-/// Board background and per-part colours of the PCB navigator.
-class _BoardColors extends StatelessWidget {
-  const _BoardColors({required this.state});
+/// AI check: the provider, endpoint, key and model, and a connection test.
+class _AiSettings extends StatefulWidget {
+  const _AiSettings({super.key, required this.state});
 
   final AppState state;
 
   @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    final palette = PartPalette(state.settings.board);
-    final style = state.settings.board;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          s.t('grp_render'),
-          style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Segmented<bool>(value: style.depth, options: [(false, s.t('render_flat')), (true, s.t('render_3d'))], onChanged: state.setBoardDepth),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Text(
-          s.t('board_bg'),
-          style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Segmented<BoardBackground>(
-              value: style.background,
-              options: [
-                (BoardBackground.canvas, s.t('bg_canvas')),
-                (BoardBackground.green, s.t('bg_green')),
-                (BoardBackground.black, s.t('bg_black')),
-                (BoardBackground.custom, s.t('bg_custom')),
-              ],
-              onChanged: (b) => state.setBoardBackground(b),
-            ),
-            if (style.background == BoardBackground.custom) ...[
-              const SizedBox(width: 12),
-              _Swatch(
-                color: Color(style.customBackground),
-                onTap: () async {
-                  final picked = await pickColor(context, Color(style.customBackground));
-                  if (picked != null) state.setBoardBackground(BoardBackground.custom, custom: picked.toARGB32());
-                },
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 18),
-        Text(
-          s.t('preview'),
-          style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 10),
-        _Preview(palette: palette),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                s.t('part_colors'),
-                style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w600),
-              ),
-            ),
-            FlatButton(label: s.t('reset_all'), compact: true, onTap: state.resetBoardStyle),
-          ],
-        ),
-        const SizedBox(height: 8),
-        LayoutBuilder(
-          builder: (context, box) {
-            final cols = box.maxWidth > 640 ? 2 : 1;
-            final w = (box.maxWidth - (cols - 1) * 16) / cols;
-            return Wrap(
-              spacing: 16,
-              runSpacing: 4,
-              children: [
-                for (final (kind, key) in _kindLabels)
-                  SizedBox(
-                    width: w,
-                    child: _ColorRow(
-                      label: s.t(key),
-                      color: palette.body(kind),
-                      custom: style.partColors.containsKey(kind.name),
-                      onPick: () async {
-                        final picked = await pickColor(context, palette.body(kind));
-                        if (picked != null) state.setPartColor(kind.name, picked.toARGB32());
-                      },
-                      onReset: () => state.setPartColor(kind.name, null),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
+  State<_AiSettings> createState() => _AiSettingsState();
 }
 
-class _ColorRow extends StatelessWidget {
-  const _ColorRow({required this.label, required this.color, required this.custom, required this.onPick, required this.onReset});
+class _AiSettingsState extends State<_AiSettings> {
+  late final _url = TextEditingController(text: widget.state.settings.ai.baseUrl);
+  late final _key = TextEditingController(text: widget.state.settings.ai.apiKey);
+  late final _model = TextEditingController(text: widget.state.settings.ai.model);
+  late AiProvider _provider = widget.state.settings.ai.provider;
+  bool _showKey = false;
 
-  final String label;
-  final Color color;
-  final bool custom;
-  final VoidCallback onPick;
-  final VoidCallback onReset;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    return Container(
-      height: 46,
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: c.border)),
-      ),
-      child: Row(
-        children: [
-          _Swatch(color: color, onTap: onPick),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(label, style: TextStyle(fontSize: 13, color: c.text)),
-          ),
-          Text(
-            _hex(color),
-            style: TextStyle(fontSize: 12, fontFamily: monoFontFamily, color: c.textDim),
-          ),
-          const SizedBox(width: 10),
-          if (custom) FlatButton(label: s.t('reset_default'), compact: true, onTap: onReset) else const SizedBox(width: 4),
-        ],
-      ),
-    );
-  }
-}
-
-class _Swatch extends StatelessWidget {
-  const _Swatch({required this.color, required this.onTap, this.size = 28, this.selected = false});
-
-  final Color color;
-  final VoidCallback onTap;
-  final double size;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    return Hoverable(
-      onTap: onTap,
-      builder: (context, hover, _) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: c.r(6),
-          border: Border.all(color: selected ? c.accent : (hover ? c.text : c.borderStrong), width: selected ? 2.5 : 1),
-        ),
-      ),
-    );
-  }
-}
-
-/// A strip of sample parts on the chosen board colour.
-class _Preview extends StatelessWidget {
-  const _Preview({required this.palette});
-
-  final PartPalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final board = palette.board ?? c.well;
-    Widget chip(PartKind k, double w, double h, {bool ends = false}) {
-      final body = palette.body(k);
-      return Container(
-        width: w,
-        height: h,
-        margin: const EdgeInsets.symmetric(horizontal: 7),
-        decoration: BoxDecoration(color: body, borderRadius: c.r(k == PartKind.ic ? 3 : 1.5)),
-        child: ends
-            ? Row(
-                children: [
-                  Container(width: w * 0.2, color: PartPalette.terminal),
-                  const Spacer(),
-                  Container(width: w * 0.2, color: PartPalette.terminal),
-                ],
-              )
-            : null,
-      );
-    }
-
-    return Container(
-      height: 86,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: board,
-        borderRadius: c.r(20),
-        border: Border.all(color: c.line),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            chip(PartKind.resistor, 34, 16, ends: true),
-            chip(PartKind.capacitor, 34, 16, ends: true),
-            chip(PartKind.inductor, 40, 32, ends: true),
-            chip(PartKind.diode, 30, 15),
-            chip(PartKind.led, 30, 15),
-            chip(PartKind.transistor, 34, 20),
-            chip(PartKind.ic, 50, 50),
-            chip(PartKind.crystal, 40, 30),
-            chip(PartKind.connector, 60, 22),
-            chip(PartKind.testPoint, 18, 18),
-            chip(PartKind.fiducial, 14, 14),
-            chip(PartKind.other, 30, 18),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-const _presets = [
-  0xFF2E9E6A,
-  0xFF1F7A50,
-  0xFF5CBF8A,
-  0xFF0E9F9F,
-  0xFF3D78D8,
-  0xFF2556A8,
-  0xFF6FA0F0,
-  0xFF4B5A8C,
-  0xFFD98A3D,
-  0xFFB86A22,
-  0xFFF0B062,
-  0xFFC94F4F,
-  0xFFE07A6B,
-  0xFFB59D6B,
-  0xFFBF8A57,
-  0xFFCDC4B1,
-  0xFF2F343B,
-  0xFF3B4048,
-  0xFF5B6575,
-  0xFF7C8592,
-  0xFF98A0A9,
-  0xFFB4BAC2,
-  0xFFE9EBEE,
-  0xFFFFFFFF,
-  0xFF1E5E3B,
-  0xFF154A2E,
-  0xFF16181B,
-  0xFF0F2A4A,
-  0xFF4A1E5E,
-  0xFF5E1E1E,
-  0xFFF2F5F1,
-  0xFF000000,
-];
-
-/// Colour picker: preset swatches plus a hex field. Returns null on cancel.
-Future<Color?> pickColor(BuildContext context, Color initial) {
-  final s = Strings.of(context);
-  return showAppDialog<Color>(
-    context,
-    title: s.t('color_pick'),
-    width: 420,
-    body: (ctx) => _PickerBody(initial: initial),
-  );
-}
-
-class _PickerBody extends StatefulWidget {
-  const _PickerBody({required this.initial});
-
-  final Color initial;
-
-  @override
-  State<_PickerBody> createState() => _PickerBodyState();
-}
-
-class _PickerBodyState extends State<_PickerBody> {
-  late Color _color = widget.initial;
-  late final _hexCtl = TextEditingController(text: _hex(widget.initial));
+  /// Connection test: null idle, '' running, else the result line.
+  String? _test;
+  bool _testOk = false;
 
   @override
   void dispose() {
-    _hexCtl.dispose();
+    _url.dispose();
+    _key.dispose();
+    _model.dispose();
     super.dispose();
   }
 
-  void _set(Color col) => setState(() {
-    _color = col;
-    _hexCtl.text = _hex(col);
-  });
+  AiConfig get _config => AiConfig(provider: _provider, baseUrl: _url.text.trim(), apiKey: _key.text.trim(), model: _model.text.trim());
+
+  void _save() {
+    widget.state.updateAi(_config);
+    if (_test != null && _test!.isNotEmpty) setState(() => _test = null);
+  }
+
+  Future<void> _runTest() async {
+    final s = Strings.of(context);
+    _save();
+    setState(() => _test = '');
+    try {
+      final reply = await testAi(_config);
+      if (!mounted) return;
+      setState(() {
+        _testOk = true;
+        _test = s.t('ai_test_ok', {'m': _config.modelName, 'r': reply.trim().split('\n').first});
+      });
+    } on AiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _testOk = false;
+        _test = '${s.t('err_${e.code}')}${e.detail.isEmpty ? '' : '\n${e.detail}'}';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    final state = widget.state;
+    final phone = isPhoneLayout(context);
+    Widget row(String label, Widget control, {String? hint}) {
+      final text = Text(label, style: TextStyle(fontSize: 13, color: c.textDim));
+      final body = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [for (final v in _presets) _Swatch(color: Color(v), size: 38, selected: _color.toARGB32() == v, onTap: () => _set(Color(v)))],
+          control,
+          if (hint != null) ...[const SizedBox(height: 6), Text(hint, style: TextStyle(fontSize: 12, height: 1.45, color: c.tx3))],
+        ],
+      );
+      // Phones put the label above its control.
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: phone
+            ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [text, const SizedBox(height: 8), body])
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: Padding(padding: const EdgeInsets.only(top: 9), child: text),
+                  ),
+                  Expanded(child: body),
+                ],
+              ),
+      );
+    }
+
+    final anthropic = _provider == AiProvider.anthropic;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Hoverable(
+          onTap: () => state.setAiEnabled(!state.settings.aiEnabled),
+          builder: (context, hover, _) => Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: hover ? c.hover : c.well, borderRadius: c.r(14)),
+            child: Row(
+              children: [
+                LucideIcon(Lucide.sparkles, size: 18, color: aiText(c), stroke: 2.2),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.t('ai_check'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
+                      const SizedBox(height: 2),
+                      Text(s.t('ai_switch_hint'), style: TextStyle(fontSize: 12.5, height: 1.4, color: c.tx2)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ToggleSwitch(value: state.settings.aiEnabled),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
+        ),
+        const SizedBox(height: 14),
+        row(
+          s.t('ai_provider'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Segmented<AiProvider>(
+              value: _provider,
+              options: [(AiProvider.openai, s.t('ai_openai')), (AiProvider.anthropic, 'Anthropic')],
+              onChanged: (v) {
+                setState(() => _provider = v);
+                _save();
+              },
+            ),
+          ),
+        ),
+        row(
+          s.t('ai_base_url'),
+          TextInput(controller: _url, hint: anthropic ? AiConfig.anthropicUrl : AiConfig.openaiUrl, mono: true, onChanged: (_) => _save()),
+          hint: s.t(anthropic ? 'ai_base_url_hint_anthropic' : 'ai_base_url_hint_openai'),
+        ),
+        row(
+          s.t('ai_key'),
           Row(
             children: [
-              Container(
-                width: 38,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: _color,
-                  borderRadius: c.r(6),
-                  border: Border.all(color: c.borderStrong),
-                ),
+              Expanded(
+                child: TextInput(controller: _key, hint: anthropic ? 'sk-ant-…' : 'sk-…', mono: true, obscure: !_showKey, onChanged: (_) => _save()),
               ),
-              const SizedBox(width: 10),
-              Text(s.t('color_hex'), style: TextStyle(fontSize: 12.5, color: c.textDim)),
               const SizedBox(width: 8),
-              TextInput(
-                controller: _hexCtl,
-                width: 120,
-                mono: true,
-                onChanged: (v) {
-                  final m = RegExp(r'^#?([0-9a-fA-F]{6})$').firstMatch(v.trim());
-                  if (m != null) setState(() => _color = Color(0xFF000000 | int.parse(m.group(1)!, radix: 16)));
-                },
-              ),
-              const Spacer(),
-              FlatButton(label: s.t('dlg_cancel'), compact: true, onTap: () => Navigator.of(context).pop()),
-              const SizedBox(width: 8),
-              FlatButton(label: s.t('dlg_ok'), compact: true, primary: true, onTap: () => Navigator.of(context).pop(_color)),
+              GlassButton(icon: _showKey ? Lucide.eyeOff : Lucide.eye, size: 36, iconSize: 15, tooltip: s.t(_showKey ? 'ai_hide_key' : 'ai_show_key'), onTap: () => setState(() => _showKey = !_showKey)),
             ],
           ),
+          hint: s.t('ai_key_hint'),
+        ),
+        row(
+          s.t('ai_model'),
+          TextInput(controller: _model, hint: anthropic ? AiConfig.anthropicModel : AiConfig.openaiModel, mono: true, onChanged: (_) => _save()),
+          hint: s.t('ai_model_hint'),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            PillButton(
+              label: s.t('ai_test'),
+              icon: Lucide.zap,
+              kind: PillKind.soft,
+              height: 38,
+              fontSize: 14,
+              onTap: _test == '' || !_config.ready ? null : _runTest,
+            ),
+            const SizedBox(width: 12),
+            if (_test == '') ...[const Spinner(size: 16), const SizedBox(width: 8), Text(s.t('ai_testing'), style: TextStyle(fontSize: 13, color: c.tx2))],
+          ],
+        ),
+        if (_test != null && _test!.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _testOk ? c.okTint : c.ngTint, borderRadius: c.r(12)),
+            child: Text(_test!, maxLines: 6, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, height: 1.45, color: _testOk ? c.okTx : c.ngTx)),
+          ),
         ],
-      ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: c.warnTint, borderRadius: c.r(12)),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LucideIcon(Lucide.alert, size: 15, color: c.warnTx, stroke: 2.2),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(s.t('ai_privacy'), style: TextStyle(fontSize: 12.5, height: 1.5, color: c.warnTx)),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

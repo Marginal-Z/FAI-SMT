@@ -1,9 +1,8 @@
 /// Building blocks of the SMT-FAI design: mesh background, translucent
-/// cards, glass and pill buttons, gradient icon tiles, badges, chips, tool
+/// cards, glass and pill buttons, flat icon tiles, badges, chips, tool
 /// tiles, radio and segmented pills.
 library;
 
-import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
@@ -11,48 +10,14 @@ import 'lucide.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// The page background: three soft colour blooms along the top edge.
+/// The page background: one flat colour.
 class MeshBackground extends StatelessWidget {
   const MeshBackground({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    return CustomPaint(painter: _MeshPainter(c), child: child);
-  }
-}
-
-class _MeshPainter extends CustomPainter {
-  _MeshPainter(this.c);
-
-  final AppColors c;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = c.bg);
-    // radial-gradient(Wpx Hpx at X Y, colour, transparent 70%)
-    for (final (cx, cy, rx, ry, color) in [
-      (size.width * 0.16, -80.0, 900.0, 520.0, c.mesh1),
-      (size.width * 0.86, -60.0, 820.0, 480.0, c.mesh2),
-      (size.width * 0.56, 10.0, 700.0, 420.0, c.mesh3),
-    ]) {
-      canvas.save();
-      canvas.translate(cx, cy);
-      canvas.scale(1, ry / rx);
-      final paint = Paint()
-        ..shader = RadialGradient(
-          colors: [color, color.withValues(alpha: 0)],
-          stops: const [0, 0.7],
-        ).createShader(Rect.fromCircle(center: Offset.zero, radius: rx));
-      canvas.drawCircle(Offset.zero, rx, paint);
-      canvas.restore();
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MeshPainter old) => old.c != c;
+  Widget build(BuildContext context) => ColoredBox(color: AppTheme.of(context).bg, child: child);
 }
 
 /// Translucent rounded card with the design's soft shadow.
@@ -202,13 +167,17 @@ class PillButton extends StatelessWidget {
                       LucideIcon(icon!, size: iconSize ?? (height >= 44 ? 18 : 15), color: enabled ? fg : c.tx3, stroke: 1.9),
                       const SizedBox(width: 8),
                     ],
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: weight ?? (primary || height >= 44 ? FontWeight.w600 : FontWeight.w500),
-                        letterSpacing: -0.01 * fontSize,
-                        color: enabled || primary ? fg : c.tx3,
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: fontSize,
+                          fontWeight: weight ?? (primary || height >= 44 ? FontWeight.w600 : FontWeight.w500),
+                          letterSpacing: -0.01 * fontSize,
+                          color: enabled || primary ? fg : c.tx3,
+                        ),
                       ),
                     ),
                     if (trailing != null) ...[const SizedBox(width: 12), trailing!],
@@ -262,7 +231,7 @@ class Kbd extends StatelessWidget {
   }
 }
 
-/// Square icon tile with a diagonal gradient, glow and lit top edge.
+/// Square icon tile: a white icon on one flat colour.
 class GradientTile extends StatelessWidget {
   const GradientTile({
     super.key,
@@ -299,21 +268,15 @@ class GradientTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 145deg: from the top-left towards the bottom-right, slightly steeper.
-    final angle = (145 - 90) * math.pi / 180;
-    final begin = Alignment(-math.cos(angle), -math.sin(angle));
     final c = AppTheme.of(context);
     return Container(
       width: size,
       height: size,
-      // Industrial style: a flat graphite square (grey while a file is missing).
-      decoration: c.industrial
-          ? BoxDecoration(borderRadius: c.r(radius), color: colors == gray ? const Color(0xFF606060) : c.btn)
-          : BoxDecoration(
-              borderRadius: c.r(radius),
-              gradient: LinearGradient(begin: begin, end: -begin, colors: [colors.$1, colors.$2]),
-              boxShadow: [BoxShadow(color: glow, offset: Offset(0, size / 6), blurRadius: size * 0.4)],
-            ),
+      // Flat: one solid colour (industrial: graphite, grey while a file is missing).
+      decoration: BoxDecoration(
+        borderRadius: c.r(radius),
+        color: c.industrial ? (colors == gray ? const Color(0xFF606060) : c.btn) : colors.$2,
+      ),
       alignment: Alignment.center,
       child: Stack(
         clipBehavior: Clip.none,
@@ -723,3 +686,85 @@ bool isPhoneLayout(BuildContext context) {
 
 /// Space the floating phone tab bar takes at the bottom of a page.
 double bottomInset(BuildContext context) => MediaQuery.paddingOf(context).bottom;
+
+/// On / off switch (display only; the parent handles the tap).
+class ToggleSwitch extends StatelessWidget {
+  const ToggleSwitch({super.key, required this.value});
+
+  final bool value;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 38,
+      height: 22,
+      padding: const EdgeInsets.all(2),
+      alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+      decoration: BoxDecoration(color: value ? (c.industrial ? c.btn : const Color(0xFF34C759)) : c.track, borderRadius: BorderRadius.circular(c.industrial ? 4 : 11)),
+      child: Container(
+        width: 18,
+        height: 18,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFFFF),
+          borderRadius: BorderRadius.circular(c.industrial ? 3 : 9),
+          boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 2, offset: Offset(0, 1))],
+        ),
+      ),
+    );
+  }
+}
+
+/// A small turning arc for work in progress.
+class Spinner extends StatefulWidget {
+  const Spinner({super.key, this.size = 16});
+
+  final double size;
+
+  @override
+  State<Spinner> createState() => _SpinnerState();
+}
+
+class _SpinnerState extends State<Spinner> with SingleTickerProviderStateMixin {
+  late final _turn = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+
+  @override
+  void dispose() {
+    _turn.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    return RotationTransition(
+      turns: _turn,
+      child: SizedBox.square(dimension: widget.size, child: CustomPaint(painter: _ArcPainter(c.blue))),
+    );
+  }
+}
+
+class _ArcPainter extends CustomPainter {
+  _ArcPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawArc(
+      (Offset.zero & size).deflate(1.5),
+      0,
+      4.2,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ArcPainter old) => old.color != color;
+}

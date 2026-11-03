@@ -81,7 +81,7 @@ jobs:
           [Desktop Entry]
           Type=Application
           Name=SMT-FAI
-          Comment=BOM / station list check and FAI i450 CAD generator
+          Comment=BOM vs BOM check with optional AI analysis
           Exec=/opt/smt-fai/smt_fai
           Icon=smt-fai
           Categories=Office;Engineering;
@@ -97,7 +97,7 @@ jobs:
           Depends: libgtk-3-0 | libgtk-3-0t64
           Maintainer: Marginal-Z <289210392+Marginal-Z@users.noreply.github.com>
           Description: SMT-FAI
-           Checks a T100 BOM against SMT station lists and builds the FAI i450 CAD file.
+           Checks a single BOM against A-BOM + B-BOM part by part, with optional AI analysis.
           EOF
           sed -i 's/^          //' $PKG/DEBIAN/control
           dpkg-deb --build --root-owner-group $PKG dist/$NAME.deb

@@ -21,6 +21,11 @@ class Lucide {
   static const chevronLeft = Lucide(['m15 18-6-6 6-6']);
   static const more = Lucide(['circle 12 12 1', 'circle 19 12 1', 'circle 5 12 1']);
   static const circle = Lucide(['circle 12 12 9']);
+  static const sparkles = Lucide(['M12 3l1.8 4.9L19 10l-5.2 2.1L12 17l-1.8-4.9L5 10l5.2-2.1z', 'M19 15v4M17 17h4']);
+  static const eye = Lucide(['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z', 'circle 12 12 3']);
+  static const eyeOff = Lucide(['M9.9 4.2A10 10 0 0 1 12 4c6.5 0 10 8 10 8a17 17 0 0 1-2.2 3.2', 'M6.6 6.6A17 17 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6', 'M14.1 14.1a3 3 0 1 1-4.2-4.2', 'm2 2 20 20']);
+  static const zap = Lucide(['M13 2 3 14h9l-1 8 10-12h-9l1-8z']);
+  static const key = Lucide(['circle 7.5 15.5 4.5', 'M10.7 12.3 20 3M17 6l3 3M15 8l2 2']);
   static const externalLink = Lucide(['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6']);
   static const copy = Lucide(['rect 8 8 14 14 2', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2']);
   static const locate = Lucide(['M2 12h3M19 12h3M12 2v3M12 19v3', 'circle 12 12 7', 'circle 12 12 3']);

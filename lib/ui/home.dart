@@ -1,5 +1,4 @@
-/// Main window: header with the module navigation, the module page (or
-/// Settings) and the footer, on the design's mesh background.
+/// Main window: header, the BOM check page (or Settings) and the footer.
 library;
 
 import 'package:flutter/services.dart';
@@ -7,8 +6,6 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import 'actions.dart';
-import 'board_view.dart';
-import 'cad_view.dart';
 import 'check_view.dart';
 import 'design.dart';
 import 'settings_page.dart';
@@ -28,16 +25,8 @@ class HomeWindow extends StatelessWidget {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.f5): () => runCheck(context, state),
         const SingleActivator(LogicalKeyboardKey.keyE, control: true): () => exportReport(context, state),
-        const SingleActivator(LogicalKeyboardKey.keyG, control: true): () => exportCad(context, state),
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          if (state.boardFullscreen) {
-            state.setBoardFullscreen(false);
-          } else if (state.settingsOpen) {
-            state.closeSettings();
-          }
-        },
-        const SingleActivator(LogicalKeyboardKey.f11): () {
-          if (state.module == Module.board) state.setBoardFullscreen(!state.boardFullscreen);
+          if (state.settingsOpen) state.closeSettings();
         },
       },
       child: Focus(
@@ -53,9 +42,6 @@ class HomeWindow extends StatelessWidget {
   }
 
   Widget _body(AppColors c) {
-    if (state.module == Module.board && state.boardFullscreen && !state.settingsOpen) {
-      return MeshBackground(child: BoardView(state: state, immersive: true));
-    }
     return MeshBackground(child: Builder(builder: (context) => isPhoneLayout(context) ? _phone(context) : _desktop()));
   }
 
@@ -64,11 +50,7 @@ class HomeWindow extends StatelessWidget {
       : LayoutBuilder(
           builder: (context, box) {
             final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
-            return switch (state.module) {
-              Module.check => CheckView(state: state, cards: compact),
-              Module.cad => CadView(state: state, compact: compact),
-              Module.board => BoardView(state: state),
-            };
+            return CheckView(state: state, cards: compact);
           },
         );
 

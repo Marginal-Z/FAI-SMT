@@ -1,25 +1,25 @@
-// Phone layout: every page, tab, settings page, toolbar button, menu and
-// dialog must respond to taps without errors.
+// Phone layout: the page, settings pages, result cards, the detail sheet,
+// menus, the AI switch and the tour must respond to taps without errors.
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
+import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
 import 'package:smt_fai/ui/widgets.dart';
 
 Finder _tip(String t) => find.byWidgetPredicate((w) => w is Hoverable && w.tooltip == t);
 
-AppState _loaded() {
+AppState _loaded({bool check = true}) {
   final state = AppState(AppSettings(tourDone: true), Directory.systemTemp.path);
-  List<int> read(String n) => File('samples/demo/$n').readAsBytesSync();
-  state.load(InputKind.bom, 'demo_T100_BOM.xlsx', Uint8List.fromList(read('demo_T100_BOM.xlsx')));
-  state.load(InputKind.stationA, 'demo_station_A.xlsx', Uint8List.fromList(read('demo_station_A.xlsx')));
-  state.load(InputKind.stationB, 'demo_station_B.xlsx', Uint8List.fromList(read('demo_station_B.xlsx')));
-  state.load(InputKind.coords, 'demo_coordinates.csv', Uint8List.fromList(read('demo_coordinates.csv')));
-  state.runCheckNow();
+  Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
+  state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
+  state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+  state.load(InputKind.b, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+  if (check) state.runCheckNow();
   return state;
 }
 
@@ -42,17 +42,12 @@ Future<void> _tapText(WidgetTester tester, String text) async {
 
 void main() {
   for (final size in [const Size(390, 844), const Size(800, 1280)]) {
-    testWidgets('tabs, settings and back respond (${size.width.round()} wide)', (tester) async {
+    testWidgets('settings pages and back respond (${size.width.round()} wide)', (tester) async {
       final state = _loaded();
       await _phone(tester, state, size: size);
-      for (final (label, mod) in [('CAD 坐标', Module.cad), ('PCB 导航图', Module.board), ('BOM 核对', Module.check)]) {
-        await _tapText(tester, label);
-        expect(state.module, mod);
-        expect(state.settingsOpen, isFalse);
-      }
       await _tapText(tester, '设置');
       expect(state.settingsOpen, isTrue);
-      for (final page in ['外观', '导航图配色', '核对规则', '元件库', '使用说明', '关于']) {
+      for (final page in ['外观', 'AI 核对', '使用说明', '关于']) {
         await _tapText(tester, page);
         expect(state.settingsSection, isNotNull, reason: page);
         // Back to the list.
@@ -63,45 +58,35 @@ void main() {
       }
       await _tapText(tester, 'BOM 核对');
       expect(state.settingsOpen, isFalse);
+      expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('check page: rows, sheet, filters and menus respond', (tester) async {
+  testWidgets('check page: stat cards, rows, sheet and menus respond', (tester) async {
     final state = _loaded();
     await _phone(tester, state);
-    // Pick NG through the stat card, select a row, close the sheet.
-    await _tapText(tester, 'NG');
-    final row = state.report!.rows.firstWhere((r) => r.category.name == 'ng');
+    await _tapText(tester, '有差异');
+    expect(state.filter, DiffStatus.different);
+    final row = state.visibleRows().first;
     await _tapText(tester, row.partNo);
     expect(state.selected, isNotNull);
     await tester.tap(_tip('关闭').first, warnIfMissed: false);
     await tester.pumpAndSettle();
     if (state.selected != null) state.select(null);
     await tester.pumpAndSettle();
-    // A filter menu opens and closes.
-    await _tapText(tester, '全部');
+    // The result menu opens and closes.
+    await _tapText(tester, '有差异');
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('CAD page and its format dialog respond', (tester) async {
+  testWidgets('AI switch opens the AI settings when no API is set', (tester) async {
     final state = _loaded();
-    state.setModule(Module.cad);
     await _phone(tester, state);
-    await _tapText(tester, 'mm');
-    expect(state.settings.coordUnit.name, 'mm');
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('PCB navigator tools respond', (tester) async {
-    final state = _loaded();
-    state.setModule(Module.board);
-    await _phone(tester, state);
-    final before = state.boardSide;
-    await tester.tap(_tip('TOP 面').first, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(state.boardSide, isNot(before));
+    await _tapText(tester, 'AI 核对');
+    expect(state.settingsOpen, isTrue);
+    expect(state.settingsSection, SettingsSection.ai);
     expect(tester.takeException(), isNull);
   });
 
@@ -123,5 +108,4 @@ void main() {
     expect(state.tourStep, isNull);
     expect(state.settings.tourDone, isTrue);
   });
-
 }

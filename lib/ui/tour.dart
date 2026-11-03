@@ -16,40 +16,30 @@ import 'theme.dart';
 import 'widgets.dart';
 
 class TourTargets {
-  final _modules = {for (final m in Module.values) m: GlobalKey(debugLabel: 'tour-${m.name}')};
-
-  GlobalKey module(Module m) => _modules[m]!;
-
   final tabs = GlobalKey(debugLabel: 'tour-tabs');
-  final bomCard = GlobalKey(debugLabel: 'tour-bom');
-  final stationCard = GlobalKey(debugLabel: 'tour-station');
+  final checkTab = GlobalKey(debugLabel: 'tour-check-tab');
+  final singleCard = GlobalKey(debugLabel: 'tour-single');
+  final aCard = GlobalKey(debugLabel: 'tour-a');
+  final bCard = GlobalKey(debugLabel: 'tour-b');
   final fileChecks = GlobalKey(debugLabel: 'tour-file-checks');
   final runButton = GlobalKey(debugLabel: 'tour-run');
+  final aiSwitch = GlobalKey(debugLabel: 'tour-ai-switch');
   final checkCards = GlobalKey(debugLabel: 'tour-check-cards');
   final checkFilters = GlobalKey(debugLabel: 'tour-check-filters');
   final checkTable = GlobalKey(debugLabel: 'tour-check-table');
   final checkExport = GlobalKey(debugLabel: 'tour-check-export');
-  final cadFile = GlobalKey(debugLabel: 'tour-cad-file');
-  final cadFormat = GlobalKey(debugLabel: 'tour-cad-format');
-  final cadBuild = GlobalKey(debugLabel: 'tour-cad-build');
-  final cadPreview = GlobalKey(debugLabel: 'tour-cad-preview');
-  final boardCanvas = GlobalKey(debugLabel: 'tour-board-canvas');
-  final boardView = GlobalKey(debugLabel: 'tour-board-view');
-  final boardRender = GlobalKey(debugLabel: 'tour-board-render');
-  final boardColoring = GlobalKey(debugLabel: 'tour-board-coloring');
-  final library = GlobalKey(debugLabel: 'tour-library');
+  final aiSettings = GlobalKey(debugLabel: 'tour-ai-settings');
   final guide = GlobalKey(debugLabel: 'tour-guide');
   final help = GlobalKey(debugLabel: 'tour-help');
 }
 
 final tourTargets = TourTargets();
 
-/// Where a step happens: a module page, or a Settings section.
+/// Where a step happens: the check page (null), or a Settings page.
 class _Place {
-  const _Place.module(this.module) : section = null;
-  const _Place.settings(this.section) : module = null;
+  const _Place.check() : section = null;
+  const _Place.settings(this.section);
 
-  final Module? module;
   final SettingsSection? section;
 }
 
@@ -62,46 +52,35 @@ class _Step {
   final GlobalKey? Function() target;
 }
 
-const _check = _Place.module(Module.check);
-const _cad = _Place.module(Module.cad);
-const _board = _Place.module(Module.board);
+const _check = _Place.check();
 
 final _steps = <_Step>[
   _Step('welcome', _check, () => null),
-  _Step('modules', _check, () => tourTargets.tabs),
-  _Step('bom', _check, () => tourTargets.bomCard),
-  _Step('station', _check, () => tourTargets.stationCard),
-  _Step('file_checks', _check, () => tourTargets.fileChecks),
+  _Step('single', _check, () => tourTargets.singleCard),
+  _Step('a', _check, () => tourTargets.aCard),
+  _Step('b', _check, () => tourTargets.bCard),
   _Step('run', _check, () => tourTargets.runButton),
+  _Step('ai_switch', _check, () => tourTargets.aiSwitch),
   _Step('check_cards', _check, () => tourTargets.checkCards),
   _Step('check_filters', _check, () => tourTargets.checkFilters),
   _Step('check_table', _check, () => tourTargets.checkTable),
   _Step('check_export', _check, () => tourTargets.checkExport),
-  _Step('cad_file', _cad, () => tourTargets.cadFile),
-  _Step('cad_format', _cad, () => tourTargets.cadFormat),
-  _Step('cad_preview', _cad, () => tourTargets.cadPreview),
-  _Step('cad_build', _cad, () => tourTargets.cadBuild),
-  _Step('board_canvas', _board, () => tourTargets.boardCanvas),
-  _Step('board_view', _board, () => tourTargets.boardView),
-  _Step('board_render', _board, () => tourTargets.boardRender),
-  _Step('board_coloring', _board, () => tourTargets.boardColoring),
-  _Step('library', _Place.settings(SettingsSection.library), () => tourTargets.library),
-  _Step('guide', _Place.settings(SettingsSection.guide), () => tourTargets.guide),
+  _Step('ai_settings', const _Place.settings(SettingsSection.ai), () => tourTargets.aiSettings),
+  _Step('guide', const _Place.settings(SettingsSection.guide), () => tourTargets.guide),
   _Step('help', _check, () => tourTargets.help),
   _Step('done', _check, () => null),
 ];
 
 /// The sample files the tour uses when nothing is loaded.
 const _demo = [
-  (InputKind.bom, 'demo_T100_BOM.xlsx'),
-  (InputKind.stationA, 'demo_station_A.xlsx'),
-  (InputKind.stationB, 'demo_station_B.xlsx'),
-  (InputKind.coords, 'demo_coordinates.csv'),
+  (InputKind.single, 'demo_single_BOM.xlsx'),
+  (InputKind.a, 'demo_A_BOM.xlsx'),
+  (InputKind.b, 'demo_B_BOM.xlsx'),
 ];
 
 /// Loads the bundled sample files so every page has something to show.
 Future<void> loadTourDemo(AppState state) async {
-  if (state.bom != null || state.stationA != null || state.stationB != null || state.coords != null) return;
+  if (state.loadedCount > 0) return;
   for (final (kind, name) in _demo) {
     final data = await rootBundle.load('samples/demo/$name');
     state.load(kind, name, data.buffer.asUint8List());
@@ -113,19 +92,16 @@ Future<void> loadTourDemo(AppState state) async {
 Future<void> _enter(AppState state, int step) async {
   final s = _steps[step];
   if (step == 0) await loadTourDemo(state);
-  if (s.place.module == Module.check || s.place.module == Module.cad || s.place.module == Module.board) {
-    if (state.report == null && state.bom != null && (state.stationA != null || state.stationB != null)) {
-      try {
-        state.runCheckNow();
-      } catch (_) {}
-    }
+  // From the check results on, the comparison is there to look at.
+  if (step >= 5 && state.report == null && state.ready) {
+    try {
+      state.runCheckNow();
+    } catch (_) {}
   }
   if (s.place.section != null) {
     if (!state.settingsOpen || state.settingsSection != s.place.section) state.openSettings(s.place.section!);
-  } else {
-    if (state.settingsOpen) state.closeSettings();
-    if (state.boardFullscreen) state.setBoardFullscreen(false);
-    if (state.module != s.place.module) state.setModule(s.place.module!);
+  } else if (state.settingsOpen) {
+    state.closeSettings();
   }
 }
 
@@ -299,13 +275,9 @@ class _TourOverlayState extends State<TourOverlay> {
 String _placeLabel(Strings s, _Place place) {
   final section = place.section;
   if (section != null) {
-    return '${s.t('mod_settings')} · ${s.t(section == SettingsSection.library ? 'set_library' : 'set_guide')}';
+    return '${s.t('mod_settings')} · ${s.t(section == SettingsSection.ai ? 'set_ai' : 'set_guide')}';
   }
-  return s.t(switch (place.module!) {
-    Module.check => 'mod_check',
-    Module.cad => 'mod_cad',
-    Module.board => 'mod_board',
-  });
+  return s.t('mod_check');
 }
 
 class _Backdrop extends CustomPainter {

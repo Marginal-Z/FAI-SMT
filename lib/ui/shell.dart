@@ -8,7 +8,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
-import '../core/models.dart';
+import '../core/bom_compare.dart';
 import '../l10n/strings.dart';
 import 'design.dart';
 import 'lucide.dart';
@@ -16,13 +16,8 @@ import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
 
-const moduleLabels = {Module.check: 'mod_check', Module.cad: 'mod_cad', Module.board: 'mod_board'};
-
-/// Drawn icon of each page in the page bar.
-const moduleIcons = {Module.check: Lucide.clipboardCheck, Module.cad: Lucide.fileText, Module.board: Lucide.cpu};
-
-/// Desktop header: the page bar at the top left (icons; the arrow shows or
-/// hides their names) and the round actions at the right.
+/// Desktop header: the page name at the top left (back to the check from
+/// Settings) and the round actions at the right.
 class AppHeader extends StatelessWidget {
   const AppHeader({super.key, required this.state});
 
@@ -32,67 +27,28 @@ class AppHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final labels = state.settings.navLabels;
-
-    final nav = Container(
+    final on = !state.settingsOpen;
+    final nav = Hoverable(
       key: tourTargets.tabs,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: c.glass, borderRadius: c.r(999), boxShadow: c.shadowSm, border: c.cardBorder),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final mod in Module.values) ...[
-            if (mod != Module.values.first) const SizedBox(width: 2),
-            Hoverable(
-              key: tourTargets.module(mod),
-              onTap: () => state.setModule(mod),
-              tooltip: labels ? null : s.t(moduleLabels[mod]!),
-              builder: (context, hover, _) {
-                final on = state.module == mod && !state.settingsOpen;
-                final color = on ? c.navOnTx : c.navTx;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  height: 36,
-                  padding: EdgeInsets.symmetric(horizontal: labels ? 16 : 11),
-                  decoration: BoxDecoration(
-                    color: on
-                        ? c.navOn
-                        : hover
-                        ? c.hover
-                        : null,
-                    borderRadius: c.r(18),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      LucideIcon(moduleIcons[mod]!, size: 18, color: color, stroke: on ? 2.1 : 1.8),
-                      if (labels) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          s.t(moduleLabels[mod]!),
-                          style: TextStyle(fontSize: 14, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: color),
-                        ),
-                      ],
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-          Container(width: 1, height: 18, margin: const EdgeInsets.symmetric(horizontal: 4), color: c.line),
-          Hoverable(
-            onTap: () => state.setNavLabels(!labels),
-            tooltip: s.t(labels ? 'nav_hide_names' : 'nav_show_names'),
-            builder: (context, hover, _) => Container(
-              width: 32,
-              height: 36,
+      onTap: state.closeSettings,
+      builder: (context, hover, _) => Container(
+        height: 44,
+        padding: const EdgeInsets.fromLTRB(6, 4, 16, 4),
+        decoration: BoxDecoration(color: c.glass, borderRadius: c.r(999), boxShadow: c.shadowSm, border: c.cardBorder),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: hover ? c.hover : null, borderRadius: c.r(16)),
-              child: LucideIcon(labels ? Lucide.chevronLeft : Lucide.chevronRight, size: 16, color: c.tx2, stroke: 2.2),
+              decoration: BoxDecoration(color: on ? c.navOn : (hover ? c.hover : c.well), borderRadius: c.r(17)),
+              child: LucideIcon(Lucide.clipboardCheck, size: 18, color: on ? c.navOnTx : c.navTx, stroke: 2),
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Text(s.t('mod_check'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: c.tx)),
+          ],
+        ),
       ),
     );
 
@@ -230,8 +186,8 @@ class AppFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final ng = state.report?.count(CheckCategory.ng) ?? 0;
-    final files = [state.bom, state.stationA, state.stationB, state.coords].where((f) => f != null).length;
+    final ng = (state.report?.count(DiffStatus.different) ?? 0) + (state.report?.count(DiffStatus.onlySingle) ?? 0) + (state.report?.count(DiffStatus.onlyMerged) ?? 0);
+    final files = state.loadedCount;
     final wide = MediaQuery.sizeOf(context).width >= 900 && !Metrics.of(context).touch;
     final style = TextStyle(fontSize: 12, color: c.tx2);
     Widget shortcut(String key, String label) => Row(
@@ -269,9 +225,7 @@ class AppFooter extends StatelessWidget {
             const SizedBox(width: 20),
             shortcut('F5', s.t('btn_run')),
             const SizedBox(width: 20),
-            shortcut('Ctrl+E', s.t('btn_export_report')),
-            const SizedBox(width: 20),
-            shortcut('Ctrl+G', s.t('btn_gen_cad')),
+            shortcut('Ctrl+E', s.t('btn_export_excel')),
           ],
         ],
       ),
@@ -290,7 +244,7 @@ class PhoneHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final title = state.settingsOpen ? s.t('mod_settings') : s.t(moduleLabels[state.module]!);
+    final title = state.settingsOpen ? s.t('mod_settings') : s.t('mod_check');
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 12, 6),
       child: Row(
@@ -338,7 +292,7 @@ class PhoneNavBar extends StatelessWidget {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final tabs = [
-      for (final mod in Module.values) (moduleIcons[mod]!, s.t(moduleLabels[mod]!), state.module == mod && !state.settingsOpen, () => state.setModule(mod), tourTargets.module(mod)),
+      (Lucide.clipboardCheck, s.t('mod_check'), !state.settingsOpen, state.closeSettings, tourTargets.checkTab),
       (Lucide.gear, s.t('mod_settings'), state.settingsOpen, () => state.openSettings(), null),
     ];
     final ind = c.industrial;
@@ -435,8 +389,7 @@ const _saturate = <double>[
   0, 0, 0, 1, 0,
 ];
 
-/// Glass body: a translucent fill, a brighter top (specular light) and a
-/// thin rim that is lighter on top than at the bottom.
+/// Glass body: a flat translucent fill and a thin light rim.
 class _GlassPainter extends CustomPainter {
   _GlassPainter({required this.dark, required this.radius});
 
@@ -447,27 +400,13 @@ class _GlassPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final rr = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-    canvas.drawRRect(rr, Paint()..color = dark ? const Color(0x8C1C1C1F) : const Color(0x8CF8F8FA));
-    canvas.drawRRect(
-      rr,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: dark ? const [Color(0x1FFFFFFF), Color(0x00FFFFFF)] : const [Color(0x99FFFFFF), Color(0x00FFFFFF)],
-          stops: const [0, 0.55],
-        ).createShader(rect),
-    );
+    canvas.drawRRect(rr, Paint()..color = dark ? const Color(0xB31C1C1F) : const Color(0xB3F8F8FA));
     canvas.drawRRect(
       rr.deflate(0.5),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: dark ? const [Color(0x59FFFFFF), Color(0x14FFFFFF)] : const [Color(0xFFFFFFFF), Color(0x66FFFFFF)],
-        ).createShader(rect),
+        ..color = dark ? const Color(0x33FFFFFF) : const Color(0xCCFFFFFF),
     );
   }
 

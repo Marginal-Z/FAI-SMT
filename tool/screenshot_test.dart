@@ -10,7 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
-import 'package:smt_fai/core/models.dart';
+import 'package:smt_fai/core/ai_check.dart';
+import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
 
@@ -40,17 +41,34 @@ void main() {
     await _font('FluentSystemIcons-Filled', ['assets/fonts/FluentSystemIcons-Filled.ttf']);
   });
 
-  AppState demoState({String lang = 'zh', bool dark = true}) {
-    final state = AppState(AppSettings(language: lang, theme: dark ? ThemePref.dark : ThemePref.light), Directory.systemTemp.path);
-    List<int> read(String n) => File('samples/demo/$n').readAsBytesSync();
-    state.load(InputKind.bom, 'demo_T100_BOM.xlsx', Uint8List.fromList(read('demo_T100_BOM.xlsx')));
-    state.load(InputKind.stationA, 'demo_station_A.xlsx', Uint8List.fromList(read('demo_station_A.xlsx')));
-    state.load(InputKind.stationB, 'demo_station_B.xlsx', Uint8List.fromList(read('demo_station_B.xlsx')));
-    state.load(InputKind.coords, 'demo_coordinates.csv', Uint8List.fromList(read('demo_coordinates.csv')));
-    state.runCheckNow();
-    state.setModule(Module.check);
+  AppState demoState({String lang = 'zh', bool dark = true, bool check = true, bool ai = false}) {
+    final state = AppState(AppSettings(language: lang, theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
+    Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
+    state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
+    state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+    state.load(InputKind.b, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+    if (check) state.runCheckNow();
+    if (ai) {
+      // A sample analysis, as a model would return it.
+      state.settings.aiEnabled = true;
+      state.settings.ai = AiConfig(apiKey: 'demo', model: 'gpt-4o-mini');
+      state.ai = AiResult(
+        summary: '共 28 个料号，21 个一致。主要问题：K1103-0106K0-001A 电容耐压 6.3V 与 10V 不一致；K1103-0220P0-001A 缺少位号 C21；K1102-1049K9-001A 多出 R32；K1104-2R2M00-001A 用量 3 与位号数 2 不符。建议先确认电容耐压与缺失位号。',
+        findings: [
+          AiFinding(partNo: 'K1103-0106K0-001A', field: 'description', side: 'both', severity: AiSeverity.error, message: '耐压不同：单 BOM 为 6.3V，A+B 为 10V，不是等价写法。', singleValue: '10uF 6.3V X5R 0603', mergedValue: '10uF 10V X5R 0603'),
+          AiFinding(partNo: 'K1103-0220P0-001A', field: 'refs', side: 'merged', severity: AiSeverity.error, message: 'A+B 缺少位号 C21，贴片时会漏件。', singleValue: 'C20,C21', mergedValue: 'C20'),
+          AiFinding(partNo: 'K1104-2R2M00-001A', field: 'quantity', side: 'merged', severity: AiSeverity.warning, message: 'A-BOM 用量 3 与位号 L1、L2 数量不符。', singleValue: '2', mergedValue: '3'),
+          AiFinding(partNo: 'K1109-MOS340-001A', field: '品牌', side: 'both', severity: AiSeverity.info, message: 'AOS 与 Alpha&Omega 为同一厂商的不同写法，建议统一。', singleValue: 'AOS', mergedValue: 'Alpha&Omega'),
+        ],
+        model: 'gpt-4o-mini',
+        at: DateTime(2026, 11, 3, 10, 30),
+      );
+      state.aiStatus = AiStatus.done;
+    }
     return state;
   }
+
+  CompareRow row(AppState s, String pn) => s.report!.rows.firstWhere((r) => r.partNo == pn);
 
   Future<void> shot(
     WidgetTester tester,
@@ -78,21 +96,64 @@ void main() {
     debugDisableShadows = true;
   }
 
-  testWidgets('files page empty, large window', (tester) async {
-    final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
-    await shot(tester, s, 'files_empty_light', size: const Size(1920, 1130));
+  for (final dark in [false, true]) {
+    final tag = dark ? 'dark' : 'light';
+    testWidgets('empty $tag', (tester) async {
+      final s = AppState(AppSettings(theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
+      await shot(tester, s, 'empty_$tag', size: const Size(1600, 940));
+    });
+    testWidgets('loaded $tag', (tester) async {
+      final s = demoState(dark: dark, check: false);
+      await shot(tester, s, 'loaded_$tag');
+    });
+    testWidgets('check $tag', (tester) async {
+      final s = demoState(dark: dark);
+      await shot(tester, s, 'check_$tag');
+    });
+    testWidgets('check selected $tag', (tester) async {
+      final s = demoState(dark: dark);
+      s.setFilter(DiffStatus.different);
+      s.select(row(s, 'K1103-0106K0-001A'));
+      await shot(tester, s, 'check_selected_$tag');
+    });
+    testWidgets('check ai $tag', (tester) async {
+      final s = demoState(dark: dark, ai: true);
+      await shot(tester, s, 'check_ai_$tag');
+    });
+    testWidgets('settings ai $tag', (tester) async {
+      final s = demoState(dark: dark);
+      s.openSettings(SettingsSection.ai);
+      await shot(tester, s, 'settings_ai_$tag');
+    });
+  }
+
+  testWidgets('check en', (tester) async {
+    final s = demoState(lang: 'en', dark: false, ai: true);
+    s.select(row(s, 'K1103-0220P0-001A'));
+    await shot(tester, s, 'check_en_light');
   });
 
-  testWidgets('part library', (tester) async {
+  testWidgets('check th', (tester) async {
+    final s = demoState(lang: 'th', dark: false);
+    await shot(tester, s, 'check_th_light');
+  });
+
+  testWidgets('settings list', (tester) async {
     final s = demoState(dark: false);
-    s.openSettings(SettingsSection.library);
-    await shot(tester, s, 'library_light', size: const Size(1600, 1000));
+    s.openSettings();
+    await shot(tester, s, 'settings_list_light');
   });
 
-  testWidgets('part library dark', (tester) async {
+  testWidgets('settings about', (tester) async {
+    final s = demoState(dark: false);
+    s.openSettings(SettingsSection.about);
+    await shot(tester, s, 'settings_about_light');
+  });
+
+  testWidgets('settings appearance', (tester) async {
     final s = demoState();
-    s.openSettings(SettingsSection.library);
-    await shot(tester, s, 'library_dark', size: const Size(1600, 1000));
+    s.openSettings(SettingsSection.appearance);
+    await shot(tester, s, 'settings_appearance_dark');
   });
 
   testWidgets('user guide', (tester) async {
@@ -101,285 +162,74 @@ void main() {
     await shot(tester, s, 'guide_light', size: const Size(1600, 1000));
   });
 
-  testWidgets('tour on the check page', (tester) async {
+  testWidgets('tour', (tester) async {
     final s = demoState(dark: false);
-    s.setModule(Module.check);
     s.tourStep = 8;
-    await shot(tester, s, 'tour_check_light', size: const Size(1600, 1000));
-  });
-
-  testWidgets('tour on the CAD page', (tester) async {
-    final s = demoState();
-    s.setModule(Module.check);
-    s.tourStep = 13;
-    await shot(tester, s, 'tour_cad_dark', size: const Size(1600, 1000));
-  });
-
-  testWidgets('tour on the navigator', (tester) async {
-    final s = demoState(dark: false);
-    s.tourStep = 16;
-    await shot(tester, s, 'tour_board_light', size: const Size(1600, 1000));
-  });
-
-  testWidgets('tour step', (tester) async {
-    final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
-    s.tourStep = 2;
     await shot(tester, s, 'tour_light', size: const Size(1600, 1000));
   });
 
-  testWidgets('files page dark', (tester) async {
-    final s = demoState();
-    s.setModule(Module.check);
-    await shot(tester, s, 'files_zh_dark');
+  testWidgets('small window', (tester) async {
+    final s = demoState(dark: false, ai: true);
+    await shot(tester, s, 'small_light', size: const Size(1100, 760));
   });
 
-  testWidgets('check view zh dark', (tester) async {
-    final s = demoState();
-    s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
-    await shot(tester, s, 'check_zh_dark');
-  });
-
-  testWidgets('check view NG filter en light', (tester) async {
-    final s = demoState(lang: 'en', dark: false);
-    s.setFilter(CheckCategory.ng);
-    s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
-    await shot(tester, s, 'check_ng_en_light');
-  });
-
-  testWidgets('rules th light', (tester) async {
-    final s = demoState(lang: 'th', dark: false);
-    s.openRules(RulesSection.exclusion);
-    await shot(tester, s, 'rules_th_light');
-  });
-
-  testWidgets('board view', (tester) async {
-    final s = demoState();
-    s.setModule(Module.board);
-    await shot(tester, s, 'board_zh_dark');
-  });
-
-  testWidgets('cad view', (tester) async {
-    final s = demoState(dark: false);
-    s.setModule(Module.cad);
-    await shot(tester, s, 'cad_zh_light');
-  });
-
-  testWidgets('files page light empty', (tester) async {
-    final s = AppState(AppSettings(theme: ThemePref.light), Directory.systemTemp.path);
-    s.load(InputKind.bom, 'demo_T100_BOM.xlsx', File('samples/demo/demo_T100_BOM.xlsx').readAsBytesSync());
-    await shot(tester, s, 'files_zh_light');
-  });
-
-  testWidgets('tablet landscape', (tester) async {
-    final s = demoState(dark: false);
-    s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
-    await shot(tester, s, 'tablet_landscape_light', size: const Size(1280, 800), touch: true);
-  });
-
-  testWidgets('tablet portrait', (tester) async {
-    final s = demoState();
-    s.setFilter(CheckCategory.ng);
-    await shot(tester, s, 'tablet_portrait_dark', size: const Size(800, 1280), touch: true);
-  });
-
-  testWidgets('tablet portrait files', (tester) async {
-    final s = demoState(dark: false);
-    s.setModule(Module.check);
-    await shot(tester, s, 'tablet_portrait_files_light', size: const Size(800, 1280), touch: true);
-  });
-
-  testWidgets('large tablet scaled up', (tester) async {
-    // A 1600 x 1000 dp tablet at 125 %: the 1280 x 800 layout filling the screen.
-    final s = demoState(dark: false);
-    s.settings.uiScale = 1.25;
-    s.setModule(Module.check);
-    await shot(tester, s, 'tablet_scaled_files_light', size: const Size(1600, 1000), touch: true);
-  });
-
-  testWidgets('settings appearance scaled', (tester) async {
-    final s = demoState();
-    s.settings.uiScale = 0.9;
-    s.openSettings(SettingsSection.appearance);
-    await shot(tester, s, 'settings_scaled_dark', size: const Size(1280, 800), touch: true);
-  });
-
-  testWidgets('assembly zoomed', (tester) async {
-    final s = demoState();
-    s.setModule(Module.board);
-    await shot(tester, s, 'board_zoom_dark', zoomSteps: 9, zoomAt: const Offset(560, 520));
-  });
-
-  testWidgets('assembly mirrored rotated light', (tester) async {
-    final s = demoState(dark: false);
-    s.setModule(Module.board);
-    s.toggleBoardMirror();
-    s.rotateBoard(1);
-    s.setBoardColoring(BoardColoring.status);
-    await shot(tester, s, 'board_mirror_light');
-  });
-
-  testWidgets('discrepancies', (tester) async {
-    final s = demoState();
-    s.setCheckView(CheckPageView.discrepancies);
-    await shot(tester, s, 'discrepancies_zh_dark');
-  });
-
-  testWidgets('settings', (tester) async {
-    final s = demoState(dark: false);
-    s.openSettings(SettingsSection.about);
-    await shot(tester, s, 'settings_zh_light');
-  });
-
-  testWidgets('settings appearance', (tester) async {
-    final s = demoState();
-    s.openSettings();
-    await shot(tester, s, 'settings_appearance_dark');
-  });
-
-  testWidgets('board full screen', (tester) async {
-    final s = demoState();
-    s.setModule(Module.board);
-    s.setBoardFullscreen(true);
-    await shot(tester, s, 'board_fullscreen_dark');
-  });
-
-  testWidgets('board from generated CAD file', (tester) async {
-    final s = demoState(dark: false);
-    final bytes = s.cad!.encode();
-    s.load(InputKind.boardCad, 'demo_FAI.xlsx', bytes);
-    s.setModule(Module.board);
-    await shot(tester, s, 'board_cadfile_light', zoomSteps: 6, zoomAt: const Offset(700, 520));
-  });
-
-  testWidgets('cad page', (tester) async {
-    final s = demoState();
-    s.setModule(Module.cad);
-    await shot(tester, s, 'cad_zh_dark');
-  });
-
-  testWidgets('settings board colours', (tester) async {
-    final s = demoState(dark: false);
-    s.openSettings(SettingsSection.board);
-    await shot(tester, s, 'settings_colors_light');
-  });
-
-  testWidgets('board green pcb', (tester) async {
-    final s = demoState(dark: false);
-    s.setModule(Module.board);
-    s.setBoardBackground(BoardBackground.green);
-    await shot(tester, s, 'board_green_light', zoomSteps: 5, zoomAt: const Offset(560, 560));
-  });
-
-  testWidgets('board black pcb', (tester) async {
-    final s = demoState();
-    s.setModule(Module.board);
-    s.setBoardBackground(BoardBackground.black);
-    await shot(tester, s, 'board_black_dark');
-  });
-
-  // Screens for the website (light, Chinese, demo data only).
-  group('site', () {
-    const size = Size(1440, 900);
-    testWidgets('site files', (tester) async {
+  group('tablet', () {
+    testWidgets('tablet landscape', (tester) async {
       final s = demoState(dark: false);
-      s.setModule(Module.check);
-      await shot(tester, s, 'site_files', size: const Size(1440, 1000));
+      s.select(row(s, 'K1103-0106K0-001A'));
+      await shot(tester, s, 'tablet_landscape_light', size: const Size(1280, 800), touch: true);
     });
-    testWidgets('site check', (tester) async {
+    testWidgets('tablet portrait', (tester) async {
+      final s = demoState(ai: true);
+      await shot(tester, s, 'tablet_portrait_dark', size: const Size(800, 1280), touch: true);
+    });
+    testWidgets('large tablet scaled up', (tester) async {
       final s = demoState(dark: false);
-      s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
-      await shot(tester, s, 'site_check', size: size);
-    });
-    testWidgets('site check dark', (tester) async {
-      final s = demoState();
-      s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
-      await shot(tester, s, 'site_check_dark', size: size);
-    });
-    testWidgets('site cad', (tester) async {
-      final s = demoState(dark: false);
-      s.setModule(Module.cad);
-      await shot(tester, s, 'site_cad', size: size);
-    });
-    testWidgets('site board', (tester) async {
-      final s = demoState(dark: false);
-      s.setModule(Module.board);
-      await shot(tester, s, 'site_board', size: const Size(1440, 1000));
-    });
-    testWidgets('site board zoom', (tester) async {
-      final s = demoState(dark: false);
-      s.setModule(Module.board);
-      s.settings.board.depth = true;
-      await shot(tester, s, 'site_board_3d', size: const Size(1440, 1000), zoomSteps: 3, zoomAt: const Offset(720, 640));
-    });
-    testWidgets('site library', (tester) async {
-      final s = demoState(dark: false);
-      s.openSettings(SettingsSection.library);
-      await shot(tester, s, 'site_library', size: size);
+      s.settings.uiScale = 1.25;
+      await shot(tester, s, 'tablet_scaled_light', size: const Size(1600, 1000), touch: true);
     });
   });
-
 
   // Phones: their own layout, not the desktop one scaled down.
   group('phone', () {
     const size = Size(390, 844);
-    for (final (name, mod) in [('check', Module.check), ('cad', Module.cad), ('board', Module.board)]) {
-      testWidgets('phone $name', (tester) async {
-        final s = demoState(dark: false);
-        s.setModule(mod);
-        await shot(tester, s, 'phone_$name', size: size, touch: true);
-      });
-    }
+    testWidgets('phone empty', (tester) async {
+      final s = AppState(AppSettings(theme: ThemePref.light, tourDone: true), Directory.systemTemp.path);
+      await shot(tester, s, 'phone_empty', size: size, touch: true);
+    });
+    testWidgets('phone check', (tester) async {
+      final s = demoState(dark: false, ai: true);
+      await shot(tester, s, 'phone_check', size: size, touch: true);
+    });
     testWidgets('phone check selected', (tester) async {
       final s = demoState(dark: false);
-      s.select(s.report!.rows.firstWhere((r) => r.category == CheckCategory.ng));
+      s.setFilter(DiffStatus.different);
+      s.select(row(s, 'K1103-0106K0-001A'));
       await shot(tester, s, 'phone_check_selected', size: size, touch: true);
     });
-    testWidgets('phone settings', (tester) async {
+    testWidgets('phone settings ai', (tester) async {
       final s = demoState(dark: false);
-      s.openSettings(SettingsSection.appearance);
-      await shot(tester, s, 'phone_settings', size: size, touch: true);
+      s.openSettings(SettingsSection.ai);
+      await shot(tester, s, 'phone_settings_ai', size: size, touch: true);
+    });
+    testWidgets('phone settings list', (tester) async {
+      final s = demoState(dark: false);
+      s.openSettings();
+      await shot(tester, s, 'phone_settings_list', size: size, touch: true);
     });
   });
-
-  group('tablet', () {
-    for (final (name, mod) in [('check', Module.check), ('cad', Module.cad), ('board', Module.board)]) {
-      testWidgets('tablet portrait $name', (tester) async {
-        final s = demoState(dark: false);
-        s.setModule(mod);
-        await shot(tester, s, 'tablet_portrait_$name', size: const Size(800, 1280), touch: true);
-      });
-      testWidgets('tablet landscape $name', (tester) async {
-        final s = demoState(dark: false);
-        s.setModule(mod);
-        await shot(tester, s, 'tablet_landscape_$name', size: const Size(1280, 800), touch: true);
-      });
-    }
-  });
-
-
-  testWidgets('settings list', (tester) async {
-    final s = demoState(dark: false);
-    s.openSettings();
-    await shot(tester, s, 'settings_list_light');
-  });
-
-  testWidgets('phone settings list', (tester) async {
-    final s = demoState(dark: false);
-    s.openSettings();
-    await shot(tester, s, 'phone_settings_list', size: const Size(390, 844), touch: true);
-  });
-
 
   group('industrial', () {
-    testWidgets('industrial empty', (tester) async {
-      final s = AppState(AppSettings(theme: ThemePref.light, themeStyle: ThemeStyle.industrial), Directory.systemTemp.path);
-      await shot(tester, s, 'industrial_empty', size: const Size(1280, 800));
-    });
-    testWidgets('industrial settings', (tester) async {
-      final s = demoState(dark: false);
+    testWidgets('industrial check', (tester) async {
+      final s = demoState(dark: false, ai: true);
       s.settings.themeStyle = ThemeStyle.industrial;
-      s.openSettings(SettingsSection.appearance);
-      await shot(tester, s, 'industrial_settings');
+      s.select(row(s, 'K1103-0106K0-001A'));
+      await shot(tester, s, 'industrial_check');
+    });
+    testWidgets('industrial dark', (tester) async {
+      final s = demoState(ai: true);
+      s.settings.themeStyle = ThemeStyle.industrial;
+      await shot(tester, s, 'industrial_check_dark');
     });
     testWidgets('industrial phone', (tester) async {
       final s = demoState(dark: false);
@@ -388,4 +238,30 @@ void main() {
     });
   });
 
+  // Screens for the website (light, Chinese, demo data only).
+  group('site', () {
+    const size = Size(1440, 900);
+    testWidgets('site check', (tester) async {
+      final s = demoState(dark: false);
+      s.select(row(s, 'K1103-0106K0-001A'));
+      await shot(tester, s, 'site_check', size: size);
+    });
+    testWidgets('site check dark', (tester) async {
+      final s = demoState(ai: true);
+      await shot(tester, s, 'site_check_dark', size: size);
+    });
+    testWidgets('site ai', (tester) async {
+      final s = demoState(dark: false, ai: true);
+      await shot(tester, s, 'site_ai', size: size);
+    });
+    testWidgets('site files', (tester) async {
+      final s = demoState(dark: false, check: false);
+      await shot(tester, s, 'site_files', size: size);
+    });
+    testWidgets('site settings ai', (tester) async {
+      final s = demoState(dark: false);
+      s.openSettings(SettingsSection.ai);
+      await shot(tester, s, 'site_settings_ai', size: size);
+    });
+  });
 }

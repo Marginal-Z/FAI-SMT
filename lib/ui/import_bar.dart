@@ -6,6 +6,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
+import '../core/bom.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'design.dart';
@@ -92,40 +93,41 @@ class ImportCardsRow extends StatelessWidget {
 /// BOM, station list A and station list B import cards.
 List<Widget> importCards(BuildContext context, AppState state) {
   final s = Strings.of(context);
-  final next = state.bom == null ? InputKind.bom : (state.stationA == null && state.stationB == null ? InputKind.stationA : null);
+  final next = state.single == null ? InputKind.single : (state.bomA == null ? InputKind.a : null);
   return [
     _ImportCard(
-      key: tourTargets.bomCard,
+      key: tourTargets.singleCard,
       state: state,
-      kind: InputKind.bom,
-      title: s.t('in_bom_title'),
-      help: s.t('in_bom_help'),
-      file: state.bom,
+      kind: InputKind.single,
+      title: s.t('in_single'),
+      help: s.t('in_single_help'),
+      file: state.single,
       optional: false,
       icon: Lucide.clipboardCheck,
       colors: GradientTile.blue,
       glow: GradientTile.blueGlow,
-      next: next == InputKind.bom,
+      next: next == InputKind.single,
     ),
     _ImportCard(
-      key: tourTargets.stationCard,
+      key: tourTargets.aCard,
       state: state,
-      kind: InputKind.stationA,
-      title: s.t('btn_station_a'),
-      help: s.t('in_station_help'),
-      file: state.stationA,
+      kind: InputKind.a,
+      title: s.t('in_a'),
+      help: s.t('in_ab_help'),
+      file: state.bomA,
       optional: false,
       icon: Lucide.fileText,
       colors: GradientTile.teal,
       glow: GradientTile.tealGlow,
-      next: next == InputKind.stationA,
+      next: next == InputKind.a,
     ),
     _ImportCard(
+      key: tourTargets.bCard,
       state: state,
-      kind: InputKind.stationB,
-      title: s.t('btn_station_b'),
-      help: s.t('in_station_help'),
-      file: state.stationB,
+      kind: InputKind.b,
+      title: s.t('in_b'),
+      help: s.t('in_ab_help'),
+      file: state.bomB,
       optional: true,
       icon: Lucide.fileText,
       colors: GradientTile.orange,
@@ -156,7 +158,7 @@ class _ImportCard extends StatefulWidget {
 
   /// What the file must contain, shown on the icon.
   final String help;
-  final LoadedFile<Object?>? file;
+  final LoadedFile? file;
   final bool optional;
   final Lucide icon;
   final (Color, Color) colors;
@@ -178,8 +180,7 @@ class _ImportCardState extends State<_ImportCard> {
     final s = Strings.of(context);
     final state = widget.state;
     final f = widget.file;
-    final issues = f?.result.issues.length ?? 0;
-    final bom = widget.kind == InputKind.bom;
+    final issues = f?.bom.warnings.length ?? 0;
 
     Widget iconButton(Lucide icon, String tip, VoidCallback onTap) => Hoverable(
       onTap: onTap,
@@ -200,7 +201,10 @@ class _ImportCardState extends State<_ImportCard> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.blueTx),
           )
-        : Row(
+        : Hoverable(
+            tooltip: _details(s, f.bom),
+            cursor: SystemMouseCursors.help,
+            builder: (context, hover, _) => Row(
             children: [
               LucideIcon(issues == 0 ? Lucide.check : Lucide.alert, size: 13, color: issues == 0 ? c.okTx : c.warnTx, stroke: 2.6),
               const SizedBox(width: 4),
@@ -208,7 +212,8 @@ class _ImportCardState extends State<_ImportCard> {
                 child: Text(
                   [
                     issues == 0 ? s.t('chk_passed') : s.t('in_issues', {'n': issues}),
-                    s.t(bom ? 'card_count_bom' : 'card_count_station', {'n': f.result.items.length}),
+                    s.t('card_count_bom', {'n': f.bom.parts.length}),
+                    s.t('card_cols', {'n': f.bom.columns.where((c) => c.role != BomRole.serial).length}),
                   ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -216,6 +221,7 @@ class _ImportCardState extends State<_ImportCard> {
                 ),
               ),
             ],
+          ),
           );
 
     final card = Hoverable(
@@ -317,7 +323,7 @@ class ImportActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final ready = state.bom != null && (state.stationA != null || state.stationB != null);
+    final ready = state.ready;
     final run = PillButton(
       key: tourTargets.runButton,
       label: s.t('btn_run'),
@@ -342,22 +348,15 @@ class ImportActions extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       onTap: state.report == null ? null : () => exportReport(context, state),
     );
-    final clear = PillButton(
-      label: s.t('btn_clear'),
-      icon: Lucide.trash,
-      kind: PillKind.ghost,
-      height: 40,
-      fontSize: 14,
-      iconSize: 15,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      onTap: state.clearAll,
-    );
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(color: c.card, borderRadius: c.r(22), boxShadow: c.shadowSm, border: c.cardBorder),
       child: compact
           // Phones: export and clear as round icon buttons beside Run.
-          ? Row(
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
               children: [
                 Expanded(child: run),
                 const SizedBox(width: 8),
@@ -373,12 +372,112 @@ class ImportActions extends StatelessWidget {
                 const SizedBox(width: 6),
                 GlassButton(icon: Lucide.trash, size: 40, tooltip: s.t('btn_clear'), onTap: state.clearAll),
               ],
+            ),
+                const SizedBox(height: 10),
+                AiSwitch(state: state),
+              ],
             )
           : Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [run, const SizedBox(height: 12), export, const SizedBox(height: 8), clear],
+              children: [
+                run,
+                const SizedBox(height: 10),
+                AiSwitch(state: state),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: export),
+                    const SizedBox(width: 6),
+                    GlassButton(icon: Lucide.trash, size: 40, tooltip: s.t('btn_clear'), onTap: state.clearAll),
+                  ],
+                ),
+              ],
             ),
     );
   }
+}
+
+/// The AI check switch with its state: off, not set up (opens the AI
+/// settings), running, done with N findings, or failed.
+class AiSwitch extends StatelessWidget {
+  const AiSwitch({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final on = state.settings.aiEnabled;
+    final configured = state.settings.ai.ready;
+    final (String sub, Color color) = !configured
+        ? (s.t('ai_not_set'), c.warnTx)
+        : !on
+        ? (s.t('ai_off'), c.tx3)
+        : switch (state.aiStatus) {
+            AiStatus.running => (s.t('ai_running'), c.blueTx),
+            AiStatus.done => (s.t('ai_done', {'n': state.ai?.findings.length ?? 0}), c.okTx),
+            AiStatus.failed => (s.t('ai_failed'), c.ngTx),
+            AiStatus.idle => (s.t('ai_on'), c.tx2),
+          };
+    return Hoverable(
+      key: tourTargets.aiSwitch,
+      onTap: () => configured ? state.setAiEnabled(!on) : state.openSettings(SettingsSection.ai),
+      tooltip: configured ? null : s.t('ai_setup_hint'),
+      builder: (context, hover, _) => Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+        decoration: BoxDecoration(color: hover ? c.hover : c.well, borderRadius: c.r(14)),
+        child: Row(
+          children: [
+            LucideIcon(Lucide.sparkles, size: 16, color: on && configured ? c.blueTx : c.tx2, stroke: 2),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(s.t('ai_check'), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.tx)),
+                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: color)),
+                ],
+              ),
+            ),
+            if (state.aiStatus == AiStatus.running && on) ...[const Spinner(size: 14), const SizedBox(width: 8)],
+            ToggleSwitch(value: on && configured),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Excel-style column letter of a 0-based index.
+String _colName(int i) {
+  var n = i + 1, out = '';
+  while (n > 0) {
+    final r = (n - 1) % 26;
+    out = String.fromCharCode(65 + r) + out;
+    n = (n - 1) ~/ 26;
+  }
+  return out;
+}
+
+/// What was read from a BOM: the sheet and header row, the column found for
+/// each role (by content, not only by header), and the warnings.
+String _details(Strings s, BomFile bom) {
+  final lines = <String>[bom.headerRow < 0 ? s.t('det_sheet_nohead', {'sheet': bom.sheet}) : s.t('det_sheet', {'sheet': bom.sheet, 'row': bom.headerRow + 1})];
+  for (final col in bom.columns) {
+    if (col.role == BomRole.serial) continue;
+    final role = col.role == BomRole.other ? s.t('role_other') : s.t('role_${col.role.name}');
+    final head = col.header.isEmpty ? s.t('det_no_header') : col.header;
+    lines.add('${_colName(col.index)} · $head → $role');
+  }
+  if (bom.warnings.isNotEmpty) {
+    lines.add('');
+    for (final w in bom.warnings.take(8)) {
+      lines.add(s.t(w.code, {'row': w.row, 'detail': w.detail}));
+    }
+    if (bom.warnings.length > 8) lines.add(s.t('det_more', {'n': bom.warnings.length - 8}));
+  }
+  return lines.join('\n');
 }

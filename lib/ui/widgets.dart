@@ -349,7 +349,7 @@ class ResultBadge extends StatelessWidget {
 
 /// Single- or multi-line text input built on [EditableText].
 class TextInput extends StatefulWidget {
-  const TextInput({super.key, required this.controller, this.hint, this.maxLines = 1, this.onChanged, this.prefix, this.mono = false, this.width});
+  const TextInput({super.key, required this.controller, this.hint, this.maxLines = 1, this.onChanged, this.prefix, this.mono = false, this.width, this.obscure = false});
 
   final TextEditingController controller;
   final String? hint;
@@ -358,6 +358,9 @@ class TextInput extends StatefulWidget {
   final IconData? prefix;
   final bool mono;
   final double? width;
+
+  /// Hides the text (keys, passwords).
+  final bool obscure;
 
   @override
   State<TextInput> createState() => _TextInputState();
@@ -427,6 +430,9 @@ class _TextInputState extends State<TextInput> {
                       minLines: multi ? widget.maxLines : null,
                       keyboardType: multi ? TextInputType.multiline : TextInputType.text,
                       onChanged: widget.onChanged,
+                      obscureText: widget.obscure,
+                      autocorrect: !widget.obscure,
+                      enableSuggestions: !widget.obscure,
                       rendererIgnoresPointer: false,
                       selectionControls: emptyTextSelectionControls,
                       enableInteractiveSelection: true,

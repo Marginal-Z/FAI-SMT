@@ -1,27 +1,26 @@
-/// Settings → User guide: how to use each module, shortcuts and common
-/// questions, plus a button to replay the guided tour.
+/// Settings → User guide: quick start, how files are read and parts
+/// compared, the AI check, the report, shortcuts and common questions, plus
+/// a button to replay the guided tour.
 library;
 
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import '../l10n/strings.dart';
-import 'glyphs.dart';
 import 'design.dart';
+import 'lucide.dart';
 import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
 
 const _sections = [
-  (Glyph.play, 'quick'),
-  (Glyph.modFiles, 'files'),
-  (Glyph.modCheck, 'check'),
-  (Glyph.modCad, 'cad'),
-  (Glyph.modBoard, 'board'),
-  (Glyph.library, 'library'),
-  (Glyph.settings, 'settings'),
-  (Glyph.tip, 'keys'),
-  (Glyph.help, 'faq'),
+  (Lucide.play, 'quick'),
+  (Lucide.fileText, 'files'),
+  (Lucide.clipboardCheck, 'rules'),
+  (Lucide.sparkles, 'ai'),
+  (Lucide.exportArrow, 'export'),
+  (Lucide.zap, 'keys'),
+  (Lucide.help, 'faq'),
 ];
 
 class GuidePage extends StatelessWidget {
@@ -64,7 +63,7 @@ class GuidePage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              for (final (glyph, key) in _sections) ...[
+              for (final (icon, key) in _sections) ...[
                 SurfaceCard(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
                   child: Column(
@@ -80,7 +79,7 @@ class GuidePage extends StatelessWidget {
                               color: c.accent.withValues(alpha: c.dark ? 0.18 : 0.1),
                               borderRadius: c.r(8),
                             ),
-                            child: GlyphIcon(glyph, size: 17, filled: true, color: c.accent),
+                            child: LucideIcon(icon, size: 16, color: c.accent, stroke: 2.2),
                           ),
                           const SizedBox(width: 10),
                           Text(

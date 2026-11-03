@@ -1,4 +1,5 @@
-/// Application state: loaded files, check report, CAD output, settings.
+/// Application state: the single BOM, A-BOM and B-BOM, the comparison, the
+/// AI analysis, settings and updates.
 library;
 
 import 'dart:ffi' show Abi;
@@ -7,27 +8,26 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'core/checker.dart';
-import 'core/discrepancies.dart';
-import 'core/exporters.dart';
-import 'core/models.dart';
-import 'core/parsers.dart';
-import 'core/part_library.dart';
+import 'core/ai_check.dart';
+import 'core/bom.dart';
+import 'core/bom_compare.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/updater.dart';
 import 'update_installer.dart';
 import 'version.dart';
 
-enum InputKind { bom, stationA, stationB, coords, boardCad }
+/// The three inputs: the single (reference) BOM, A-BOM and the optional
+/// B-BOM; A and B are merged and compared with the single BOM.
+enum InputKind { single, a, b }
 
-class LoadedFile<T> {
-  LoadedFile(this.name, this.result, {this.size = 0, this.sheets = 1, DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
+class LoadedFile {
+  LoadedFile(this.name, this.bom, {this.size = 0, this.sheets = 1, DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
 
   final String name;
-  final ParseResult<T> result;
+  final BomFile bom;
 
-  /// File size in bytes and number of non-empty sheets read.
+  /// File size in bytes and number of sheets read.
   final int size;
   final int sheets;
   final DateTime loadedAt;
@@ -41,28 +41,12 @@ class UserMessage implements Exception {
   final Map<String, Object?> args;
 }
 
-/// Function modules. Each ribbon tab opens exactly one module page.
-enum Module { check, cad, board }
-
-/// Sections of the full-screen settings page.
-enum SettingsSection { appearance, board, library, rules, guide, about }
-
-/// Sections of the rules editor inside settings.
-enum RulesSection { exclusion, alternates, general }
-
-/// What the PCB view shows: the checked data, or a CAD coordinate file.
-enum BoardSource { check, file }
+/// Pages of the settings screen.
+enum SettingsSection { appearance, ai, guide, about }
 
 enum UpdateStatus { idle, checking, upToDate, available, downloading, installing, failed }
 
-/// Board view side filter.
-enum BoardSideFilter { both, top, bottom }
-
-/// What the assembly drawing colours components by.
-enum BoardColoring { real, type, status }
-
-/// Check page view: per-part results or the full discrepancy list.
-enum CheckPageView { materials, discrepancies }
+enum AiStatus { idle, running, done, failed }
 
 class AppState extends ChangeNotifier {
   AppState(this.settings, this.settingsDir);
@@ -70,45 +54,24 @@ class AppState extends ChangeNotifier {
   AppSettings settings;
   final String settingsDir;
 
-  LoadedFile<BomItem>? bom;
-  LoadedFile<StationItem>? stationA;
-  LoadedFile<StationItem>? stationB;
-  LoadedFile<Placement>? coords;
-  Uint8List? _coordBytes;
+  LoadedFile? single;
+  LoadedFile? bomA;
+  LoadedFile? bomB;
 
-  CheckReport? report;
-  DateTime? checkedAt;
+  CompareReport? report;
 
-  /// Manual sign-offs by [CheckRow.key]; they survive a re-check as long as
-  /// the row's result and designators are unchanged.
-  final Map<String, ManualCheck> confirmations = {};
-  CadResult? _cad;
-  List<Discrepancy>? _discrepancies;
+  // AI check
+  AiStatus aiStatus = AiStatus.idle;
+  AiResult? ai;
+  String aiError = '';
+  String aiErrorDetail = '';
+  int _aiRun = 0;
 
   // UI state
-  Module module = Module.check;
   bool settingsOpen = false;
 
   /// Open settings page; null is the list of all of them.
   SettingsSection? settingsSection;
-  RulesSection rulesSection = RulesSection.exclusion;
-
-  /// PCB view: data source, an opened CAD coordinate file, full screen.
-  BoardSource boardSource = BoardSource.check;
-  LoadedFile<Placement>? boardFile;
-  bool boardFullscreen = false;
-  BoardSideFilter boardSide = BoardSideFilter.both;
-
-  /// Incremented to ask the board view to fit the board to the window, and
-  /// to also reset the 3D viewing angle.
-  int boardFitRequest = 0;
-  int boardResetRequest = 0;
-
-  /// View rotation in quarter turns (counter-clockwise) and mirror flag.
-  int boardQuarterTurns = 0;
-  bool boardMirror = false;
-  BoardColoring boardColoring = BoardColoring.real;
-  CheckPageView checkView = CheckPageView.materials;
 
   // Updates
   UpdateStatus updateStatus = UpdateStatus.idle;
@@ -117,9 +80,11 @@ class AppState extends ChangeNotifier {
   String updateError = '';
 
   bool get updateAvailable => latestRelease != null && compareVersions(latestRelease!.version, appVersion) > 0;
-  CheckCategory? filter;
+
+  /// Result filter; null shows every row.
+  DiffStatus? filter;
   String search = '';
-  CheckRow? selected;
+  CompareRow? selected;
   String statusKey = 'status_ready';
   Map<String, Object?> statusArgs = const {};
 
@@ -133,22 +98,73 @@ class AppState extends ChangeNotifier {
 
   Future<void> persist() => settings.save(settingsDir);
 
+  LoadedFile? file(InputKind k) => switch (k) {
+    InputKind.single => single,
+    InputKind.a => bomA,
+    InputKind.b => bomB,
+  };
+
+  bool get ready => single != null && bomA != null;
+  int get loadedCount => [single, bomA, bomB].whereType<LoadedFile>().length;
+
+  // ------------------------------------------------------------- appearance
+
   void setLanguage(String lang) {
     settings.language = lang;
     persist();
     notifyListeners();
   }
 
-  /// Bumped when a part model rule changes, to rebuild the navigator.
-  int partRulesVersion = 0;
+  void setTheme(ThemePref t) {
+    settings.theme = t;
+    persist();
+    notifyListeners();
+  }
+
+  /// Cycles system → light → dark, for the header toggle.
+  void cycleTheme() => setTheme(ThemePref.values[(theme.index + 1) % ThemePref.values.length]);
+
+  void setThemeStyle(ThemeStyle v) {
+    settings.themeStyle = v;
+    persist();
+    notifyListeners();
+  }
+
+  void setUiScale(double v) {
+    settings.uiScale = v;
+    persist();
+    notifyListeners();
+  }
+
+  // --------------------------------------------------------------- settings
+
+  /// Opens Settings at [section], or at the list of pages.
+  void openSettings([SettingsSection? section]) {
+    settingsOpen = true;
+    settingsSection = section;
+    notifyListeners();
+  }
+
+  void closeSettings() {
+    settingsOpen = false;
+    notifyListeners();
+  }
+
+  void setSettingsSection(SettingsSection? s) {
+    settingsSection = s;
+    notifyListeners();
+  }
+
+  // ------------------------------------------------------------------- tour
 
   /// Open step of the guided tour, or null when it is not running.
   int? tourStep;
 
+  /// The tour loaded the sample files; they are cleared when it ends.
+  bool tourDemo = false;
+
   void startTour() {
     settingsOpen = false;
-    boardFullscreen = false;
-    module = Module.check;
     tourStep = 0;
     notifyListeners();
   }
@@ -157,9 +173,6 @@ class AppState extends ChangeNotifier {
     tourStep = step;
     notifyListeners();
   }
-
-  /// The tour loaded the sample files; they are cleared when it ends.
-  bool tourDemo = false;
 
   void endTour() {
     tourStep = null;
@@ -172,21 +185,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Draws parts matching [field] = [value] as library model [model]
-  /// (null removes the rule).
-  void setPartRule(String field, String value, String? model) {
-    settings.partRules.removeWhere((r) => r.field == field && r.value == value);
-    if (model != null) settings.partRules.add(PartModelRule(field, value, model));
-    partRulesVersion++;
-    persist();
-    notifyListeners();
-  }
-
-  void setUiScale(double v) {
-    settings.uiScale = v;
-    persist();
-    notifyListeners();
-  }
+  // ---------------------------------------------------------------- updates
 
   void setAutoUpdate(bool v) {
     settings.autoUpdate = v;
@@ -243,145 +242,134 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void setTheme(ThemePref t) {
-    settings.theme = t;
-    persist();
-    notifyListeners();
-  }
+  // ------------------------------------------------------------------ files
 
-  /// Cycles system → light → dark, for the title-bar toggle.
-  void cycleTheme() => setTheme(ThemePref.values[(theme.index + 1) % ThemePref.values.length]);
-
-  /// Opens page [m]; leaves Settings and full screen, so a page tab always
-  /// takes you to that page.
-  void setModule(Module m) {
-    module = m;
-    settingsOpen = false;
-    if (m != Module.board) boardFullscreen = false;
-    notifyListeners();
-  }
-
-  /// Opens Settings at [section], or at the list of pages.
-  void openSettings([SettingsSection? section]) {
-    settingsOpen = true;
-    settingsSection = section;
-    notifyListeners();
-  }
-
-  void setThemeStyle(ThemeStyle v) {
-    settings.themeStyle = v;
-    persist();
-    notifyListeners();
-  }
-
-  void setNavLabels(bool v) {
-    settings.navLabels = v;
-    persist();
-    notifyListeners();
-  }
-
-  void closeSettings() {
-    settingsOpen = false;
-    notifyListeners();
-  }
-
-  void setSettingsSection(SettingsSection? s) {
-    settingsSection = s;
-    notifyListeners();
-  }
-
-  void openRules(RulesSection section) {
-    settingsOpen = true;
-    settingsSection = SettingsSection.rules;
-    rulesSection = section;
-    notifyListeners();
-  }
-
-  void setBoardSource(BoardSource s) {
-    boardSource = s;
-    boardFitRequest++;
-    notifyListeners();
-  }
-
-  /// Sets (or with null resets) the colour of one part type in the navigator.
-  void setPartColor(String kind, int? argb) {
-    if (argb == null) {
-      settings.board.partColors.remove(kind);
-    } else {
-      settings.board.partColors[kind] = argb;
+  /// Reads [bytes] as the given BOM. Throws [UserMessage] on failure.
+  void load(InputKind kind, String name, Uint8List bytes) {
+    final List<Grid> grids;
+    try {
+      grids = readTableBytes(bytes, name);
+    } on TableReadException catch (e) {
+      throw UserMessage('err_${e.code}', {'detail': e.detail});
     }
+    final BomFile bom;
+    try {
+      bom = readBom(grids);
+    } on BomReadException catch (e) {
+      throw UserMessage('err_${e.code}');
+    }
+    final f = LoadedFile(name, bom, size: bytes.length, sheets: grids.length);
+    switch (kind) {
+      case InputKind.single:
+        single = f;
+      case InputKind.a:
+        bomA = f;
+      case InputKind.b:
+        bomB = f;
+    }
+    _reset();
+    _status('status_loaded', {'name': name});
+    notifyListeners();
+  }
+
+  void unload(InputKind kind) {
+    switch (kind) {
+      case InputKind.single:
+        single = null;
+      case InputKind.a:
+        bomA = null;
+      case InputKind.b:
+        bomB = null;
+    }
+    _reset();
+    _status('status_ready');
+    notifyListeners();
+  }
+
+  void clearAll() {
+    single = bomA = bomB = null;
+    _reset();
+    _status('status_ready');
+    notifyListeners();
+  }
+
+  void _reset() {
+    report = null;
+    selected = null;
+    ai = null;
+    aiStatus = AiStatus.idle;
+    aiError = '';
+    _aiRun++;
+  }
+
+  // ------------------------------------------------------------------ check
+
+  /// Local check; the AI check follows when it is switched on.
+  void runCheckNow() {
+    if (single == null) throw UserMessage('msg_need_single');
+    if (bomA == null) throw UserMessage('msg_need_a');
+    report = compareBoms(single!.bom, bomA!.bom, bomB?.bom);
+    selected = null;
+    ai = null;
+    aiStatus = AiStatus.idle;
+    _status('status_checked', {
+      'same': report!.count(DiffStatus.same),
+      'diff': report!.count(DiffStatus.different),
+      'single': report!.count(DiffStatus.onlySingle),
+      'merged': report!.count(DiffStatus.onlyMerged),
+    });
+    notifyListeners();
+    if (settings.aiEnabled && settings.ai.ready) runAi();
+  }
+
+  void setAiEnabled(bool v) {
+    settings.aiEnabled = v;
+    persist();
+    notifyListeners();
+    if (v && report != null && ai == null && aiStatus != AiStatus.running && settings.ai.ready) runAi();
+  }
+
+  void updateAi(AiConfig cfg) {
+    settings.ai = cfg;
     persist();
     notifyListeners();
   }
 
-  void setBoardBackground(BoardBackground b, {int? custom}) {
-    settings.board.background = b;
-    if (custom != null) settings.board.customBackground = custom;
-    persist();
+  /// Sends the comparison to the configured model; a newer run or a reload
+  /// discards an older answer.
+  Future<void> runAi() async {
+    final r = report;
+    if (r == null) return;
+    final run = ++_aiRun;
+    aiStatus = AiStatus.running;
+    aiError = '';
+    aiErrorDetail = '';
+    notifyListeners();
+    try {
+      final result = await runAiCheck(settings.ai, r);
+      if (run != _aiRun) return;
+      ai = result;
+      aiStatus = AiStatus.done;
+      _status('status_ai_done', {'n': result.findings.length});
+    } on AiException catch (e) {
+      if (run != _aiRun) return;
+      aiStatus = AiStatus.failed;
+      aiError = 'err_${e.code}';
+      aiErrorDetail = e.detail;
+    }
     notifyListeners();
   }
 
-  void setBoardDepth(bool v) {
-    settings.board.depth = v;
-    persist();
+  void cancelAi() {
+    _aiRun++;
+    aiStatus = AiStatus.idle;
     notifyListeners();
   }
 
-  /// Restores the default colours; the flat / 3D choice is kept.
-  void resetBoardStyle() {
-    settings.board = BoardStyle(depth: settings.board.depth);
-    persist();
-    notifyListeners();
-  }
+  // ------------------------------------------------------------------- view
 
-  void setBoardFullscreen(bool v) {
-    boardFullscreen = v;
-    notifyListeners();
-  }
-
-  /// Back to the default view: no rotation, not mirrored, fitted.
-  void resetBoardView() {
-    boardQuarterTurns = 0;
-    boardMirror = false;
-    boardFitRequest++;
-    boardResetRequest++;
-    notifyListeners();
-  }
-
-  void setBoardSide(BoardSideFilter side) {
-    boardSide = side;
-    notifyListeners();
-  }
-
-  void rotateBoard(int quarterTurns) {
-    boardQuarterTurns = (boardQuarterTurns + quarterTurns) % 4;
-    boardFitRequest++;
-    notifyListeners();
-  }
-
-  void toggleBoardMirror() {
-    boardMirror = !boardMirror;
-    boardFitRequest++;
-    notifyListeners();
-  }
-
-  void setBoardColoring(BoardColoring c) {
-    boardColoring = c;
-    notifyListeners();
-  }
-
-  void setCheckView(CheckPageView v) {
-    checkView = v;
-    notifyListeners();
-  }
-
-  void fitBoard() {
-    boardFitRequest++;
-    notifyListeners();
-  }
-
-  void setFilter(CheckCategory? c) {
-    filter = c;
+  void setFilter(DiffStatus? s) {
+    filter = s;
     notifyListeners();
   }
 
@@ -390,212 +378,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void select(CheckRow? r) {
+  void select(CompareRow? r) {
     selected = r;
     notifyListeners();
   }
 
-  /// Parses [bytes] as the given input kind. Throws [UserMessage] on failure.
-  void load(InputKind kind, String name, Uint8List bytes) {
-    final List<Grid> grids;
-    try {
-      grids = readTableBytes(bytes, name);
-    } on TableReadException catch (e) {
-      throw UserMessage('err_${e.code}', {'detail': e.detail});
-    }
-    try {
-      switch (kind) {
-        case InputKind.bom:
-          bom = LoadedFile(name, parseBom(grids), size: bytes.length, sheets: grids.length);
-        case InputKind.stationA:
-          stationA = LoadedFile(name, parseStation(grids, StationSide.a), size: bytes.length, sheets: grids.length);
-        case InputKind.stationB:
-          stationB = LoadedFile(name, parseStation(grids, StationSide.b), size: bytes.length, sheets: grids.length);
-        case InputKind.coords:
-          _coordBytes = bytes;
-          coords = LoadedFile(name, parseCoordinates(grids, unit: settings.coordUnit), size: bytes.length, sheets: grids.length);
-        case InputKind.boardCad:
-          boardFile = LoadedFile(name, parseCoordinates(grids), size: bytes.length, sheets: grids.length);
-          boardSource = BoardSource.file;
-          boardFitRequest++;
-          _status('status_loaded', {'name': name});
-          notifyListeners();
-          return;
-      }
-    } on ParseException catch (e) {
-      throw UserMessage('err_${e.code}', {'detail': e.detail});
-    }
-    if (kind != InputKind.coords) {
-      report = null;
-      selected = null;
-    }
-    _cad = null;
-    _discrepancies = null;
-    _status('status_loaded', {'name': name});
-    if (kind == InputKind.coords && report != null) {
-      runCheckNow();
-      return;
-    }
-    notifyListeners();
-  }
+  /// Parts flagged by the AI check.
+  Set<String> get aiParts => {for (final f in ai?.findings ?? const <AiFinding>[]) f.partNo};
 
-  void unload(InputKind kind) {
-    switch (kind) {
-      case InputKind.bom:
-        bom = null;
-      case InputKind.stationA:
-        stationA = null;
-      case InputKind.stationB:
-        stationB = null;
-      case InputKind.coords:
-        coords = null;
-        _coordBytes = null;
-      case InputKind.boardCad:
-        boardFile = null;
-        boardSource = BoardSource.check;
-        notifyListeners();
-        return;
-    }
-    if (kind != InputKind.coords) {
-      report = null;
-      selected = null;
-    }
-    _cad = null;
-    _discrepancies = null;
-    _status('status_ready');
-    if (kind == InputKind.coords && report != null) {
-      runCheckNow();
-      return;
-    }
-    notifyListeners();
-  }
-
-  ManualCheck? confirmationOf(CheckRow r) => confirmations[r.key];
-
-  void setConfirmed(Iterable<CheckRow> rows, bool confirmed) {
-    final now = DateTime.now();
-    // PASS rows need no manual confirmation.
-    for (final r in rows.where((r) => r.category != CheckCategory.pass)) {
-      if (!confirmed) {
-        confirmations.remove(r.key);
-      } else {
-        confirmations.putIfAbsent(r.key, () => ManualCheck(now));
-      }
-    }
-    notifyListeners();
-  }
-
-  void setConfirmNote(CheckRow r, String note) {
-    final old = confirmations[r.key];
-    confirmations[r.key] = ManualCheck(old?.at ?? DateTime.now(), note: note);
-    notifyListeners();
-  }
-
-  /// Confirmed rows of the current report, optionally of one category.
-  int confirmedCount([CheckCategory? category]) =>
-      report?.rows.where((r) => (category == null || r.category == category) && confirmations.containsKey(r.key)).length ?? 0;
-
-  void clearAll() {
-    confirmations.clear();
-    bom = stationA = stationB = null;
-    coords = null;
-    _coordBytes = null;
-    report = null;
-    _cad = null;
-    _discrepancies = null;
-    selected = null;
-    filter = null;
-    search = '';
-    _status('status_ready');
-    notifyListeners();
-  }
-
-  void setCoordUnit(CoordUnit u) {
-    settings.coordUnit = u;
-    persist();
-    final c = coords;
-    if (c != null && _coordBytes != null) {
-      coords = LoadedFile(c.name, parseCoordinates(readTableBytes(_coordBytes!, c.name), unit: u),
-          size: c.size, sheets: c.sheets, loadedAt: c.loadedAt);
-      _cad = null;
-    }
-    notifyListeners();
-  }
-
-  void runCheckNow() {
-    if (bom == null) throw UserMessage('msg_need_bom');
-    if (stationA == null && stationB == null) throw UserMessage('msg_need_station');
-    final stations = [...?stationA?.result.items, ...?stationB?.result.items];
-    final raw = runCheck(bom!.result.items, stations, settings.rules);
-    _discrepancies = findDiscrepancies(
-      bom: bom!.result.items,
-      stations: stations,
-      report: raw,
-      rules: settings.rules,
-      placements: coords?.result.items,
-      bomIssues: bom!.result.issues,
-      stationAIssues: stationA?.result.issues ?? const [],
-      stationBIssues: stationB?.result.issues ?? const [],
-      coordIssues: coords?.result.issues ?? const [],
-    );
-    report = foldIntoReport(raw, _discrepancies!);
-    checkedAt = DateTime.now();
-    _cad = null;
-    selected = null;
-    _status('status_checked', {
-      'pass': report!.count(CheckCategory.pass),
-      'ng': report!.count(CheckCategory.ng),
-      'ex': report!.count(CheckCategory.excluded),
-      'alt': report!.count(CheckCategory.substitute),
-    });
-    notifyListeners();
-  }
-
-  void updateRules(CheckRules rules) {
-    settings.rules = rules;
-    persist();
-    if (report != null) {
-      runCheckNow();
-    } else {
-      notifyListeners();
-    }
-  }
-
-  void updateCadTemplate(CadTemplate t) {
-    settings.cad = t;
-    persist();
-    _cad = null;
-    notifyListeners();
-  }
-
-  /// CAD output for the current report and coordinates, or null when either
-  /// is missing.
-  CadResult? get cad {
-    if (report == null || coords == null) return null;
-    return _cad ??= buildCad(coords!.result.items, report!, settings.cad, settings.rules);
-  }
-
-  /// All inconsistencies across the loaded files, or null before a check.
-  List<Discrepancy>? get discrepancies => report == null ? null : _discrepancies;
-
-  List<CheckRow> visibleRows() {
+  List<CompareRow> visibleRows() {
     final r = report;
     if (r == null) return const [];
     final q = search.trim().toUpperCase();
     return r.rows.where((row) {
-      if (filter != null && row.category != filter) return false;
+      if (filter != null && row.status != filter) return false;
       if (q.isEmpty) return true;
       return row.partNo.toUpperCase().contains(q) ||
           row.description.toUpperCase().contains(q) ||
-          row.smtPartNos.any((p) => p.toUpperCase().contains(q)) ||
-          row.bomRefs.any((m) => m.ref == q) ||
-          row.smtRefs.any((m) => m.ref == q);
+          (row.single?.refs.contains(q) ?? false) ||
+          (row.merged?.refs.contains(q) ?? false);
     }).toList();
   }
 
-  /// Base name for exported files, taken from the BOM file name.
+  /// Base name for exported files, taken from the single BOM's file name.
   String get exportBaseName {
-    final n = bom?.name ?? 'SMT-FAI';
+    final n = single?.name ?? 'BOM';
     final dot = n.lastIndexOf('.');
     return dot > 0 ? n.substring(0, dot) : n;
   }

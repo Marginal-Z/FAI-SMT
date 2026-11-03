@@ -1,6 +1,7 @@
-/// BOM check page: file header with export, one statistic card per result
-/// area (doubling as the area filter), search and filters, the result table
-/// with manual confirmation, and the details of the selected part.
+/// BOM check page: the three import cards and the actions, one statistic
+/// card per result (doubling as the filter), the AI analysis, search, the
+/// part-by-part table with the differing cells filled, and the selected
+/// part's field-by-field comparison.
 library;
 
 import 'dart:math' as math;
@@ -8,33 +9,93 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
-import '../core/models.dart';
+import '../core/ai_check.dart';
+import '../core/bom.dart';
+import '../core/bom_compare.dart';
+import '../core/refdes.dart';
 import '../l10n/strings.dart';
 import 'design.dart';
-import 'discrepancy_view.dart';
 import 'import_bar.dart';
-import 'icons.dart';
 import 'lucide.dart';
 import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
 
-const _areaOrder = [CheckCategory.pass, CheckCategory.ng, CheckCategory.excluded, CheckCategory.substitute];
+/// Tint behind AI findings.
+Color aiTint(AppColors c) => c.dark ? const Color(0x33A47CF5) : const Color(0xFFEFE7FD);
+Color aiText(AppColors c) => c.dark ? const Color(0xFFC9B2FF) : const Color(0xFF6A3FC8);
 
-String _areaLabel(Strings s, CheckCategory c) => s.t(switch (c) {
-  CheckCategory.pass => 'area_pass',
-  CheckCategory.ng => 'area_ng',
-  CheckCategory.excluded => 'area_excluded',
-  CheckCategory.substitute => 'area_substitute',
-});
+Color _statusTint(AppColors c, DiffStatus s) => switch (s) {
+  DiffStatus.same => c.okTint,
+  DiffStatus.different => c.ngTint,
+  DiffStatus.onlySingle => c.warnTint,
+  DiffStatus.onlyMerged => c.blueTint,
+};
 
-/// Short result names for badges and the result filter.
-String _resultShort(Strings s, CheckCategory c) => s.t(switch (c) {
-  CheckCategory.pass => 'res_pass',
-  CheckCategory.ng => 'res_ng',
-  CheckCategory.excluded => 'res_excluded_short',
-  CheckCategory.substitute => 'res_substitute_short',
-});
+Color _statusText(AppColors c, DiffStatus s) => switch (s) {
+  DiffStatus.same => c.okTx,
+  DiffStatus.different => c.ngTx,
+  DiffStatus.onlySingle => c.warnTx,
+  DiffStatus.onlyMerged => c.blueTx,
+};
+
+Color _statusSolid(AppColors c, DiffStatus s) => switch (s) {
+  DiffStatus.same => c.okSolid,
+  DiffStatus.different => c.ngSolid,
+  DiffStatus.onlySingle => c.warnSolid,
+  DiffStatus.onlyMerged => c.blue,
+};
+
+String statusLabel(Strings s, DiffStatus d) => s.t('status_${d.name}');
+
+/// Field named by an AI finding: the standard fields translated, other
+/// columns by their header.
+String aiFieldLabel(Strings s, String field) => switch (field) {
+  'description' => s.t('f_desc'),
+  'quantity' => s.t('f_qty'),
+  'refs' => s.t('f_refs'),
+  'partNo' => s.t('f_part_no'),
+  _ => field,
+};
+
+/// Label of a compared field.
+String fieldLabel(Strings s, FieldCompare f) => switch (f.key) {
+  'description' => s.t('f_desc'),
+  'quantity' => s.t('f_qty'),
+  'refs' => s.t('f_refs'),
+  _ => f.header.isEmpty ? f.key.substring(4) : f.header,
+};
+
+/// [text] with the [spans] on a coloured background.
+class HighlightText extends StatelessWidget {
+  const HighlightText(this.text, this.spans, {super.key, required this.color, this.style, this.maxLines});
+
+  final String text;
+  final List<Span> spans;
+  final Color color;
+  final TextStyle? style;
+  final int? maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = style ?? DefaultTextStyle.of(context).style;
+    if (spans.isEmpty || text.isEmpty) {
+      return Text(text.isEmpty ? '—' : text, style: base, maxLines: maxLines, overflow: maxLines == null ? null : TextOverflow.ellipsis);
+    }
+    final sorted = [...spans]..sort((a, b) => a.$1 - b.$1);
+    final parts = <TextSpan>[];
+    var at = 0;
+    for (final (s, e) in sorted) {
+      final start = math.max(s, at), end = math.min(e, text.length);
+      if (start >= end) continue;
+      if (start > at) parts.add(TextSpan(text: text.substring(at, start)));
+      parts.add(TextSpan(text: text.substring(start, end), style: TextStyle(backgroundColor: color, fontWeight: FontWeight.w700)));
+      at = end;
+    }
+    if (at < text.length) parts.add(TextSpan(text: text.substring(at)));
+    return Text.rich(TextSpan(children: parts), style: base, maxLines: maxLines, overflow: maxLines == null ? null : TextOverflow.ellipsis);
+  }
+}
 
 class CheckView extends StatefulWidget {
   const CheckView({super.key, required this.state, this.cards = false});
@@ -48,35 +109,19 @@ class CheckView extends StatefulWidget {
   State<CheckView> createState() => _CheckViewState();
 }
 
-enum _SideFilter { all, a, b, both }
-
-enum _ConfirmFilter { all, yes, no }
-
 class _CheckViewState extends State<CheckView> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   final _hScroll = ScrollController();
   final _page = ScrollController();
 
-  /// Result-area filter; null shows every area.
-  CheckCategory? _area = CheckCategory.pass;
-  _SideFilter _side = _SideFilter.all;
-  _ConfirmFilter _confirm = _ConfirmFilter.all;
+  /// Only parts the AI check flagged.
+  bool _aiOnly = false;
 
   @override
   void initState() {
     super.initState();
     _search.text = widget.state.search;
-    // Open the area of a part selected elsewhere (e.g. the PCB navigator) or
-    // picked as a filter; PASS otherwise.
-    final sel = widget.state.selected;
-    if (sel != null) {
-      _area = sel.category;
-    } else if (widget.state.filter != null) {
-      _area = widget.state.filter!;
-    }
-    // The page filters by area itself; a leftover global filter would hide rows.
-    widget.state.filter = null;
   }
 
   @override
@@ -88,23 +133,10 @@ class _CheckViewState extends State<CheckView> {
     super.dispose();
   }
 
-  void _setArea(CheckCategory? cat) {
-    setState(() => _area = cat);
-    widget.state.setCheckView(CheckPageView.materials);
+  void _setFilter(DiffStatus? f) {
+    setState(() => _aiOnly = false);
+    widget.state.setFilter(widget.state.filter == f ? null : f);
   }
-
-  bool _sideMatches(CheckRow r) => switch (_side) {
-    _SideFilter.all => true,
-    _SideFilter.a => r.sides.length == 1 && r.sides.contains(StationSide.a),
-    _SideFilter.b => r.sides.length == 1 && r.sides.contains(StationSide.b),
-    _SideFilter.both => r.sides.length == 2,
-  };
-
-  bool _confirmMatches(CheckRow r) => switch (_confirm) {
-    _ConfirmFilter.all => true,
-    _ConfirmFilter.yes => widget.state.confirmationOf(r) != null,
-    _ConfirmFilter.no => r.category != CheckCategory.pass && widget.state.confirmationOf(r) == null,
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -116,75 +148,65 @@ class _CheckViewState extends State<CheckView> {
     final narrow = widget.cards;
     final pad = EdgeInsets.fromLTRB(narrow ? 16 : 24, phone ? 4 : 6, narrow ? 16 : 24, 0);
     final imports = ImportBar(state: state);
+
     if (report == null) {
       final hint = DCard(
         radius: 24,
-        child: EmptyState(icon: Ic.listChecks, text: s.t('empty_check_import')),
+        child: EmptyState(icon: Lucide.clipboardCheck, text: s.t(state.ready ? 'empty_ready' : 'empty_check_import')),
       );
       if (phone) {
         return ListView(
           padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + 12),
-          children: [
-            imports,
-            const SizedBox(height: 14),
-            SizedBox(height: 260, child: hint),
-          ],
+          children: [imports, const SizedBox(height: 14), SizedBox(height: 260, child: hint)],
         );
       }
       return Padding(
         padding: pad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            imports,
-            const SizedBox(height: 16),
-            Expanded(child: hint),
-            const SizedBox(height: 16),
-          ],
+          children: [imports, const SizedBox(height: 16), Expanded(child: hint), const SizedBox(height: 16)],
         ),
       );
     }
     if (_search.text != state.search) _search.text = state.search;
 
-    final discrepancies = state.discrepancies ?? const [];
-    final showDiscrepancies = state.checkView == CheckPageView.discrepancies;
     final total = report.rows.length;
-
-    // Statistic cards.
+    final aiParts = state.aiParts;
     final statCards = <Widget>[
-      for (final (cat, icon) in [
-        (CheckCategory.pass, Lucide.check),
-        (CheckCategory.ng, Lucide.x),
-        (CheckCategory.excluded, Lucide.package),
-        (CheckCategory.substitute, Lucide.swap),
+      for (final (st, icon) in [
+        (DiffStatus.same, Lucide.check),
+        (DiffStatus.different, Lucide.x),
+        (DiffStatus.onlySingle, Lucide.minus),
+        (DiffStatus.onlyMerged, Lucide.plus),
       ])
         _StatCard(
-          label: _areaLabel(s, cat),
+          label: statusLabel(s, st),
           icon: icon,
-          value: report.count(cat),
+          value: report.count(st),
           total: total,
-          confirmed: cat == CheckCategory.pass ? 0 : state.confirmedCount(cat),
-          tint: c.categorySoft(cat),
-          fg: c.categoryText(cat),
-          bar: _barColor(cat),
-          glow: _glow(cat),
-          selected: !showDiscrepancies && _area == cat,
-          onTap: () => _setArea(cat),
+          tint: _statusTint(c, st),
+          fg: _statusText(c, st),
+          bar: _statusSolid(c, st),
+          selected: !_aiOnly && state.filter == st,
+          onTap: () => _setFilter(st),
         ),
       _StatCard(
-        label: s.t('view_discrepancies'),
-        icon: Lucide.alert,
-        value: discrepancies.length,
-        tint: c.blueTint,
-        fg: c.blueTx,
-        bar: const Color(0xFF0A84FF),
-        glow: const Color(0x420A84FF),
-        selected: showDiscrepancies,
-        chevron: true,
-        onTap: () => state.setCheckView(showDiscrepancies ? CheckPageView.materials : CheckPageView.discrepancies),
+        label: s.t('ai_findings'),
+        icon: Lucide.sparkles,
+        value: state.ai?.findings.length ?? 0,
+        tint: aiTint(c),
+        fg: aiText(c),
+        bar: aiText(c),
+        selected: _aiOnly,
+        dim: state.ai == null,
+        onTap: () {
+          if (state.ai == null) return;
+          state.setFilter(null);
+          setState(() => _aiOnly = !_aiOnly);
+        },
       ),
     ];
-    // Phones: one row of compact cards that scrolls sideways.
+    final gap = phone ? 14.0 : 16.0;
     final stats = phone
         ? SizedBox(
             key: tourTargets.checkCards,
@@ -194,20 +216,18 @@ class _CheckViewState extends State<CheckView> {
               clipBehavior: Clip.none,
               itemCount: statCards.length,
               separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => SizedBox(width: 156, child: statCards[i]),
+              itemBuilder: (context, i) => SizedBox(width: 150, child: statCards[i]),
             ),
           )
-        // Desktop: compact cards of one width, not stretched across the page.
-        : Wrap(
+        : IntrinsicHeight(
             key: tourTargets.checkCards,
-            spacing: 12,
-            runSpacing: 12,
-            children: [for (final card in statCards) SizedBox(width: 200, child: card)],
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < statCards.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: statCards[i])],
+              ],
+            ),
           );
-
-    final gap = phone ? 14.0 : 16.0;
-    // Wide windows: import cards over the statistics, both rows the same
-    // width, and the run / export / clear card spanning their height.
     final wideTop = !phone && MediaQuery.sizeOf(context).width >= 1130;
     final top = wideTop
         ? Padding(
@@ -222,99 +242,22 @@ class _CheckViewState extends State<CheckView> {
                       children: [
                         KeyedSubtree(key: tourTargets.fileChecks, child: ImportCardsRow(state: state)),
                         const SizedBox(height: 12),
-                        IntrinsicHeight(
-                          key: tourTargets.checkCards,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var i = 0; i < statCards.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: statCards[i])],
-                            ],
-                          ),
-                        ),
+                        stats,
                       ],
                     ),
                   ),
                   const SizedBox(width: 12),
-                  SizedBox(width: 220, child: ImportActions(state: state)),
+                  SizedBox(width: 236, child: ImportActions(state: state)),
                 ],
               ),
             ),
           )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              imports,
-              SizedBox(height: gap),
-              stats,
-              SizedBox(height: gap),
-            ],
-          );
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [imports, SizedBox(height: gap), stats, SizedBox(height: gap)]);
 
-    if (showDiscrepancies) {
-      return Padding(
-        padding: pad,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            top,
-            Expanded(
-              child: DCard(
-                clip: true,
-                child: DiscrepancyView(state: state, items: discrepancies),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    var visible = state.visibleRows();
+    if (_aiOnly) visible = visible.where((r) => aiParts.contains(r.partNo)).toList();
 
-    final visible = state.visibleRows().where((r) => _sideMatches(r) && _confirmMatches(r) && (_area == null || r.category == _area)).toList()
-      ..sort((a, b) => _areaOrder.indexOf(a.category) - _areaOrder.indexOf(b.category));
-    // Only results other than PASS are confirmed by hand.
-    final toConfirm = [
-      for (final r in visible)
-        if (r.category != CheckCategory.pass) r,
-    ];
-    final allConfirmed = toConfirm.isNotEmpty && toConfirm.every((r) => state.confirmationOf(r) != null);
-
-    Widget labelled(String label, Widget child) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: TextStyle(fontSize: 14, color: c.tx2)),
-        const SizedBox(width: 10),
-        child,
-      ],
-    );
-    final selects = [
-      labelled(
-        s.t('col_side'),
-        DropdownSelect<_SideFilter>(
-          value: _side,
-          width: 104,
-          options: [(_SideFilter.all, s.t('opt_all')), (_SideFilter.a, 'A'), (_SideFilter.b, 'B'), (_SideFilter.both, 'A+B')],
-          onChanged: (v) => setState(() => _side = v),
-        ),
-      ),
-      labelled(
-        s.t('col_result'),
-        DropdownSelect<CheckCategory?>(
-          value: _area,
-          width: 112,
-          options: [(null, s.t('opt_all')), for (final cat in _areaOrder) (cat, _resultShort(s, cat))],
-          onChanged: _setArea,
-        ),
-      ),
-      labelled(
-        s.t('confirm_filter'),
-        DropdownSelect<_ConfirmFilter>(
-          value: _confirm,
-          width: 112,
-          options: [(_ConfirmFilter.all, s.t('opt_all')), (_ConfirmFilter.yes, s.t('confirm_yes')), (_ConfirmFilter.no, s.t('confirm_no'))],
-          onChanged: (v) => setState(() => _confirm = v),
-        ),
-      ),
-    ];
-    final search = PillSearch(controller: _search, hint: s.t('search_hint_fuzzy'), onChanged: state.setSearch);
+    final search = PillSearch(controller: _search, hint: s.t('search_hint'), onChanged: state.setSearch);
     final count = Text.rich(
       TextSpan(
         children: [
@@ -328,77 +271,23 @@ class _CheckViewState extends State<CheckView> {
       ),
       style: TextStyle(fontSize: 14, color: c.tx2),
     );
-
-    final Widget table;
-    if (visible.isEmpty) {
-      table = DCard(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 56),
-            child: Text(s.t('no_rows'), style: TextStyle(fontSize: 15, color: c.tx2)),
-          ),
-        ),
-      );
-    } else if (narrow) {
-      table = DCard(
-        clip: true,
-        child: ThinScrollbar(
-          controller: _scroll,
-          child: ListView.builder(
-            controller: _scroll,
-            padding: const EdgeInsets.all(12),
-            itemCount: visible.length,
-            itemBuilder: (context, i) => _RowCard(state: state, row: visible[i]),
-          ),
-        ),
-      );
-    } else {
-      table = DCard(
-        clip: true,
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final width = box.maxWidth < _minTable ? _minTable : box.maxWidth;
-            return ThinScrollbar(
-              controller: _hScroll,
-              horizontal: true,
-              child: SingleChildScrollView(
-                controller: _hScroll,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: width,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                        child: _HeaderRow(
-                          allConfirmed: allConfirmed,
-                          listed: toConfirm.length,
-                          showConfirm: toConfirm.isNotEmpty,
-                          onConfirmAll: () => state.setConfirmed(toConfirm, !allConfirmed),
-                        ),
-                      ),
-                      Expanded(
-                        child: ThinScrollbar(
-                          controller: _scroll,
-                          child: ListView.builder(
-                            controller: _scroll,
-                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                            itemCount: visible.length,
-                            itemBuilder: (context, i) => _ResultRow(state: state, row: visible[i], index: i + 1, showConfirm: toConfirm.isNotEmpty),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
+    final resultSelect = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(s.t('f_result'), style: TextStyle(fontSize: 14, color: c.tx2)),
+        const SizedBox(width: 10),
+        DropdownSelect<DiffStatus?>(
+          value: _aiOnly ? null : state.filter,
+          width: 128,
+          options: [(null, s.t('opt_all')), for (final d in DiffStatus.values) (d, statusLabel(s, d))],
+          onChanged: (v) {
+            setState(() => _aiOnly = false);
+            state.setFilter(v);
           },
         ),
-      );
-    }
-
+      ],
+    );
+    final columnsNote = _ColumnsNote(report: report);
     final filters = KeyedSubtree(
       key: tourTargets.checkFilters,
       child: narrow
@@ -407,58 +296,104 @@ class _CheckViewState extends State<CheckView> {
               children: [
                 search,
                 const SizedBox(height: 12),
-                if (phone)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.none,
-                    child: Row(
-                      children: [
-                        for (final w in selects) ...[w, const SizedBox(width: 14)],
-                        count,
-                      ],
-                    ),
-                  )
-                else
-                  Wrap(spacing: 16, runSpacing: 12, children: selects),
+                Row(children: [resultSelect, const Spacer(), count]),
               ],
             )
           : Row(
               children: [
                 SizedBox(width: 320, child: search),
-                for (final w in selects) ...[const SizedBox(width: 16), w],
-                const Spacer(),
+                const SizedBox(width: 16),
+                resultSelect,
+                const SizedBox(width: 16),
+                Expanded(child: columnsNote),
+                const SizedBox(width: 16),
                 count,
               ],
             ),
     );
-    if (phone) return _phonePage(context, top, filters, visible, pad);
+
+    final aiPanel = _AiPanel(state: state);
+    final showAi = state.settings.aiEnabled && state.aiStatus != AiStatus.idle;
+
+    if (phone) return _phonePage(context, [top, if (showAi) ...[aiPanel, const SizedBox(height: 12)], filters, const SizedBox(height: 12)], visible, pad);
+
+    final table = visible.isEmpty
+        ? DCard(
+            child: Center(
+              child: Text(s.t('no_rows'), style: TextStyle(fontSize: 15, color: c.tx2)),
+            ),
+          )
+        : narrow
+        ? DCard(
+            clip: true,
+            child: ListView.builder(
+              controller: _scroll,
+              padding: const EdgeInsets.all(12),
+              itemCount: visible.length,
+              itemBuilder: (context, i) => _RowCard(state: state, row: visible[i]),
+            ),
+          )
+        : DCard(
+            clip: true,
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final width = math.max(box.maxWidth, 980.0);
+                return ThinScrollbar(
+                  controller: _hScroll,
+                  horizontal: true,
+                  child: SingleChildScrollView(
+                    controller: _hScroll,
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: width,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Padding(padding: EdgeInsets.fromLTRB(12, 10, 12, 0), child: _HeaderRow()),
+                          Expanded(
+                            child: ThinScrollbar(
+                              controller: _scroll,
+                              child: ListView.builder(
+                                controller: _scroll,
+                                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                                itemCount: visible.length,
+                                itemBuilder: (context, i) => _ResultRow(state: state, row: visible[i], index: i + 1, ai: aiParts.contains(visible[i].partNo)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
     final keyedTable = KeyedSubtree(key: tourTargets.checkTable, child: table);
     return LayoutBuilder(
       builder: (context, box) {
-        // Short windows (tablets in landscape) scroll the whole page so the
-        // table keeps a usable height.
         final short = box.maxHeight < 900;
-        // The selected part's card sits right of the table, top and bottom
-        // aligned with it; narrow windows put it under the table.
-        // The card opens only once a result is clicked.
         final selected = state.selected != null;
-        final side = box.maxWidth >= 1100 && selected;
+        final side = box.maxWidth >= 1100 && (selected || showAi);
+        // Right of the table: the selected part, else the AI analysis.
+        final panel = selected ? _Detail(state: state) : aiPanel;
         final body = side
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(child: keyedTable),
                   const SizedBox(width: 16),
-                  SizedBox(width: 360, child: _Detail(state: state, panel: true)),
+                  SizedBox(width: 380, child: panel),
                 ],
               )
             : keyedTable;
         final children = [
           top,
+          if (!side && showAi) ...[aiPanel, const SizedBox(height: 12)],
           filters,
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
-          if (!side && selected) ...[const SizedBox(height: 16), _Detail(state: state)],
+          if (!side && selected) ...[const SizedBox(height: 14), SizedBox(height: 380, child: _Detail(state: state))],
           const SizedBox(height: 16),
         ];
         final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
@@ -470,82 +405,77 @@ class _CheckViewState extends State<CheckView> {
     );
   }
 
-  /// Phones: the whole page scrolls as one list of row cards; the selected
-  /// part opens in a sheet over the bottom of the screen.
-  Widget _phonePage(BuildContext context, Widget top, Widget filters, List<CheckRow> visible, EdgeInsets pad) {
+  /// Phones: one scrolling list of row cards; the selected part opens in a
+  /// sheet over the bottom of the screen.
+  Widget _phonePage(BuildContext context, List<Widget> head, List<CompareRow> visible, EdgeInsets pad) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final state = widget.state;
     final selected = state.selected;
+    final aiParts = state.aiParts;
     return Stack(
       children: [
         ListView.builder(
           controller: _page,
-          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + (selected == null ? 12 : 300)),
-          itemCount: visible.length + 2,
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + (selected == null ? 12 : 320)),
+          itemCount: visible.length + head.length,
           itemBuilder: (context, i) {
-            if (i == 0) return top;
-            if (i == 1) return Padding(padding: const EdgeInsets.only(bottom: 14), child: filters);
-            final row = visible[i - 2];
+            if (i < head.length) return head[i];
+            final row = visible[i - head.length];
             final card = Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: DCard(
-                radius: 22,
+                radius: 20,
                 padding: EdgeInsets.zero,
-                child: _RowCard(state: state, row: row),
+                child: _RowCard(state: state, row: row, ai: aiParts.contains(row.partNo)),
               ),
             );
-            return i == 2 ? KeyedSubtree(key: tourTargets.checkTable, child: card) : card;
+            return i == head.length ? KeyedSubtree(key: tourTargets.checkTable, child: card) : card;
           },
         ),
         if (visible.isEmpty)
           Positioned(
             left: 0,
             right: 0,
-            bottom: 40,
-            child: Center(
-              child: Text(s.t('no_rows'), style: TextStyle(fontSize: 15, color: c.tx2)),
-            ),
+            bottom: bottomInset(context) + 40,
+            child: Center(child: Text(s.t('no_rows'), style: TextStyle(fontSize: 15, color: c.tx2))),
           ),
         if (selected != null)
           Positioned(
             left: 8,
             right: 8,
             bottom: bottomInset(context),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.55),
-              child: Stack(
-                children: [
-                  SingleChildScrollView(child: _Detail(state: state)),
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: GlassButton(icon: Lucide.x, size: 34, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
-                  ),
-                ],
-              ),
-            ),
+            child: SizedBox(height: math.min(460.0, MediaQuery.sizeOf(context).height * 0.6), child: _Detail(state: state)),
           ),
       ],
     );
   }
-
-  static Color _barColor(CheckCategory c) => switch (c) {
-    CheckCategory.pass => const Color(0xFF34C759),
-    CheckCategory.ng => const Color(0xFFFF3B30),
-    CheckCategory.excluded => const Color(0xFF8E8E93),
-    CheckCategory.substitute => const Color(0xFFFF9500),
-  };
-
-  static Color _glow(CheckCategory c) => switch (c) {
-    CheckCategory.pass => const Color(0x4234C759),
-    CheckCategory.ng => const Color(0x3DFF3B30),
-    CheckCategory.excluded => const Color(0x38787880),
-    CheckCategory.substitute => const Color(0x42FF9500),
-  };
 }
 
-/// Statistic card: icon, label, big number, share and bar; lifts when chosen.
+/// Which other columns are compared, and which only one side has.
+class _ColumnsNote extends StatelessWidget {
+  const _ColumnsNote({required this.report});
+
+  final CompareReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final compared = [s.t('f_desc'), s.t('f_qty'), s.t('f_refs'), ...report.compared.values];
+    final skipped = [...report.singleOnlyColumns, ...report.mergedOnlyColumns];
+    return Hoverable(
+      tooltip: skipped.isEmpty ? null : s.t('cols_skipped', {'cols': skipped.join('、')}),
+      builder: (context, hover, _) => Text(
+        s.t('cols_compared', {'cols': compared.join('、')}) + (skipped.isEmpty ? '' : s.t('cols_skipped_short', {'n': skipped.length})),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12.5, color: c.tx3),
+      ),
+    );
+  }
+}
+
 class _StatCard extends StatelessWidget {
   const _StatCard({
     required this.label,
@@ -554,12 +484,10 @@ class _StatCard extends StatelessWidget {
     required this.tint,
     required this.fg,
     required this.bar,
-    required this.glow,
     required this.selected,
     required this.onTap,
     this.total,
-    this.confirmed = 0,
-    this.chevron = false,
+    this.dim = false,
   });
 
   final String label;
@@ -568,149 +496,110 @@ class _StatCard extends StatelessWidget {
   final Color tint;
   final Color fg;
   final Color bar;
-  final Color glow;
   final bool selected;
   final VoidCallback onTap;
 
   /// When set, the share and bar are shown.
   final int? total;
-  final int confirmed;
-  final bool chevron;
+
+  /// Nothing to show yet (AI not run).
+  final bool dim;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
-    final s = Strings.of(context);
     final share = total == null || total == 0 ? null : value / total!;
     final pct = share == null ? '' : '${(share * 100).toStringAsFixed(share > 0 && share < 0.02 ? 1 : 0)}%';
     return Hoverable(
       onTap: onTap,
-      builder: (context, hover, _) => AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: c.r(20),
-          border: Border.all(color: selected ? fg.withValues(alpha: 0.55) : (c.industrial ? c.lineStrong : const Color(0x00000000)), width: selected || !c.industrial ? 1.5 : 1),
-          boxShadow: selected && !c.industrial ? [BoxShadow(color: glow, offset: const Offset(0, 10), blurRadius: 26)] : c.shadowSm,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-                  child: LucideIcon(icon, size: 14, color: fg, stroke: 2.4),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
+      builder: (context, hover, _) => Opacity(
+        opacity: dim ? 0.55 : 1,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: c.r(20),
+            border: Border.all(color: selected ? fg.withValues(alpha: 0.6) : (c.industrial ? c.lineStrong : const Color(0x00000000)), width: selected || !c.industrial ? 1.5 : 1),
+            boxShadow: c.shadowSm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+                    child: LucideIcon(icon, size: 14, color: fg, stroke: 2.4),
                   ),
-                ),
-                Text(
-                  '$value',
-                  style: TextStyle(
-                    fontSize: 22,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.6,
-                    color: c.tx,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
+                    ),
                   ),
-                ),
-                if (chevron) ...[const SizedBox(width: 2), LucideIcon(Lucide.chevronRight, size: 14, color: c.tx2, stroke: 2.2)],
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: share != null ? TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar, height: 4) : const SizedBox(height: 4),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  confirmed > 0 ? s.t('confirm_count', {'n': confirmed}) : pct,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: confirmed > 0 ? FontWeight.w600 : FontWeight.w400,
-                    color: confirmed > 0 ? c.blueTx : c.tx2,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                  Text(
+                    '$value',
+                    style: TextStyle(fontSize: 22, height: 1, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: share != null ? TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar, height: 4) : const SizedBox(height: 4),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(pct, style: TextStyle(fontSize: 11.5, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()])),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-const _minTable = 900.0;
-
 /// Column widths: fixed px, or flex weight with a minimum.
 const _cols = [
   (40.0, 0.0), // #
-  (168.0, 0.0), // part number
-  (200.0, 1.6), // description
-  (68.0, 0.0), // BOM qty
-  (68.0, 0.0), // SMT qty
-  (220.0, 2.4), // designators
-  (52.0, 0.0), // side
-  (80.0, 0.0), // result
-  (112.0, 0.0), // confirmation (only when a listed row needs one)
+  (170.0, 0.0), // part number
+  (280.0, 2.0), // description (single over A+B)
+  (90.0, 0.0), // quantity
+  (220.0, 1.4), // designators
+  (110.0, 0.0), // other columns
+  (96.0, 0.0), // result
 ];
 
-/// Lays out one table line in the design's grid.
-Widget _gridRow(List<Widget> cells, {List<Alignment>? align}) => LayoutBuilder(
+Widget _gridRow(List<Widget> cells, {CrossAxisAlignment cross = CrossAxisAlignment.center}) => LayoutBuilder(
   builder: (context, box) {
-    final cols = _cols.take(cells.length).toList();
-    final fixed = cols.fold<double>(0, (a, e) => a + e.$1);
-    final flex = cols.fold<double>(0, (a, e) => a + e.$2);
-    final spare = (box.maxWidth - fixed).clamp(0.0, double.infinity);
-    // Narrower than the fixed columns (tablets): shrink them all evenly.
+    final fixed = _cols.fold<double>(0, (a, e) => a + e.$1);
+    final flex = _cols.fold<double>(0, (a, e) => a + e.$2);
+    final spare = math.max(box.maxWidth - fixed, 0.0);
     final shrink = box.maxWidth < fixed ? box.maxWidth / fixed : 1.0;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: cross,
       children: [
         for (var i = 0; i < cells.length; i++)
           SizedBox(
-            width: cols[i].$1 * shrink + (flex == 0 ? 0 : spare * cols[i].$2 / flex),
-            child: Align(alignment: align?[i] ?? Alignment.centerLeft, child: cells[i]),
+            width: _cols[i].$1 * shrink + (flex == 0 ? 0 : spare * _cols[i].$2 / flex),
+            child: Align(alignment: i == cells.length - 1 ? Alignment.centerRight : (i == 3 ? Alignment.center : Alignment.centerLeft), child: cells[i]),
           ),
       ],
     );
   },
 );
 
-const _centerCols = {3, 4, 7};
-
-List<Alignment> _alignments() => [
-  for (var i = 0; i < _cols.length; i++)
-    i == _cols.length - 1
-        ? Alignment.centerRight
-        : _centerCols.contains(i)
-        ? Alignment.center
-        : Alignment.centerLeft,
-];
-
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.allConfirmed, required this.listed, required this.onConfirmAll, required this.showConfirm});
-
-  final bool allConfirmed;
-  final int listed;
-  final VoidCallback onConfirmAll;
-
-  /// Some listed row needs manual confirmation.
-  final bool showConfirm;
+  const _HeaderRow();
 
   @override
   Widget build(BuildContext context) {
@@ -720,67 +609,108 @@ class _HeaderRow extends StatelessWidget {
     Text t(String key) => Text(s.t(key), maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(18)),
-      child: _gridRow([
-        Text('#', style: style),
-        t('col_pn'),
-        t('col_desc'),
-        t('col_bom_qty'),
-        t('col_smt_qty'),
-        t('col_bom_refs'),
-        t('col_side'),
-        t('col_result'),
-        if (showConfirm)
-          Hoverable(
-            onTap: onConfirmAll,
-            tooltip: allConfirmed ? s.t('confirm_none_visible') : s.t('confirm_all_visible', {'n': listed}),
-            builder: (context, hover, _) => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                LucideIcon(allConfirmed ? Lucide.check : Lucide.clipboardCheck, size: 13, color: hover ? c.blueTx : c.tx2, stroke: 2.2),
-                const SizedBox(width: 4),
-                Text(s.t('col_confirm'), style: style.copyWith(color: hover ? c.blueTx : null)),
-              ],
-            ),
-          ),
-      ], align: _alignments()),
+      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(14)),
+      child: _gridRow([Text('#', style: style), t('f_part_no'), t('f_desc_both'), t('f_qty_both'), t('f_refs'), t('f_other'), t('f_result')]),
     );
   }
 }
 
-/// Designators of a row: BOM designators, plus extra ones from the station.
-List<RefMark> _refs(CheckRow row) => [...row.bomRefs, ...row.smtRefs.where((r) => r.state == RefState.extra)];
+/// A value of each side, labelled, with its differing parts highlighted.
+Widget _sides(BuildContext context, FieldCompare? f, {String? single, String? merged, int maxLines = 2}) {
+  final c = AppTheme.of(context);
+  final style = TextStyle(fontSize: 13, height: 1.35, color: c.tx);
+  final tag = TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c.tx3);
+  final hl = c.dark ? const Color(0x66E0A030) : const Color(0xFFFFD98A);
+  if (f == null) {
+    return Text(single ?? merged ?? '—', maxLines: maxLines, overflow: TextOverflow.ellipsis, style: style);
+  }
+  if (f.equal) return HighlightText(f.single, const [], color: hl, style: style, maxLines: maxLines);
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 30, child: Text(Strings.of(context).t('side_single'), style: tag)),
+          Expanded(child: HighlightText(f.single, f.singleSpans, color: hl, style: style, maxLines: maxLines)),
+        ],
+      ),
+      const SizedBox(height: 2),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 30, child: Text('A+B', style: tag)),
+          Expanded(child: HighlightText(f.merged, f.mergedSpans, color: hl, style: style, maxLines: maxLines)),
+        ],
+      ),
+    ],
+  );
+}
 
-Widget _chip(AppColors c, CheckRow row, RefMark m) {
-  // Chips take the row's result colour; a designator with its own problem
-  // (missing, extra, conflicting) shows in red.
-  final bad = m.state == RefState.missing || m.state == RefState.extra || m.state == RefState.conflict;
-  final cat = bad ? CheckCategory.ng : row.category;
-  return DotChip(text: m.ref, background: c.categorySoft(cat), color: c.categoryText(cat), strike: m.state == RefState.extra);
+Widget _refChips(BuildContext context, CompareRow row, {int max = 8}) {
+  final c = AppTheme.of(context);
+  final s = Strings.of(context);
+  final missing = row.missingRefs, extra = row.extraRefs;
+  final all = row.single?.refs ?? row.merged?.refs ?? const <String>[];
+  if (missing.isEmpty && extra.isEmpty) {
+    if (all.isEmpty) return Text('—', style: TextStyle(color: c.tx3));
+    final shown = sortedRefs(all).take(max).toList();
+    return Wrap(
+      spacing: 5,
+      runSpacing: 5,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (final r in shown) DotChip(text: r, background: c.well, color: c.tx2),
+        if (all.length > shown.length) Text('+${all.length - shown.length}', style: TextStyle(fontSize: 12, color: c.tx2)),
+      ],
+    );
+  }
+  final chips = [
+    for (final r in missing) DotChip(text: '${s.t('ref_missing')} $r', background: c.ngTint, color: c.ngTx),
+    for (final r in extra) DotChip(text: '${s.t('ref_extra')} $r', background: c.warnTint, color: c.warnTx),
+  ];
+  return Wrap(
+    spacing: 5,
+    runSpacing: 5,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      ...chips.take(max),
+      if (chips.length > max) Text('+${chips.length - max}', style: TextStyle(fontSize: 12, color: c.tx2)),
+    ],
+  );
 }
 
 class _ResultRow extends StatelessWidget {
-  const _ResultRow({required this.state, required this.row, required this.index, required this.showConfirm});
+  const _ResultRow({required this.state, required this.row, required this.index, this.ai = false});
 
   final AppState state;
-  final CheckRow row;
+  final CompareRow row;
   final int index;
-  final bool showConfirm;
+
+  /// The AI check flagged this part.
+  final bool ai;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final selected = identical(state.selected, row);
-    final refs = _refs(row);
-    final shown = refs.take(12).toList();
-    final mismatch = row.smtQty != null && row.bomQty != null && row.smtQty != row.bomQty!.round();
-    final mono = TextStyle(fontSize: 14, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]);
+    final desc = row.field('description');
+    final qty = row.field('quantity');
+    final otherDiffs = row.differences.where((f) => f.key.startsWith('col:')).toList();
+    final diffBg = c.dark ? const Color(0x1FE0A030) : const Color(0xFFFFF6E0);
+    Widget cell(Widget child, {bool diff = false}) => Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: diff ? const EdgeInsets.symmetric(horizontal: 6, vertical: 4) : EdgeInsets.zero,
+      decoration: diff ? BoxDecoration(color: diffBg, borderRadius: c.r(8)) : null,
+      child: child,
+    );
     return Hoverable(
       onTap: () => state.select(selected ? null : row),
       cursor: SystemMouseCursors.basic,
       builder: (context, hover, _) => Container(
-        constraints: const BoxConstraints(minHeight: 56),
+        margin: const EdgeInsets.only(top: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: selected
@@ -788,49 +718,55 @@ class _ResultRow extends StatelessWidget {
               : hover
               ? c.hover
               : null,
-          borderRadius: c.r(18),
+          borderRadius: c.r(14),
         ),
         child: _gridRow([
-          Text(
-            '$index',
-            style: TextStyle(fontSize: 13, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()]),
+          Text('$index', style: TextStyle(fontSize: 13, color: c.tx3, fontFeatures: const [FontFeature.tabularFigures()])),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(row.partNo, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.tx)),
+              if (row.sources.isNotEmpty) Text(row.sources.join(' + '), style: TextStyle(fontSize: 11, color: c.tx3)),
+            ],
           ),
-          Text(
-            row.partNo,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: -0.07, color: hover ? c.blueTx : c.tx),
+          cell(_sides(context, desc, single: row.single?.description, merged: row.merged?.description), diff: desc != null && !desc.equal),
+          cell(
+            qty == null
+                ? Text(formatQuantity(row.single?.quantity ?? row.merged?.quantity), style: TextStyle(fontSize: 13, color: c.tx))
+                : Text(
+                    qty.equal ? qty.single : '${qty.single.isEmpty ? '—' : qty.single} / ${qty.merged.isEmpty ? '—' : qty.merged}',
+                    style: TextStyle(fontSize: 13.5, fontWeight: qty.equal ? FontWeight.w400 : FontWeight.w700, color: qty.equal ? c.tx : c.ngTx, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+            diff: qty != null && !qty.equal,
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Text(row.description, style: TextStyle(fontSize: 14, height: 1.45, color: c.tx)),
-          ),
-          Text(_qty(row.bomQty), style: mono),
-          Text(
-            row.smtQty?.toString() ?? '-',
-            style: mismatch ? mono.copyWith(color: c.ngTx, fontWeight: FontWeight.w700) : mono,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Wrap(
-              spacing: 5,
-              runSpacing: 5,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final m in shown) _chip(c, row, m),
-                if (refs.length > shown.length) Text('+${refs.length - shown.length}', style: TextStyle(fontSize: 12, color: c.tx2)),
-                if (refs.isEmpty) Text('-', style: TextStyle(color: c.tx3)),
+          cell(_refChips(context, row, max: 6), diff: row.missingRefs.isNotEmpty || row.extraRefs.isNotEmpty),
+          otherDiffs.isEmpty
+              ? Text('—', style: TextStyle(color: c.tx3))
+              : Hoverable(
+                  tooltip: otherDiffs.map((f) => '${fieldLabel(s, f)}: ${f.single} ≠ ${f.merged}').join('\n'),
+                  builder: (context, hover, _) => DBadge(text: s.t('other_diff', {'n': otherDiffs.length}), background: c.warnTint, color: c.warnTx),
+                ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (ai) ...[
+                Hoverable(
+                  tooltip: s.t('ai_flagged'),
+                  builder: (context, hover, _) => Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: aiTint(c), shape: BoxShape.circle),
+                    child: LucideIcon(Lucide.sparkles, size: 12, color: aiText(c), stroke: 2.2),
+                  ),
+                ),
+                const SizedBox(width: 6),
               ],
-            ),
+              DBadge(text: statusLabel(s, row.status), background: _statusTint(c, row.status), color: _statusText(c, row.status)),
+            ],
           ),
-          Text(_sides(row.sides), style: TextStyle(fontSize: 14, color: c.tx2)),
-          DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
-          // PASS needs no manual confirmation: the cell stays empty.
-          if (showConfirm)
-            row.category == CheckCategory.pass
-                ? const SizedBox.shrink()
-                : _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
-        ], align: _alignments()),
+        ]),
       ),
     );
   }
@@ -838,23 +774,22 @@ class _ResultRow extends StatelessWidget {
 
 /// Narrow screens: one card per part.
 class _RowCard extends StatelessWidget {
-  const _RowCard({required this.state, required this.row});
+  const _RowCard({required this.state, required this.row, this.ai = false});
 
   final AppState state;
-  final CheckRow row;
+  final CompareRow row;
+  final bool ai;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final selected = identical(state.selected, row);
-    final refs = _refs(row);
-    final reason = row.reasons.isEmpty ? null : row.reasons.first;
+    final qty = row.field('quantity');
     return Hoverable(
       onTap: () => state.select(selected ? null : row),
       cursor: SystemMouseCursors.basic,
       builder: (context, hover, _) => Container(
-        margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         decoration: BoxDecoration(
           color: selected
@@ -870,33 +805,20 @@ class _RowCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    row.partNo,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx),
-                  ),
+                  child: Text(row.partNo, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx)),
                 ),
-                if (row.category != CheckCategory.pass) ...[
-                  _ConfirmPill(confirmed: state.confirmationOf(row) != null, onTap: () => state.setConfirmed([row], state.confirmationOf(row) == null)),
-                  const SizedBox(width: 8),
-                ],
-                DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+                if (ai) ...[LucideIcon(Lucide.sparkles, size: 14, color: aiText(c), stroke: 2.2), const SizedBox(width: 6)],
+                DBadge(text: statusLabel(s, row.status), background: _statusTint(c, row.status), color: _statusText(c, row.status)),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(row.description, style: TextStyle(fontSize: 13, color: c.tx2)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 5,
-              runSpacing: 5,
-              children: [
-                for (final m in refs.take(12)) _chip(c, row, m),
-                if (refs.length > 12) Text('+${refs.length - 12}', style: TextStyle(fontSize: 12, color: c.tx2)),
-              ],
-            ),
-            if (reason != null) ...[
-              const SizedBox(height: 6),
-              Text(s.t(reason.code, reason.args), style: TextStyle(fontSize: 13, color: reason.info ? c.tx2 : c.ngTx)),
+            const SizedBox(height: 6),
+            _sides(context, row.field('description'), single: row.single?.description, merged: row.merged?.description),
+            if (qty != null && !qty.equal) ...[
+              const SizedBox(height: 4),
+              Text(s.t('qty_pair', {'a': qty.single, 'b': qty.merged}), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.ngTx)),
             ],
+            const SizedBox(height: 6),
+            _refChips(context, row, max: 8),
           ],
         ),
       ),
@@ -904,270 +826,277 @@ class _RowCard extends StatelessWidget {
   }
 }
 
-/// Manual confirmation toggle: an outlined blue "Confirm" that fills on
-/// hover; once confirmed a green tick that offers "Undo" on hover.
-class _ConfirmPill extends StatelessWidget {
-  const _ConfirmPill({required this.confirmed, required this.onTap, this.large = false});
-
-  final bool confirmed;
-  final VoidCallback onTap;
-
-  /// Detail card: a bigger primary button.
-  final bool large;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppTheme.of(context);
-    final s = Strings.of(context);
-    return Hoverable(
-      onTap: onTap,
-      tooltip: confirmed ? s.t('confirm_undo') : s.t('confirm_hint_short'),
-      builder: (context, hover, pressed) {
-        final (bg, fg, border, icon, label) = confirmed
-            ? hover
-                  ? (c.grayTint, c.tx2, const Color(0x00000000), Lucide.x, s.t('confirm_undo_short'))
-                  : (c.okTint, c.okTx, const Color(0x00000000), Lucide.check, s.t('confirm_done'))
-            : hover
-            ? (c.btn, const Color(0xFFFFFFFF), c.btn, Lucide.check, s.t('confirm_btn'))
-            : (large ? c.btn : c.card, large ? const Color(0xFFFFFFFF) : c.blueTx, c.btn.withValues(alpha: 0.55), Lucide.circle, s.t('confirm_btn'));
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          height: large ? 40 : 30,
-          padding: EdgeInsets.symmetric(horizontal: large ? 18 : 12),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: c.r(large ? 20 : 15),
-            border: Border.all(color: border, width: 1.2),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LucideIcon(icon, size: large ? 16 : 13, color: fg, stroke: 2.6),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(fontSize: large ? 14.5 : 13, fontWeight: FontWeight.w600, color: fg),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Details of the selected part: quantities, side, result, reasons and the
-/// manual confirmation with its note.
-class _Detail extends StatefulWidget {
-  const _Detail({required this.state, this.panel = false});
+/// The selected part: every compared field side by side, designator
+/// differences and the AI's notes.
+class _Detail extends StatelessWidget {
+  const _Detail({required this.state});
 
   final AppState state;
 
-  /// Shown right of the table at its full height (scrolls inside).
-  final bool panel;
-
   @override
-  State<_Detail> createState() => _DetailState();
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final row = state.selected!;
+    final hl = c.dark ? const Color(0x66E0A030) : const Color(0xFFFFD98A);
+    final findings = state.ai?.forPart(row.partNo).toList() ?? const <AiFinding>[];
+    Widget label(String t) => Text(t, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.tx2));
+    Widget field(String name, String a, String b, List<Span> sa, List<Span> sb, bool equal) => Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: equal ? c.well : (c.dark ? const Color(0x1FE0A030) : const Color(0xFFFFF6E0)), borderRadius: c.r(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: label(name)),
+              LucideIcon(equal ? Lucide.check : Lucide.alert, size: 13, color: equal ? c.okTx : c.warnTx, stroke: 2.4),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 52, child: Text(s.t('side_single_long'), style: TextStyle(fontSize: 11.5, color: c.tx3))),
+              Expanded(child: HighlightText(a, sa, color: hl, style: TextStyle(fontSize: 13, height: 1.4, color: c.tx))),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 52, child: Text('A+B', style: TextStyle(fontSize: 11.5, color: c.tx3))),
+              Expanded(child: HighlightText(b, sb, color: hl, style: TextStyle(fontSize: 13, height: 1.4, color: c.tx))),
+            ],
+          ),
+        ],
+      ),
+    );
+    final body = <Widget>[
+      Row(
+        children: [
+          Expanded(
+            child: Text(row.partNo, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: c.tx)),
+          ),
+          DBadge(text: statusLabel(s, row.status), background: _statusTint(c, row.status), color: _statusText(c, row.status)),
+          const SizedBox(width: 8),
+          GlassButton(icon: Lucide.x, size: 30, iconSize: 14, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Text(
+        [
+          if (row.single != null) s.t('src_single_rows', {'rows': row.single!.rows.join(', ')}),
+          if (row.merged != null) s.t('src_merged', {'src': row.sources.join(' + ')}),
+        ].join(' · '),
+        style: TextStyle(fontSize: 12, color: c.tx3),
+      ),
+      const SizedBox(height: 12),
+      if (row.status == DiffStatus.onlySingle || row.status == DiffStatus.onlyMerged) ...[
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: _statusTint(c, row.status), borderRadius: c.r(12)),
+          child: Text(s.t('why_${row.status.name}'), style: TextStyle(fontSize: 13, height: 1.45, color: _statusText(c, row.status))),
+        ),
+        const SizedBox(height: 10),
+        field(s.t('f_desc'), row.single?.description ?? '', row.merged?.description ?? '', const [], const [], true),
+      ],
+      for (final f in row.fields)
+        if (f.key != 'refs') field(fieldLabel(s, f), f.single, f.merged, f.singleSpans, f.mergedSpans, f.equal),
+      if (row.field('refs') != null || row.missingRefs.isNotEmpty || row.extraRefs.isNotEmpty) ...[
+        label(s.t('f_refs')),
+        const SizedBox(height: 6),
+        if (row.missingRefs.isEmpty && row.extraRefs.isEmpty)
+          Text(s.t('refs_same', {'n': row.single?.refs.length ?? 0}), style: TextStyle(fontSize: 13, color: c.okTx))
+        else ...[
+          if (row.missingRefs.isNotEmpty)
+            Text(s.t('refs_missing_list', {'refs': row.missingRefs.join(', ')}), style: TextStyle(fontSize: 13, height: 1.45, color: c.ngTx)),
+          if (row.extraRefs.isNotEmpty)
+            Text(s.t('refs_extra_list', {'refs': row.extraRefs.join(', ')}), style: TextStyle(fontSize: 13, height: 1.45, color: c.warnTx)),
+        ],
+        for (final e in row.movedRefs.entries)
+          Text(s.t('ref_moved', {'ref': e.key, 'pn': e.value}), style: TextStyle(fontSize: 12.5, height: 1.45, color: c.tx2)),
+        const SizedBox(height: 10),
+      ],
+      if (findings.isNotEmpty) ...[
+        Row(
+          children: [
+            LucideIcon(Lucide.sparkles, size: 14, color: aiText(c), stroke: 2.2),
+            const SizedBox(width: 6),
+            label(s.t('ai_notes')),
+          ],
+        ),
+        const SizedBox(height: 6),
+        for (final f in findings) _FindingCard(finding: f),
+      ],
+    ];
+    return DCard(
+      radius: 22,
+      clip: true,
+      padding: EdgeInsets.zero,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+      ),
+    );
+  }
 }
 
-class _DetailState extends State<_Detail> {
-  final _note = TextEditingController();
-  CheckRow? _noteFor;
+class _FindingCard extends StatelessWidget {
+  const _FindingCard({required this.finding, this.onTap});
 
-  @override
-  void dispose() {
-    _note.dispose();
-    super.dispose();
-  }
+  final AiFinding finding;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final state = widget.state;
-    final row = state.selected;
-    final narrow = MediaQuery.sizeOf(context).width < 900;
-    final panel = widget.panel;
-    if (row == null) {
-      if (panel) {
-        return DCard(
-          radius: 22,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TintTile(icon: Lucide.clipboardCheck),
-                  const SizedBox(height: 14),
-                  Text(
-                    s.t('detail_hint'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, height: 1.5, color: c.tx2),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-      return DCard(
-        radius: 22,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Text(s.t('detail_hint'), style: TextStyle(fontSize: 14, color: c.tx2)),
-      );
-    }
-    final confirmation = state.confirmationOf(row);
-    if (!identical(_noteFor, row)) {
-      _noteFor = row;
-      _note.text = confirmation?.note ?? '';
-    }
-    Widget fact(String label, String value) => Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: '$label '),
-          TextSpan(
-            text: value,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.tx),
-          ),
-        ],
-      ),
-      style: TextStyle(fontSize: 13, color: c.tx2),
-    );
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 24,
-          runSpacing: 12,
+    final f = finding;
+    final sev = switch (f.severity) {
+      AiSeverity.error => (c.ngTint, c.ngTx),
+      AiSeverity.warning => (c.warnTint, c.warnTx),
+      AiSeverity.info => (c.well, c.tx2),
+    };
+    return Hoverable(
+      onTap: onTap,
+      cursor: onTap == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      builder: (context, hover, _) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: hover && onTap != null ? Color.alphaBlend(c.hover, aiTint(c)) : aiTint(c), borderRadius: c.r(12)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 640),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(s.t('detail_selected', {'pn': row.partNo}), style: TextStyle(fontSize: 12, color: c.tx2)),
-                  const SizedBox(height: 4),
-                  Text(
-                    row.description,
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.16, color: c.tx),
-                  ),
-                ],
-              ),
-            ),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 28,
-              runSpacing: 8,
+            Row(
               children: [
-                fact('BOM', _qty(row.bomQty)),
-                fact('SMT', row.smtQty?.toString() ?? '-'),
-                fact(s.t('col_side'), _sides(row.sides)),
-                if (row.slots.isNotEmpty) fact(s.t('col_slot'), row.slots.join(', ')),
-                DBadge(text: _resultShort(s, row.category), background: c.categorySoft(row.category), color: c.categoryText(row.category)),
+                DBadge(text: s.t('ai_sev_${f.severity.name}'), background: sev.$1, color: sev.$2),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    [if (onTap != null) f.partNo, aiFieldLabel(s, f.field)].where((x) => x.isNotEmpty).join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: aiText(c)),
+                  ),
+                ),
               ],
             ),
-          ],
-        ),
-        if (row.reasons.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          for (final r in row.reasons)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: r.info ? c.warnSolid : c.ngSolid),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: s.t(r.code, r.args),
-                            style: TextStyle(fontWeight: FontWeight.w600, color: r.info ? c.warnTx : c.ngTx),
-                          ),
-                          if (Texts.has('why_${r.code}')) TextSpan(text: '  ${s.t('why_${r.code}')}'),
-                        ],
-                      ),
-                      style: TextStyle(fontSize: 13, height: 1.5, color: c.tx2),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-        if (row.category == CheckCategory.pass) ...[
-          const SizedBox(height: 12),
-          Text(s.t('confirm_not_needed'), style: TextStyle(fontSize: 13, color: c.tx2)),
-        ] else ...[
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _ConfirmPill(large: true, confirmed: confirmation != null, onTap: () => state.setConfirmed([row], confirmation == null)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: confirmation == null
-                    ? Text(s.t('confirm_pending'), style: TextStyle(fontSize: 13, color: c.tx2))
-                    : PillSearch(
-                        controller: _note,
-                        hint: '${s.t('confirm_at', {'time': formatTime(confirmation.at)})} · ${s.t('confirm_note_hint')}',
-                        icon: Lucide.fileText,
-                        onChanged: (v) => state.setConfirmNote(row, v),
-                        flat: true,
-                      ),
-              ),
+            const SizedBox(height: 6),
+            Text(f.message, style: TextStyle(fontSize: 13, height: 1.45, color: c.tx)),
+            if (f.singleValue.isNotEmpty || f.mergedValue.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              if (f.singleValue.isNotEmpty) Text('${s.t('side_single_long')}: ${f.singleValue}', style: TextStyle(fontSize: 12, color: c.tx2)),
+              if (f.mergedValue.isNotEmpty) Text('A+B: ${f.mergedValue}', style: TextStyle(fontSize: 12, color: c.tx2)),
             ],
-          ),
-        ],
-      ],
-    );
-    if (panel) {
-      return DCard(
-        radius: 22,
-        clip: true,
-        padding: EdgeInsets.zero,
-        child: Stack(
-          children: [
-            SingleChildScrollView(padding: const EdgeInsets.fromLTRB(20, 20, 46, 20), child: body),
-            Positioned(
-              top: 10,
-              right: 10,
-              child: GlassButton(icon: Lucide.x, size: 32, iconSize: 15, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
-            ),
           ],
         ),
-      );
-    }
-    return DCard(radius: 22, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), child: body);
+      ),
+    );
   }
 }
 
-String _qty(double? q) {
-  if (q == null) return '-';
-  return q == q.roundToDouble() ? q.toInt().toString() : q.toString();
+/// The AI analysis: running, failed (with the reason and a retry), or the
+/// summary and findings; a finding opens its part.
+class _AiPanel extends StatelessWidget {
+  const _AiPanel({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final ai = state.ai;
+    final header = Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: aiTint(c), borderRadius: c.r(9)),
+          child: LucideIcon(Lucide.sparkles, size: 16, color: aiText(c), stroke: 2.2),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.t('ai_analysis'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.tx)),
+              Text(
+                ai == null ? state.settings.ai.modelName : '${ai.model} · ${formatTime(ai.at)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: c.tx3),
+              ),
+            ],
+          ),
+        ),
+        if (state.aiStatus == AiStatus.running)
+          GlassButton(icon: Lucide.x, size: 30, iconSize: 14, tooltip: s.t('dlg_cancel'), onTap: state.cancelAi)
+        else
+          GlassButton(icon: Lucide.refresh, size: 30, iconSize: 14, tooltip: s.t('ai_rerun'), onTap: state.runAi),
+      ],
+    );
+    final List<Widget> body = switch (state.aiStatus) {
+      AiStatus.running => [
+        Row(
+          children: [
+            const Spinner(size: 16),
+            const SizedBox(width: 10),
+            Expanded(child: Text(s.t('ai_running_long'), style: TextStyle(fontSize: 13, color: c.tx2))),
+          ],
+        ),
+      ],
+      AiStatus.failed => [
+        Text(s.t(state.aiError), style: TextStyle(fontSize: 13, height: 1.45, color: c.ngTx)),
+        if (state.aiErrorDetail.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(state.aiErrorDetail, maxLines: 4, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.tx3)),
+        ],
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            PillButton(label: s.t('ai_rerun'), icon: Lucide.refresh, kind: PillKind.soft, height: 34, fontSize: 13, onTap: state.runAi),
+            const SizedBox(width: 8),
+            PillButton(label: s.t('set_ai'), kind: PillKind.ghost, height: 34, fontSize: 13, onTap: () => state.openSettings(SettingsSection.ai)),
+          ],
+        ),
+      ],
+      _ when ai != null => [
+        Text(ai.summary.isEmpty ? s.t('ai_no_summary') : ai.summary, style: TextStyle(fontSize: 13.5, height: 1.55, color: c.tx)),
+        const SizedBox(height: 12),
+        if (ai.findings.isEmpty)
+          Text(s.t('ai_no_findings'), style: TextStyle(fontSize: 13, color: c.okTx))
+        else
+          for (final f in ai.findings)
+            _FindingCard(
+              finding: f,
+              onTap: () {
+                final row = state.report?.rows.where((r) => r.partNo == f.partNo).firstOrNull;
+                if (row != null) state.select(row);
+              },
+            ),
+      ],
+      _ => [Text(s.t('ai_on'), style: TextStyle(fontSize: 13, color: c.tx2))],
+    };
+    return DCard(
+      radius: 22,
+      clip: true,
+      padding: EdgeInsets.zero,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 14), ...body]),
+      ),
+    );
+  }
 }
 
-String _sides(Set<StationSide> sides) {
-  if (sides.isEmpty) return '-';
-  if (sides.length == 2) return 'A+B';
-  return sides.first == StationSide.a ? 'A' : 'B';
-}
-
-/// Centred message with an icon, for pages that have nothing to show yet.
 class EmptyState extends StatelessWidget {
   const EmptyState({super.key, required this.icon, required this.text, this.action});
 
-  final IconData icon;
+  final Lucide icon;
   final String text;
   final Widget? action;
 
@@ -1177,24 +1106,24 @@ class EmptyState extends StatelessWidget {
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.all(24),
-      child: Column(
+      // Short cards (large interface zoom) scale the content down.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 72,
             height: 72,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: c.glass, shape: BoxShape.circle, boxShadow: c.shadowSm, border: c.cardBorder),
-            child: Icon(icon, size: 30, color: c.tx2),
+            decoration: BoxDecoration(color: c.well, shape: BoxShape.circle, border: c.cardBorder),
+            child: LucideIcon(icon, size: 30, color: c.tx2),
           ),
           const SizedBox(height: 18),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.tx2, fontSize: 15),
-          ),
+          Text(text, textAlign: TextAlign.center, style: TextStyle(color: c.tx2, fontSize: 15, height: 1.5)),
           if (action != null) ...[const SizedBox(height: 18), action!],
         ],
+      ),
       ),
     );
   }
