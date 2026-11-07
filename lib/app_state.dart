@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'core/ai_check.dart';
 import 'core/bom.dart';
 import 'core/bom_compare.dart';
+import 'core/local_ai/model_store.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/updater.dart';
@@ -42,14 +43,14 @@ class UserMessage implements Exception {
 }
 
 /// Pages of the settings screen.
-enum SettingsSection { appearance, ai, guide, about }
+enum SettingsSection { appearance, ai, localAi, guide, about }
 
 enum UpdateStatus { idle, checking, upToDate, available, downloading, installing, failed }
 
 enum AiStatus { idle, running, done, failed }
 
 class AppState extends ChangeNotifier {
-  AppState(this.settings, this.settingsDir);
+  AppState(this.settings, this.settingsDir, {ModelStore? models}) : models = models ?? ModelStore.forApp(settingsDir);
 
   AppSettings settings;
   final String settingsDir;
@@ -240,6 +241,55 @@ class AppState extends ChangeNotifier {
       updateError = 'upd_err_${e.code}';
       notifyListeners();
     }
+  }
+
+  // ----------------------------------------------------------- local models
+
+  final ModelStore models;
+  final modelStatus = <String, ModelStatus>{};
+  final _downloads = <String, DownloadCancel>{};
+
+  bool get localModelsReady => localModels.every((m) => modelStatus[m.id]?.state == ModelState.ready);
+
+  Future<void> refreshModels() async {
+    for (final m in localModels) {
+      if (_downloads.containsKey(m.id)) continue;
+      modelStatus[m.id] = await models.status(m);
+    }
+    notifyListeners();
+  }
+
+  /// Downloads [m] in the background; the status follows in [modelStatus].
+  Future<void> downloadModel(LocalModelSpec m) async {
+    if (_downloads.containsKey(m.id)) return;
+    final cancel = _downloads[m.id] = DownloadCancel();
+    modelStatus[m.id] = const ModelStatus(ModelState.downloading);
+    notifyListeners();
+    try {
+      await models.download(m, language: language, cancel: cancel, onStatus: (s) {
+        modelStatus[m.id] = s;
+        notifyListeners();
+      });
+    } on ModelDownloadException catch (e) {
+      final partial = await models.status(m);
+      modelStatus[m.id] = e.code == 'cancelled' ? partial : ModelStatus(ModelState.failed, progress: partial.progress, error: 'model_err_${e.code}', detail: e.detail);
+    } finally {
+      _downloads.remove(m.id);
+      notifyListeners();
+    }
+  }
+
+  void cancelModelDownload(LocalModelSpec m) => _downloads[m.id]?.cancel();
+
+  Future<void> deleteModel(LocalModelSpec m) async {
+    await models.delete(m);
+    await refreshModels();
+  }
+
+  void setLocalAiEnabled(bool v) {
+    settings.localAiEnabled = v;
+    persist();
+    notifyListeners();
   }
 
   // ------------------------------------------------------------------ files

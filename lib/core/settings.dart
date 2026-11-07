@@ -22,6 +22,7 @@ class AppSettings {
     this.uiScale = 0,
     this.tourDone = false,
     this.aiEnabled = false,
+    this.localAiEnabled = false,
     AiConfig? ai,
   }) : ai = ai ?? AiConfig();
 
@@ -40,6 +41,9 @@ class AppSettings {
 
   /// Run the AI check together with the local one.
   bool aiEnabled;
+
+  /// Use the downloaded local models in the check.
+  bool localAiEnabled;
   AiConfig ai;
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +54,7 @@ class AppSettings {
     'uiScale': uiScale,
     'tourDone': tourDone,
     'aiEnabled': aiEnabled,
+    'localAiEnabled': localAiEnabled,
     'ai': ai.toJson(),
   };
 
@@ -61,6 +66,7 @@ class AppSettings {
     uiScale: (j['uiScale'] as num?)?.toDouble() ?? 0,
     tourDone: j['tourDone'] == true,
     aiEnabled: j['aiEnabled'] == true,
+    localAiEnabled: j['localAiEnabled'] == true,
     ai: j['ai'] is Map ? AiConfig.fromJson((j['ai'] as Map).cast()) : null,
   );
 

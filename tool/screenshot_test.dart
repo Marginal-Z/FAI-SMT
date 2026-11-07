@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
 import 'package:smt_fai/core/ai_check.dart';
 import 'package:smt_fai/core/bom_compare.dart';
+import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
 
@@ -137,6 +138,16 @@ void main() {
     final s = demoState(lang: 'th', dark: false);
     await shot(tester, s, 'check_th_light');
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('settings local models ${dark ? 'dark' : 'light'}', (tester) async {
+      final s = demoState(dark: dark);
+      s.openSettings(SettingsSection.localAi);
+      s.modelStatus[localModels.first.id] = const ModelStatus(ModelState.ready, progress: 1);
+      s.modelStatus[localModels.last.id] = const ModelStatus(ModelState.downloading, progress: 0.42);
+      await shot(tester, s, 'settings_local_${dark ? 'dark' : 'light'}');
+    });
+  }
 
   testWidgets('settings list', (tester) async {
     final s = demoState(dark: false);

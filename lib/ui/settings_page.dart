@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import '../core/ai_check.dart';
+import '../core/local_ai/model_store.dart';
 import '../core/settings.dart';
 import '../core/updater.dart';
 import '../l10n/strings.dart';
@@ -43,6 +44,7 @@ class SettingsScreen extends StatelessWidget {
       SettingsSection.guide => GuidePage(state: state),
       SettingsSection.appearance => _Section(child: _Appearance(state: state)),
       SettingsSection.ai => _Section(child: _AiSettings(key: tourTargets.aiSettings, state: state)),
+      SettingsSection.localAi => _Section(child: _LocalAiSettings(state: state)),
       SettingsSection.about => _Section(child: _About(state: state)),
     };
     return Padding(
@@ -93,6 +95,7 @@ class SettingsScreen extends StatelessWidget {
 const _titles = {
   SettingsSection.appearance: 'set_appearance',
   SettingsSection.ai: 'set_ai',
+  SettingsSection.localAi: 'set_local',
   SettingsSection.guide: 'set_guide',
   SettingsSection.about: 'set_about',
 };
@@ -111,14 +114,21 @@ class _SettingsList extends StatelessWidget {
     final phone = isPhoneLayout(context);
     final groups = [
       [
-        (SettingsSection.appearance, Lucide.brush, const Color(0xFF5E5CE6), s.t('set_appearance_hint'), null),
+        (SettingsSection.appearance, Lucide.brush, const Color(0xFF3A6EA5), s.t('set_appearance_hint'), null),
       ],
       [
         (
           SettingsSection.ai,
           Lucide.sparkles,
-          const Color(0xFF8E5CF6),
+          const Color(0xFF0E8A84),
           state.settings.ai.ready ? s.t('set_ai_hint_ready', {'m': state.settings.ai.modelName}) : s.t('set_ai_hint'),
+          null,
+        ),
+        (
+          SettingsSection.localAi,
+          Lucide.cpu,
+          const Color(0xFF2F7D4F),
+          state.localModelsReady ? s.t('set_local_hint_ready') : s.t('set_local_hint'),
           null,
         ),
       ],
@@ -849,6 +859,133 @@ class _AiSettingsState extends State<_AiSettings> {
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Local models: each model's state, download with progress (resumes, tries
+/// mirrors, checks the SHA-256), cancel and delete; and the switch that uses
+/// them in the check.
+class _LocalAiSettings extends StatefulWidget {
+  const _LocalAiSettings({required this.state});
+
+  final AppState state;
+
+  @override
+  State<_LocalAiSettings> createState() => _LocalAiSettingsState();
+}
+
+class _LocalAiSettingsState extends State<_LocalAiSettings> {
+  @override
+  void initState() {
+    super.initState();
+    widget.state.refreshModels();
+  }
+
+  String _size(int bytes) => bytes >= 1 << 30 ? '${(bytes / (1 << 30)).toStringAsFixed(2)} GB' : '${(bytes / (1 << 20)).round()} MB';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final state = widget.state;
+    final ready = state.localModelsReady;
+    final total = localModels.fold<int>(0, (a, m) => a + m.bytes);
+    Widget model(LocalModelSpec m) {
+      final st = state.modelStatus[m.id] ?? const ModelStatus(ModelState.missing);
+      final busy = st.state == ModelState.downloading || st.state == ModelState.verifying;
+      final (Color dot, String line) = switch (st.state) {
+        ModelState.ready => (c.okSolid, st.bundled ? s.t('model_bundled') : s.t('model_ready')),
+        ModelState.downloading => (c.blue, s.t('model_downloading', {'p': (st.progress * 100).toStringAsFixed(0)})),
+        ModelState.verifying => (c.blue, s.t('model_verifying', {'p': (st.progress * 100).toStringAsFixed(0)})),
+        ModelState.failed => (c.ngSolid, s.t(st.error)),
+        ModelState.missing => (c.tx3, st.progress > 0 ? s.t('model_partial', {'p': (st.progress * 100).toStringAsFixed(0)}) : s.t('model_missing')),
+      };
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: c.well, borderRadius: c.r(14)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m.name, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${s.t(m.role == LocalModelRole.embedding ? 'model_role_embedding' : 'model_role_language')} · ${_size(m.bytes)} · ${m.license}',
+                        style: TextStyle(fontSize: 12.5, color: c.tx2),
+                      ),
+                    ],
+                  ),
+                ),
+                if (busy)
+                  PillButton(label: s.t('dlg_cancel'), kind: PillKind.ghost, height: 34, fontSize: 13, onTap: () => state.cancelModelDownload(m))
+                else if (st.state == ModelState.ready && !st.bundled)
+                  PillButton(label: s.t('file_remove'), icon: Lucide.trash, kind: PillKind.ghost, height: 34, fontSize: 13, onTap: () => state.deleteModel(m))
+                else if (st.state != ModelState.ready)
+                  PillButton(label: s.t(st.progress > 0 ? 'model_resume' : 'model_download'), icon: Lucide.download, kind: PillKind.soft, height: 34, fontSize: 13, onTap: () => state.downloadModel(m)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(line, style: TextStyle(fontSize: 12.5, color: st.state == ModelState.failed ? c.ngTx : c.tx2))),
+              ],
+            ),
+            if (busy || (st.state == ModelState.missing && st.progress > 0)) ...[
+              const SizedBox(height: 8),
+              TrackBar(value: st.progress.clamp(0.0, 1.0), color: c.blue, height: 4),
+            ],
+            if (st.state == ModelState.failed && st.detail.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(st.detail, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: c.tx3)),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Hoverable(
+          onTap: ready ? () => state.setLocalAiEnabled(!state.settings.localAiEnabled) : null,
+          cursor: ready ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          builder: (context, hover, _) => Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: hover && ready ? c.hover : c.well, borderRadius: c.r(14)),
+            child: Row(
+              children: [
+                LucideIcon(Lucide.cpu, size: 18, color: c.okTx, stroke: 2.2),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.t('local_use'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
+                      const SizedBox(height: 2),
+                      Text(ready ? s.t('local_use_hint') : s.t('local_need_models'), style: TextStyle(fontSize: 12.5, height: 1.4, color: c.tx2)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Opacity(opacity: ready ? 1 : 0.4, child: ToggleSwitch(value: ready && state.settings.localAiEnabled)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        for (final m in localModels) model(m),
+        const SizedBox(height: 8),
+        Text(s.t('local_note', {'size': _size(total), 'dir': state.models.dir}), style: TextStyle(fontSize: 12, height: 1.5, color: c.tx3)),
       ],
     );
   }

@@ -25,7 +25,7 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
 
   const head = XlsxStyle(bold: true, fill: 'E5E7EB', center: true);
   const diffFill = XlsxStyle(fill: 'FFE3A3');
-  const aiFill = XlsxStyle(fill: 'E4D7FB');
+  const aiFill = XlsxStyle(fill: 'D5F0EE');
   const statusFill = {
     DiffStatus.same: XlsxStyle(fill: 'D9F2E1'),
     DiffStatus.different: XlsxStyle(fill: 'FDE2E1'),

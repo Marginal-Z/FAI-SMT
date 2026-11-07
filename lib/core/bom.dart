@@ -142,13 +142,14 @@ double _hint(String header, BomRole role) {
 /// Picks the sheet that looks most like a BOM and reads it. [file] is the
 /// file name and [id] the document's tag in a check; both end up in every
 /// record's source reference.
-BomDocument readBom(List<Grid> sheets, {String file = '', String id = 'S'}) {
+/// [overrides] force column roles per sheet (from a checked model answer).
+BomDocument readBom(List<Grid> sheets, {String file = '', String id = 'S', Map<String, Map<int, BomRole>> overrides = const {}}) {
   BomDocument? best;
   var bestScore = -1.0;
   final names = [for (final g in sheets) g.name];
   for (final g in sheets) {
     try {
-      final f = _readSheet(g, file: file, id: id, sheets: names);
+      final f = _readSheet(g, file: file, id: id, sheets: names, forced: overrides[g.name] ?? const {});
       final score = f.parts.length.toDouble() + (f.column(BomRole.refs) != null ? 5 : 0) + (f.column(BomRole.partNo) != null ? 5 : 0);
       if (score > bestScore) {
         best = f;
@@ -166,7 +167,7 @@ BomDocument readBom(List<Grid> sheets, {String file = '', String id = 'S'}) {
   for (final g in sheets) {
     if (g.name == best.sheet) continue;
     try {
-      final f = _readSheet(g, file: file, id: id, sheets: names);
+      final f = _readSheet(g, file: file, id: id, sheets: names, forced: overrides[g.name] ?? const {});
       if (_layoutKey(f) == layout && layout.isNotEmpty) more.add(f);
     } on BomReadException {
       continue;
@@ -296,7 +297,7 @@ _Features _features(List<String> values, int rows) {
   return f;
 }
 
-BomDocument _readSheet(Grid g, {required String file, required String id, required List<String> sheets}) {
+BomDocument _readSheet(Grid g, {required String file, required String id, required List<String> sheets, Map<int, BomRole> forced = const {}}) {
   final headerRow = _headerRow(g);
   final width = g.rows.fold<int>(0, (m, r) => math.max(m, r.length));
   if (width == 0) throw BomReadException('bom_empty');
@@ -372,16 +373,38 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
     return [if (byHeader) 'header', if (byContent) 'content'].join('+');
   }
 
-  BomColumn col(int c, BomRole role, {String label = ''}) =>
-      BomColumn(c, header(c), role, label: label, confidence: (scores[c] ?? 1).clamp(0.0, 1.0).toDouble(), evidence: evidence(c, role));
+  BomColumn col(int c, BomRole role, {String label = ''}) => BomColumn(
+    c,
+    header(c),
+    role,
+    label: label,
+    confidence: (scores[c] ?? 1).clamp(0.0, 1.0).toDouble(),
+    evidence: [evidence(c, role), if (forced[c] == role) 'model'].where((e) => e.isNotEmpty).join('+'),
+  );
 
   // Columns whose header names an attribute (MPN, maker, alternate, level,
   // DNP) more strongly than a main field are taken first: "MPN" is not the
   // part number, "Manufacturer Part Number" is not either.
   final attrs = <int, BomRole>{};
+  // Roles a checked model answer settled: attributes and "other" are taken
+  // as given; descriptions join after the picks; main fields only fill a
+  // gap the program left.
+  final forcedOther = <int>{};
+  for (final e in forced.entries) {
+    if (e.key >= width) continue;
+    if (e.value.attribute && e.value != BomRole.other) {
+      attrs[e.key] = e.value;
+      used.add(e.key);
+      scores[e.key] = 0.6;
+    } else if (e.value == BomRole.other) {
+      forcedOther.add(e.key);
+      used.add(e.key);
+    }
+  }
   const attributeRoles = [BomRole.mpn, BomRole.maker, BomRole.alternate, BomRole.level, BomRole.dnp];
   const mainRoles = [BomRole.partNo, BomRole.description, BomRole.quantity, BomRole.refs, BomRole.serial];
   for (var c = 0; c < width; c++) {
+    if (forced.containsKey(c)) continue;
     var best = 0.0;
     BomRole? role;
     for (final r in attributeRoles) {
@@ -413,7 +436,7 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   };
   used.addAll(indexCols);
 
-  final refsCol = pick((c) => features[c].refs * features[c].fill + features[c].refsMany * 0.4 + _hint(header(c), BomRole.refs) * 0.8);
+  var refsCol = pick((c) => features[c].refs * features[c].fill + features[c].refsMany * 0.4 + _hint(header(c), BomRole.refs) * 0.8);
   // Quantity: numbers, best when they match the designator count.
   double qtyMatch(int c) {
     if (refsCol == null) return 0;
@@ -428,11 +451,11 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
     return n == 0 ? 0 : hit / n;
   }
 
-  final qtyCol = pick((c) => features[c].number * features[c].fill * (1 - features[c].code) + qtyMatch(c) * 0.6 + _hint(header(c), BomRole.quantity) * 0.8, min: 0.4);
+  var qtyCol = pick((c) => features[c].number * features[c].fill * (1 - features[c].code) + qtyMatch(c) * 0.6 + _hint(header(c), BomRole.quantity) * 0.8, min: 0.4);
   // Part number: unique codes; an internal numbering keeps one form (a
   // maker part number column varies), which settles headerless sheets.
   // Every part line has one, so a sparse column (alternates) never is.
-  final pnCol = pick((c) => (features[c].partNo * (0.4 + 0.6 * features[c].unique) + features[c].partNo * features[c].shape * 0.3 + _hint(header(c), BomRole.partNo) * 0.8) * features[c].fill * features[c].fill, min: 0.3);
+  var pnCol = pick((c) => (features[c].partNo * (0.4 + 0.6 * features[c].unique) + features[c].partNo * features[c].shape * 0.3 + _hint(header(c), BomRole.partNo) * 0.8) * features[c].fill * features[c].fill, min: 0.3);
   // Description: one column, or name and specification side by side.
   final descCols = <int>[];
   // Codes are not descriptions, even when "…823A" reads like a current.
@@ -451,6 +474,28 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
       }
     }
     descCols.sort();
+  }
+
+  for (final e in forced.entries) {
+    if (e.key >= width || used.contains(e.key) && !descCols.contains(e.key)) continue;
+    if (e.value == BomRole.description && !descCols.contains(e.key)) {
+      descCols
+        ..add(e.key)
+        ..sort();
+      used.add(e.key);
+      scores[e.key] = 0.6;
+    }
+  }
+  final forcedMain = {
+    for (final e in forced.entries)
+      if (!used.contains(e.key) && const [BomRole.partNo, BomRole.quantity, BomRole.refs].contains(e.value)) e.value: e.key,
+  };
+  pnCol ??= forcedMain[BomRole.partNo];
+  qtyCol ??= forcedMain[BomRole.quantity];
+  refsCol ??= forcedMain[BomRole.refs];
+  for (final c in forcedMain.values) {
+    used.add(c);
+    scores[c] = 0.6;
   }
 
   // Remaining columns recognised by content.
@@ -498,8 +543,8 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
       columns.add(col(c, BomRole.refs));
     } else if (indexCols.contains(c)) {
       columns.add(col(c, BomRole.serial));
-    } else if (features[c].fill >= 0.05) {
-      columns.add(BomColumn(c, h, BomRole.other, label: h.isEmpty ? '#${c + 1}' : _norm(h), evidence: h.isEmpty ? '' : 'header'));
+    } else if (features[c].fill >= 0.05 || forcedOther.contains(c)) {
+      columns.add(BomColumn(c, h, BomRole.other, label: h.isEmpty ? '#${c + 1}' : _norm(h), evidence: forcedOther.contains(c) ? 'model' : (h.isEmpty ? '' : 'header')));
     }
   }
   if (pnCol == null && refsCol == null) throw BomReadException('bom_no_parts');
@@ -621,3 +666,22 @@ void _partWarnings(BomDocument doc) {
 /// ("DNP", "NC", "不贴"), not inside a part name.
 bool _dnpInDescription(String desc) =>
     desc.split(RegExp(r'[\s,，;；()（）\[\]]+')).any((w) => w.isNotEmpty && isDnpText(w) && w.length <= 12);
+
+/// Whether [values] (non-empty cells of one column) can hold [role]: used to
+/// check a model's answer against the contents before accepting it.
+bool contentFits(BomRole role, List<String> values) {
+  final v = [for (final x in values) cleanCell(x)].where((x) => x.isNotEmpty).toList();
+  if (v.isEmpty) return role == BomRole.other;
+  double share(bool Function(String) f) => v.where(f).length / v.length;
+  return switch (role) {
+    BomRole.quantity => share((x) => parseQuantity(x) != null) >= 0.8,
+    BomRole.refs => share((x) => splitRefs(x).isNotEmpty && splitRefs(x).every(_designator.hasMatch)) >= 0.6,
+    BomRole.partNo || BomRole.mpn || BomRole.alternate => share((x) => !x.contains(' ') && RegExp(r'\d').hasMatch(x)) >= 0.6,
+    BomRole.maker => share((x) => _letter.hasMatch(x) && !RegExp(r'\d{3,}').hasMatch(x)) >= 0.6,
+    BomRole.level => v.every((x) => _levelValue(x) != null),
+    BomRole.dnp => v.toSet().length <= 6,
+    BomRole.description => share((x) => _letter.hasMatch(x)) >= 0.6,
+    BomRole.serial => share((x) => _numberCell.hasMatch(x)) >= 0.9,
+    BomRole.other => true,
+  };
+}

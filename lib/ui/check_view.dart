@@ -22,8 +22,8 @@ import 'tour.dart';
 import 'widgets.dart';
 
 /// Tint behind AI findings.
-Color aiTint(AppColors c) => c.dark ? const Color(0x33A47CF5) : const Color(0xFFEFE7FD);
-Color aiText(AppColors c) => c.dark ? const Color(0xFFC9B2FF) : const Color(0xFF6A3FC8);
+Color aiTint(AppColors c) => c.dark ? const Color(0x3326B5B0) : const Color(0xFFDDF3F2);
+Color aiText(AppColors c) => c.dark ? const Color(0xFF7FDCD6) : const Color(0xFF0B6E69);
 
 Color _statusTint(AppColors c, DiffStatus s) => switch (s) {
   DiffStatus.same => c.okTint,

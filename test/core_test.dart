@@ -392,7 +392,7 @@ void main() {
         last++;
       }
       expect(sheet.value(diff, last), '电压不同');
-      expect(sheet.styleAt(diff, last)!.fill, 'E4D7FB');
+      expect(sheet.styleAt(diff, last)!.fill, 'D5F0EE');
       expect(book.sheets.map((x) => x.name), contains(t('rep_ai_sheet')));
       // Every row cites its source records.
       final srcCol = [for (var c = 0; c <= last; c++) c].firstWhere((c) => sheet.value(header, c) == t('rep_src_single'));
