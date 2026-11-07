@@ -69,6 +69,13 @@ class _Family {
 
 String _pick(Random r, List<String> l) => l[r.nextInt(l.length)];
 
+/// Name of an item kind in a language (zh, en, de, th), as the generator
+/// writes it.
+String nameOf(String kind, String language) => _families.firstWhere((f) => f.kind == kind).names[language] ?? kind;
+
+/// Kinds the generator makes.
+List<String> get generatorKinds => [for (final f in _families) f.kind];
+
 final _sizes = ['0201', '0402', '0603', '0805', '1206'];
 
 final _families = <_Family>[

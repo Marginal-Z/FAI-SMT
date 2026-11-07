@@ -28,7 +28,7 @@ void main() {
     final r = compareBoms(s, da, db);
     expect(r.complete, isTrue);
     // One real difference (an inductor's package) was confirmed on these files.
-    expect(r.count(DiffStatus.different), lessThanOrEqualTo(1));
-    expect(r.count(DiffStatus.same), greaterThanOrEqualTo(119));
+    expect(r.count(CheckStatus.ng), lessThanOrEqualTo(1));
+    expect(r.count(CheckStatus.pass), greaterThanOrEqualTo(119));
   }, skip: skip);
 }

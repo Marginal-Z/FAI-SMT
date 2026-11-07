@@ -77,5 +77,22 @@ final unitKinds = <RegExp, ItemKind>{
   RegExp(r'\d(?:\.\d+)?\s?[km]?hz\b', caseSensitive: false): ItemKind.crystal,
 };
 
+/// Generic nouns for an item and filler words: two descriptions may word
+/// these differently ("Chip resistor" and "贴片电阻"). Words that tell items
+/// of one kind apart (NPN / PNP, Schottky / Zener, colours) are deliberately
+/// not here, so they must match; LED against diode differs by item kind.
+const wordingWords = {
+  'resistor', 'resistors', 'res', 'resistance', 'widerstand', 'dickschichtwiderstand', 'résistance', 'resistencia',
+  'capacitor', 'capacitors', 'cap', 'mlcc', 'kondensator', 'keramikkondensator', 'condensateur', 'condensador',
+  'inductor', 'inductors', 'inductance', 'drossel', 'speicherdrossel', 'spule', 'coil',
+  'transistor', 'transistors', 'connector', 'connectors', 'steckverbinder', 'crystal', 'quarz', 'quartz',
+  'ic', 'chip', 'smd', 'smt', 'smd-widerstand', 'part', 'parts', 'component', 'components', 'type', 'series', 'pcs', 'pc', 'ea',
+  'fixed', 'thick', 'thin', 'film', 'ceramic', 'multilayer', 'surface', 'mount', 'general', 'purpose', 'standard',
+  'diode', 'diodes', 'led', 'leds', 'ferrite', 'bead', 'module', 'modul', 'relay', 'relais', 'fuse', 'transformer', 'sensor', 'battery',
+  'speaker', 'buzzer', 'pcb', 'pcba', 'board', 'main', 'mainboard', 'circuit', 'printed', 'integrated', 'oscillator', 'resonator',
+  'shield', 'can', 'abschirmung', 'bag', 'beutel', 'box', 'label', 'power', 'leiterplattenbaugruppe', 'leiterplatte',
+  'with', 'and', 'for', 'of',
+};
+
 /// Words marking a line or designator as not placed (DNP / NC / not fitted).
 const dnpWords = ['dnp', 'dnf', 'dni', 'npop', 'no-pop', 'no pop', 'not fitted', 'not placed', 'not populated', 'nf', 'nc', 'n/c', 'nm', 'unpopulated', 'nicht bestückt', '不贴', '不上件', '空贴', '不焊', '预留', 'ไม่ติดตั้ง'];

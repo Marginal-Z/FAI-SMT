@@ -177,7 +177,7 @@ class BomRecord {
 /// The records of one part number (a part listed twice in a file is one
 /// part): what the comparison works on.
 class BomPart {
-  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds, this.dnp = false, this.alternates = const [], this.kind = ItemKind.unknown})
+  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds, this.dnp = false, this.level, this.alternates = const [], this.kind = ItemKind.unknown})
     : recordIds = recordIds ?? [];
 
   /// [records] of one part number, in file order.
@@ -202,6 +202,7 @@ class BomPart {
       sources: [for (final r in list) ...r.sources],
       recordIds: [for (final r in list) r.id],
       dnp: list.every((r) => r.dnp),
+      level: list.first.level,
       alternates: {for (final r in list) ...r.alternates}.toList(),
       kind: list.map((r) => r.kind).firstWhere((k) => k != ItemKind.unknown, orElse: () => ItemKind.unknown),
     );
@@ -221,13 +222,16 @@ class BomPart {
 
   /// Every record of the part is marked not fitted.
   final bool dnp;
+
+  /// Level in a multi-level BOM, when there is one.
+  final int? level;
   final List<String> alternates;
   final ItemKind kind;
 
   /// Excel row numbers, for short display.
   List<int> get rows => [for (final s in sources) s.row];
 
-  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds], dnp: dnp, alternates: alternates, kind: kind);
+  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds], dnp: dnp, level: level, alternates: alternates, kind: kind);
 }
 
 /// Something worth telling the user about a file.

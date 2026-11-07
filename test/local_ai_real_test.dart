@@ -2,8 +2,12 @@
 // set SMT_FAI_MODELS to their folder, or keep them in
 // ~/.cache/smt-fai-dev/models.
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smt_fai/app_state.dart';
+import 'package:smt_fai/core/bom_compare.dart';
+import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/core/local_ai/local_ai.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
 
@@ -55,6 +59,23 @@ void main() {
     // that the reply keeps to the schema.
     expect(['resistor', 'capacitor', 'inductor', 'other'], contains(r['kind']));
     expect(r.keys, ['kind']);
+  }, skip: skip, timeout: const Timeout(Duration(minutes: 5)));
+
+  test('the check uses the local model and stays complete', () async {
+    final state = AppState(AppSettings(localAiEnabled: true), Directory.systemTemp.path, models: ModelStore('${Directory.systemTemp.path}/smt-fai-test-models', bundledDir: modelDir));
+    await state.refreshModels();
+    expect(state.localModelsReady, isTrue);
+    Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
+    state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
+    state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+    state.runCheckNow();
+    for (var i = 0; i < 600 && state.localStatus == LocalStatus.running; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(state.localStatus, LocalStatus.done);
+    expect(state.report!.complete, isTrue);
+    // A model suggestion never makes a line PASS.
+    expect(state.report!.rows.where((r) => r.basis.kinds.contains('semantic')).every((r) => r.status != CheckStatus.pass), isTrue);
   }, skip: skip, timeout: const Timeout(Duration(minutes: 5)));
 
   test('a missing model is an error, not a silent fallback', () async {

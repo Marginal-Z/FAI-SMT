@@ -78,7 +78,7 @@ void main() {
 
   testWidgets('real differences', (tester) async {
     final s = realState(dark: true);
-    s.setFilter(DiffStatus.different);
+    s.setFilter(CheckStatus.ng);
     final diff = s.visibleRows();
     if (diff.isNotEmpty) s.select(diff.first);
     await shot(tester, s, 'diff_dark');

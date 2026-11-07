@@ -37,7 +37,7 @@ void main() {
       final b = readBom([g.grid], file: 'x.xlsx', id: 'A');
       final r = compareBoms(a, b, null);
       expect(r.complete, isTrue, reason: 'seed $seed: ${r.uncovered.take(3)}');
-      expect(r.rows.every((x) => x.status == DiffStatus.same), isTrue, reason: 'seed $seed');
+      expect(r.rows.every((x) => x.status == CheckStatus.pass), isTrue, reason: 'seed $seed');
       expect(r.rows.length, a.parts.length);
     }
   });

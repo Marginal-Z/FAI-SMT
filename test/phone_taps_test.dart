@@ -65,8 +65,8 @@ void main() {
   testWidgets('check page: stat cards, rows, sheet and menus respond', (tester) async {
     final state = _loaded();
     await _phone(tester, state);
-    await _tapText(tester, '有差异');
-    expect(state.filter, DiffStatus.different);
+    await _tapText(tester, '不一致');
+    expect(state.filter, CheckStatus.ng);
     final row = state.visibleRows().first;
     await _tapText(tester, row.partNo);
     expect(state.selected, isNotNull);
@@ -75,7 +75,7 @@ void main() {
     if (state.selected != null) state.select(null);
     await tester.pumpAndSettle();
     // The result menu opens and closes.
-    await _tapText(tester, '有差异');
+    await _tapText(tester, '不一致');
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

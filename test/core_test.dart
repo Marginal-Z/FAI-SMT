@@ -301,8 +301,20 @@ void main() {
       expect(f.equal, isFalse);
       expect(f.singleSpans.map((s) => f.single.substring(s.$1, s.$2)), ['6.3V']);
       expect(f.mergedSpans.map((s) => f.merged.substring(s.$1, s.$2)), ['10V']);
-      expect(compareDescription('10K 0402', '10k 0402').equal, isFalse);
-      expect(compareDescription('10K 0402', '10K 0402 1%').equal, isFalse);
+      // Parameters are compared by value: equal, but written differently.
+      final eq = compareDescription('10K 0402', '10kΩ 0402');
+      expect(eq.equal && eq.equivalent, isTrue);
+      // A parameter only one side names cannot be confirmed.
+      final inc = compareDescription('10K 0402', '10K 0402 1%');
+      expect(inc.equal && inc.incomplete, isTrue);
+      // Model names and other letters / digits must still be identical.
+      expect(compareDescription('IC LM358 SOIC8', 'IC LM358A SOIC8').equal, isFalse);
+      // Kind words and filler may be worded in another language; other
+      // words still count.
+      expect(compareDescription('Chip resistor 10K 1% 0402', '贴片电阻 10K ±1% 0402').equal, isTrue);
+      expect(compareDescription('SMD-Widerstand 10K 0402', 'Resistor 10kΩ 0402').equal, isTrue);
+      expect(compareDescription('LED 0603 RED', 'LED 0603 GREEN').equal, isFalse);
+      expect(compareDescription('NPN SOT-23', 'PNP SOT-23').equal, isFalse);
     });
     test('other columns must match exactly', () {
       expect(compareExact('col:x', 'x', 'Murata', 'Murata').equal, isTrue);
@@ -319,14 +331,21 @@ void main() {
     CompareRow row(String pn) => r.rows.firstWhere((x) => x.partNo == pn);
 
     test('A and B are merged and compared with the single BOM', () {
-      expect(r.count(DiffStatus.same), 21);
-      expect(r.count(DiffStatus.different), 5);
-      expect(r.count(DiffStatus.onlySingle), 1);
-      expect(r.count(DiffStatus.onlyMerged), 1);
+      expect(r.count(CheckStatus.pass), 19);
+      expect(r.count(CheckStatus.ng), 5);
+      expect(r.count(CheckStatus.review), 1);
+      expect(r.count(CheckStatus.unmatched), 2);
+      expect(r.count(CheckStatus.substitute), 1);
+      // Another part number listed as an alternate: approved substitute.
+      expect(row('K1106-LED0G0-001A').otherPartNo, 'K1106-LED0G0-002A');
+      expect(row('K1106-LED0G0-001A').status, CheckStatus.substitute);
+      // Another part number, not listed: needs a person.
+      expect(row('K1108-HDMI00-001A').status, CheckStatus.review);
+      expect(row('K1108-HDMI00-001A').reasons, contains('pn_differs'));
       // Parts from the headerless B-BOM, reworded descriptions on A.
       expect(row('K1102-1020K0-001A').sources, ['B']);
-      expect(row('K1102-1020K0-001A').status, DiffStatus.same);
-      expect(row('K1103-0104K0-001A').status, DiffStatus.same);
+      expect(row('K1102-1020K0-001A').status, CheckStatus.pass);
+      expect(row('K1103-0104K0-001A').status, CheckStatus.pass);
     });
     test('each kind of difference', () {
       expect(row('K1103-0220P0-001A').missingRefs, ['C21']);
@@ -334,12 +353,13 @@ void main() {
       expect(row('K1104-2R2M00-001A').differences.map((f) => f.key), ['quantity']);
       expect(row('K1103-0106K0-001A').differences.map((f) => f.key), ['description']);
       expect(row('K1109-MOS340-001A').differences.map((f) => f.key), ['col:maker']);
-      expect(row('K1402-LABEL0-001A').status, DiffStatus.onlySingle);
-      expect(row('K1102-1000R0-009A').status, DiffStatus.onlyMerged);
+      expect(row('K1402-LABEL0-001A').status, CheckStatus.unmatched);
+      expect(row('K1102-1000R0-009A').status, CheckStatus.unmatched);
     });
     test('a headerless column is paired with the single BOM column by content', () {
       expect(r.compared.values, ['品牌']);
-      expect(r.mergedOnlyColumns, isEmpty);
+      // Only the A-BOM lists alternates; that column is not compared.
+      expect(r.mergedOnlyColumns, ['替代料号']);
     });
     test('quantities add up and designators join across A and B', () {
       final single = bom([
@@ -359,10 +379,10 @@ void main() {
       ]);
       final rep = compareBoms(single, a, b);
       final k1 = rep.rows.firstWhere((x) => x.partNo == 'K1');
-      expect(k1.status, DiffStatus.same);
+      expect(k1.status, CheckStatus.pass);
       expect(k1.sources, ['A', 'B']);
       expect(k1.merged!.quantity, 4);
-      expect(rep.rows.firstWhere((x) => x.partNo == 'K9').status, DiffStatus.onlyMerged);
+      expect(rep.rows.firstWhere((x) => x.partNo == 'K9').status, CheckStatus.unmatched);
     });
   });
 
@@ -453,8 +473,9 @@ void main() {
     });
     test('every code shown to the user is translated', () {
       final codes = [
-        for (final d in DiffStatus.values) ...['status_${d.name}'],
-        'why_onlySingle', 'why_onlyMerged',
+        for (final d in CheckStatus.values) ...['status_${d.name}'],
+        for (final k in ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'param_incomplete', 'pn_differs', 'weak_match', 'split', 'dnp_differs', 'dnp_unsure', 'only_single', 'only_merged', 'no_placement', 'wording_unsure', 'level']) 'reason_$k',
+        for (final k in ['partNo', 'refs', 'mpn', 'alternate', 'params', 'semantic']) 'basis_$k',
         for (final s in AiSeverity.values) 'ai_sev_${s.name}',
         for (final r in BomRole.values)
           if (r != BomRole.serial) 'role_${r.name}',

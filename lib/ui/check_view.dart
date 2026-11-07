@@ -25,28 +25,31 @@ import 'widgets.dart';
 Color aiTint(AppColors c) => c.dark ? const Color(0x3326B5B0) : const Color(0xFFDDF3F2);
 Color aiText(AppColors c) => c.dark ? const Color(0xFF7FDCD6) : const Color(0xFF0B6E69);
 
-Color _statusTint(AppColors c, DiffStatus s) => switch (s) {
-  DiffStatus.same => c.okTint,
-  DiffStatus.different => c.ngTint,
-  DiffStatus.onlySingle => c.warnTint,
-  DiffStatus.onlyMerged => c.blueTint,
+Color _statusTint(AppColors c, CheckStatus s) => switch (s) {
+  CheckStatus.pass => c.okTint,
+  CheckStatus.ng => c.ngTint,
+  CheckStatus.review => c.warnTint,
+  CheckStatus.unmatched => c.blueTint,
+  CheckStatus.substitute => aiTint(c),
 };
 
-Color _statusText(AppColors c, DiffStatus s) => switch (s) {
-  DiffStatus.same => c.okTx,
-  DiffStatus.different => c.ngTx,
-  DiffStatus.onlySingle => c.warnTx,
-  DiffStatus.onlyMerged => c.blueTx,
+Color _statusText(AppColors c, CheckStatus s) => switch (s) {
+  CheckStatus.pass => c.okTx,
+  CheckStatus.ng => c.ngTx,
+  CheckStatus.review => c.warnTx,
+  CheckStatus.unmatched => c.blueTx,
+  CheckStatus.substitute => aiText(c),
 };
 
-Color _statusSolid(AppColors c, DiffStatus s) => switch (s) {
-  DiffStatus.same => c.okSolid,
-  DiffStatus.different => c.ngSolid,
-  DiffStatus.onlySingle => c.warnSolid,
-  DiffStatus.onlyMerged => c.blue,
+Color _statusSolid(AppColors c, CheckStatus s) => switch (s) {
+  CheckStatus.pass => c.okSolid,
+  CheckStatus.ng => c.ngSolid,
+  CheckStatus.review => c.warnSolid,
+  CheckStatus.unmatched => c.blue,
+  CheckStatus.substitute => aiText(c),
 };
 
-String statusLabel(Strings s, DiffStatus d) => s.t('status_${d.name}');
+String statusLabel(Strings s, CheckStatus d) => s.t('status_${d.name}');
 
 /// Field named by an AI finding: the standard fields translated, other
 /// columns by their header.
@@ -133,7 +136,7 @@ class _CheckViewState extends State<CheckView> {
     super.dispose();
   }
 
-  void _setFilter(DiffStatus? f) {
+  void _setFilter(CheckStatus? f) {
     setState(() => _aiOnly = false);
     widget.state.setFilter(widget.state.filter == f ? null : f);
   }
@@ -174,10 +177,11 @@ class _CheckViewState extends State<CheckView> {
     final aiParts = state.aiParts;
     final statCards = <Widget>[
       for (final (st, icon) in [
-        (DiffStatus.same, Lucide.check),
-        (DiffStatus.different, Lucide.x),
-        (DiffStatus.onlySingle, Lucide.minus),
-        (DiffStatus.onlyMerged, Lucide.plus),
+        (CheckStatus.pass, Lucide.check),
+        (CheckStatus.ng, Lucide.x),
+        (CheckStatus.review, Lucide.alert),
+        (CheckStatus.unmatched, Lucide.minus),
+        (CheckStatus.substitute, Lucide.swap),
       ])
         _StatCard(
           label: statusLabel(s, st),
@@ -276,10 +280,10 @@ class _CheckViewState extends State<CheckView> {
       children: [
         Text(s.t('f_result'), style: TextStyle(fontSize: 14, color: c.tx2)),
         const SizedBox(width: 10),
-        DropdownSelect<DiffStatus?>(
+        DropdownSelect<CheckStatus?>(
           value: _aiOnly ? null : state.filter,
           width: 128,
-          options: [(null, s.t('opt_all')), for (final d in DiffStatus.values) (d, statusLabel(s, d))],
+          options: [(null, s.t('opt_all')), for (final d in CheckStatus.values) (d, statusLabel(s, d))],
           onChanged: (v) {
             setState(() => _aiOnly = false);
             state.setFilter(v);
@@ -906,17 +910,34 @@ class _Detail extends StatelessWidget {
         Text(s.t('alt_list', {'alts': {...?row.single?.alternates, ...?row.merged?.alternates}.join(', ')}), style: TextStyle(fontSize: 12, color: c.tx2)),
       ],
       const SizedBox(height: 12),
-      if (row.status == DiffStatus.onlySingle || row.status == DiffStatus.onlyMerged) ...[
+      // What the line was matched by, and why it is not PASS.
+      if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: _statusTint(c, row.status), borderRadius: c.r(12)),
-          child: Text(s.t('why_${row.status.name}'), style: TextStyle(fontSize: 13, height: 1.45, color: _statusText(c, row.status))),
+          decoration: BoxDecoration(color: row.status == CheckStatus.pass ? c.well : _statusTint(c, row.status), borderRadius: c.r(12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (row.basis.kinds.isNotEmpty)
+                Text(
+                  s.t('match_by', {'by': row.basis.kinds.map((k) => s.t('basis_$k')).join(' + '), 'c': (row.basis.confidence * 100).round()}),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: row.status == CheckStatus.pass ? c.tx2 : _statusText(c, row.status)),
+                ),
+              if (row.otherPartNo.isNotEmpty) Text(s.t('match_other_pn', {'pn': row.otherPartNo}), style: TextStyle(fontSize: 12.5, color: c.tx2)),
+              for (final r in row.reasons) Text('• ${s.t('reason_$r')}', style: TextStyle(fontSize: 13, height: 1.45, color: _statusText(c, row.status))),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
+      ],
+      if (row.status == CheckStatus.unmatched) ...[
         field(s.t('f_desc'), row.single?.description ?? '', row.merged?.description ?? '', const [], const [], true),
       ],
       for (final f in row.fields)
-        if (f.key != 'refs') field(fieldLabel(s, f), f.single, f.merged, f.singleSpans, f.mergedSpans, f.equal),
+        if (f.key != 'refs') ...[
+          field(fieldLabel(s, f), f.single, f.merged, f.singleSpans, f.mergedSpans, f.equal && !f.incomplete),
+          if (f.equivalent) Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(s.t('equiv_note'), style: TextStyle(fontSize: 12, color: c.okTx))),
+        ],
       if (row.field('refs') != null || row.missingRefs.isNotEmpty || row.extraRefs.isNotEmpty) ...[
         label(s.t('f_refs')),
         const SizedBox(height: 6),

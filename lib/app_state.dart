@@ -11,7 +11,9 @@ import 'package:path_provider/path_provider.dart';
 import 'core/ai_check.dart';
 import 'core/bom.dart';
 import 'core/bom_compare.dart';
+import 'core/local_ai/local_ai.dart';
 import 'core/local_ai/model_store.dart';
+import 'core/local_ai/semantic_match.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/updater.dart';
@@ -49,6 +51,8 @@ enum UpdateStatus { idle, checking, upToDate, available, downloading, installing
 
 enum AiStatus { idle, running, done, failed }
 
+enum LocalStatus { idle, running, done, failed }
+
 class AppState extends ChangeNotifier {
   AppState(this.settings, this.settingsDir, {ModelStore? models}) : models = models ?? ModelStore.forApp(settingsDir);
 
@@ -83,7 +87,7 @@ class AppState extends ChangeNotifier {
   bool get updateAvailable => latestRelease != null && compareVersions(latestRelease!.version, appVersion) > 0;
 
   /// Result filter; null shows every row.
-  DiffStatus? filter;
+  CheckStatus? filter;
   String search = '';
   CompareRow? selected;
   String statusKey = 'status_ready';
@@ -366,19 +370,70 @@ class AppState extends ChangeNotifier {
     selected = null;
     ai = null;
     aiStatus = AiStatus.idle;
+    localStatus = LocalStatus.idle;
+    localError = '';
+    _checkedStatus();
+    notifyListeners();
+    final run = ++_checkRun;
+    if (settings.localAiEnabled && localModelsReady && report!.count(CheckStatus.unmatched) > 0) {
+      // The local embedding model proposes counterparts for unmatched
+      // lines; the cloud AI waits for its result.
+      _runLocal(run);
+    } else if (settings.aiEnabled && settings.ai.ready) {
+      runAi();
+    }
+  }
+
+  void _checkedStatus() {
     if (report!.complete) {
       _status('status_checked', {
-        'same': report!.count(DiffStatus.same),
-        'diff': report!.count(DiffStatus.different),
-        'single': report!.count(DiffStatus.onlySingle),
-        'merged': report!.count(DiffStatus.onlyMerged),
+        'pass': report!.count(CheckStatus.pass),
+        'ng': report!.count(CheckStatus.ng),
+        'review': report!.count(CheckStatus.review),
+        'unmatched': report!.count(CheckStatus.unmatched),
+        'sub': report!.count(CheckStatus.substitute),
       });
     } else {
       // Never report a finished check while records are unaccounted for.
       _status('status_incomplete', {'n': report!.uncovered.length});
     }
+  }
+
+  // ------------------------------------------------------------ local AI
+
+  LocalStatus localStatus = LocalStatus.idle;
+  String localError = '';
+
+  /// Lines the local model paired in the last check.
+  int localPaired = 0;
+  int _checkRun = 0;
+  LocalModels? _local;
+
+  /// Opened on first use and kept for later checks.
+  Future<LocalModels> _localModels() async => _local ??= await LlamaLocalModels.open(models);
+
+  Future<void> _runLocal(int run) async {
+    localStatus = LocalStatus.running;
+    _status('status_local_running');
     notifyListeners();
-    if (settings.aiEnabled && settings.ai.ready) runAi();
+    try {
+      final ai = await _localModels();
+      final first = report!;
+      final sug = await semanticSuggestions(first, ai);
+      if (run != _checkRun) return;
+      report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, semantic: sug);
+      localPaired = sug.length;
+      localStatus = LocalStatus.done;
+      _checkedStatus();
+    } on LocalAiException catch (e) {
+      if (run != _checkRun) return;
+      // The rule result stands; the failure is shown, not hidden.
+      localStatus = LocalStatus.failed;
+      localError = 'local_err_${e.code}';
+      _status('status_local_failed', {'e': e.code});
+    }
+    notifyListeners();
+    if (run == _checkRun && settings.aiEnabled && settings.ai.ready) runAi();
   }
 
   void setAiEnabled(bool v) {
@@ -427,7 +482,7 @@ class AppState extends ChangeNotifier {
 
   // ------------------------------------------------------------------- view
 
-  void setFilter(DiffStatus? s) {
+  void setFilter(CheckStatus? s) {
     filter = s;
     notifyListeners();
   }

@@ -80,7 +80,7 @@ void main() {
   // the Chinese names worded differently (which still matches).
   final a = XlsxWriter();
   final sa = a.addSheet('A-BOM');
-  sa.appendRow([for (final h in ['Item', 'Part Number', 'Description', 'Qty', 'Reference', '品牌']) h]);
+  sa.appendRow([for (final h in ['Item', 'Part Number', 'Description', 'Qty', 'Reference', '品牌', '替代料号']) h]);
   const reworded = {'贴片电阻': '贴片电阻器', '贴片电容': '贴片陶瓷电容', '贴片电感': '功率电感', '贴片MOS': '贴片MOS管'};
   var item = 0;
   for (final p in _bom) {
@@ -89,6 +89,7 @@ void main() {
     var spec = p.$3;
     var qty = refs.isEmpty ? 1 : refs.length;
     var brand = p.$5;
+    var pn = p.$1, alt = '';
     switch (p.$1) {
       case 'K1103-0220P0-001A':
         refs = ['C20']; // C21 missing
@@ -102,21 +103,28 @@ void main() {
         qty = 3; // quantity differs from the single BOM
       case 'K1109-MOS340-001A':
         brand = 'Alpha&Omega'; // brand differs
+      case 'K1106-LED0G0-001A':
+        // Another part number that lists the single BOM's as an alternate.
+        pn = 'K1106-LED0G0-002A';
+        alt = 'K1106-LED0G0-001A';
+      case 'K1108-HDMI00-001A':
+        pn = 'K1108-HDMI00-009A'; // another part number, not listed: review
       case 'K1402-LABEL0-001A':
         continue; // only on the single BOM
     }
     item++;
     sa.appendRow([
       item,
-      p.$1,
+      pn,
       '${reworded[p.$2] ?? p.$2} $spec',
       qty,
       refs.join(' '),
       brand,
+      alt,
     ]);
   }
   item++;
-  sa.appendRow([item, 'K1102-1000R0-009A', '贴片电阻 1K ±1% 0402', 1, 'R99', 'Yageo']);
+  sa.appendRow([item, 'K1102-1000R0-009A', '贴片电阻 1K ±1% 0402', 1, 'R99', 'Yageo', '']);
   File('${dir.path}/demo_A_BOM.xlsx').writeAsBytesSync(a.encode());
 
   // ---- B-BOM: no header row and the columns in another order

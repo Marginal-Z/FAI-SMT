@@ -44,6 +44,8 @@ const _prefix = {'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'μ': 1e-6, 'm': 
 final _withUnit = RegExp(r'(?<![A-Za-z0-9.\-])(\d+(?:[.,]\d+)?)\s?([pnuµμmkKMG]?)(Ω|ohms?|OHMS?|Ohms?|R|F|H|V|A|W|Hz|HZ|hz)(?![A-Za-z0-9\-])');
 // Resistor code letters: 4K7, 4R7, 2M2, 10K, 0R, 10R.
 final _rCode = RegExp(r'(?<![A-Za-z0-9.\-])(\d+)([RKM])(\d*)(?![A-Za-z0-9\-])');
+// Decimal resistor values: 4.7K, 49.9R, 2.2M.
+final _rDecimal = RegExp(r'(?<![A-Za-z0-9.\-])(\d+\.\d+)([RKM])(?![A-Za-z0-9\-])');
 // Fractional power: 1/16W, 1/10 W.
 final _fracW = RegExp(r'(?<![\d.])(\d+)\s?/\s?(\d+)\s?W(?![A-Za-z])', caseSensitive: false);
 final _tol = RegExp(r'±\s?(\d+(?:\.\d+)?)\s?%|(?<![\d.])(\d+(?:\.\d+)?)\s?%');
@@ -92,6 +94,10 @@ List<Param> extractParams(String text) {
     final scale = switch (letter) { 'K' => 1e3, 'M' => 1e6, _ => 1.0 };
     final v = double.parse(frac.isEmpty ? whole : '$whole.$frac') * scale;
     add(Param(ParamKind.resistance, m.group(0)!, value: v, start: m.start, end: m.end));
+  }
+  for (final m in _rDecimal.allMatches(text)) {
+    final scale = switch (m.group(2)) { 'K' => 1e3, 'M' => 1e6, _ => 1.0 };
+    add(Param(ParamKind.resistance, m.group(0)!, value: double.parse(m.group(1)!) * scale, start: m.start, end: m.end));
   }
   for (final m in _tol.allMatches(text)) {
     add(Param(ParamKind.tolerance, m.group(0)!, value: _num(m.group(1) ?? m.group(2)!), start: m.start, end: m.end));

@@ -126,16 +126,18 @@ String comparisonJson(CompareReport report) {
     'columnsOnlyInMerged': report.mergedOnlyColumns,
     'rows': [
       for (final r in report.rows)
-        if (!big || r.status != DiffStatus.same)
+        if (!big || r.status != CheckStatus.pass)
           {
             'partNo': r.partNo,
             'localResult': r.status.name,
+            if (r.reasons.isNotEmpty) 'localReasons': r.reasons,
+            if (r.basis.kinds.isNotEmpty) 'matchedBy': r.basis.kinds,
             if (r.differences.isNotEmpty) 'localDifferences': [for (final f in r.differences) f.key.startsWith('col:') ? f.header : f.key],
             'single': side(r.single),
             'merged': side(r.merged),
           },
     ],
-    if (big) 'matchingPartNumbers': [for (final r in report.rows) if (r.status == DiffStatus.same) r.partNo],
+    if (big) 'matchingPartNumbers': [for (final r in report.rows) if (r.status == CheckStatus.pass) r.partNo],
   });
 }
 

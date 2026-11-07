@@ -186,7 +186,7 @@ class AppFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final ng = (state.report?.count(DiffStatus.different) ?? 0) + (state.report?.count(DiffStatus.onlySingle) ?? 0) + (state.report?.count(DiffStatus.onlyMerged) ?? 0);
+    final ng = (state.report?.count(CheckStatus.ng) ?? 0) + (state.report?.count(CheckStatus.review) ?? 0) + (state.report?.count(CheckStatus.unmatched) ?? 0);
     final files = state.loadedCount;
     final wide = MediaQuery.sizeOf(context).width >= 900 && !Metrics.of(context).touch;
     final style = TextStyle(fontSize: 12, color: c.tx2);

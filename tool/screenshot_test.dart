@@ -54,7 +54,7 @@ void main() {
       state.settings.aiEnabled = true;
       state.settings.ai = AiConfig(apiKey: 'demo', model: 'gpt-4o-mini');
       state.ai = AiResult(
-        summary: '共 28 个料号，21 个一致。主要问题：K1103-0106K0-001A 电容耐压 6.3V 与 10V 不一致；K1103-0220P0-001A 缺少位号 C21；K1102-1049K9-001A 多出 R32；K1104-2R2M00-001A 用量 3 与位号数 2 不符。建议先确认电容耐压与缺失位号。',
+        summary: '共 28 个料号：19 个通过，5 个不一致，1 个需复核（HDMI 座料号不同且未登记替代），1 个认可替代料（绿色 LED）。主要问题：K1103-0106K0-001A 电容耐压 6.3V 与 10V 不一致；K1103-0220P0-001A 缺少位号 C21；K1102-1049K9-001A 多出 R32；K1104-2R2M00-001A 用量 3 与位号数 2 不符。建议先确认电容耐压与缺失位号。',
         findings: [
           AiFinding(partNo: 'K1103-0106K0-001A', field: 'description', side: 'both', severity: AiSeverity.error, message: '耐压不同：单 BOM 为 6.3V，A+B 为 10V，不是等价写法。', singleValue: '10uF 6.3V X5R 0603', mergedValue: '10uF 10V X5R 0603'),
           AiFinding(partNo: 'K1103-0220P0-001A', field: 'refs', side: 'merged', severity: AiSeverity.error, message: 'A+B 缺少位号 C21，贴片时会漏件。', singleValue: 'C20,C21', mergedValue: 'C20'),
@@ -113,7 +113,7 @@ void main() {
     });
     testWidgets('check selected $tag', (tester) async {
       final s = demoState(dark: dark);
-      s.setFilter(DiffStatus.different);
+      s.setFilter(CheckStatus.ng);
       s.select(row(s, 'K1103-0106K0-001A'));
       await shot(tester, s, 'check_selected_$tag');
     });
@@ -214,7 +214,7 @@ void main() {
     });
     testWidgets('phone check selected', (tester) async {
       final s = demoState(dark: false);
-      s.setFilter(DiffStatus.different);
+      s.setFilter(CheckStatus.ng);
       s.select(row(s, 'K1103-0106K0-001A'));
       await shot(tester, s, 'phone_check_selected', size: size, touch: true);
     });

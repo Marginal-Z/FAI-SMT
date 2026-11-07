@@ -27,10 +27,11 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
   const diffFill = XlsxStyle(fill: 'FFE3A3');
   const aiFill = XlsxStyle(fill: 'D5F0EE');
   const statusFill = {
-    DiffStatus.same: XlsxStyle(fill: 'D9F2E1'),
-    DiffStatus.different: XlsxStyle(fill: 'FDE2E1'),
-    DiffStatus.onlySingle: XlsxStyle(fill: 'FFE7C2'),
-    DiffStatus.onlyMerged: XlsxStyle(fill: 'DCE8FA'),
+    CheckStatus.pass: XlsxStyle(fill: 'D9F2E1'),
+    CheckStatus.ng: XlsxStyle(fill: 'FDE2E1'),
+    CheckStatus.review: XlsxStyle(fill: 'FFE7C2'),
+    CheckStatus.unmatched: XlsxStyle(fill: 'DCE8FA'),
+    CheckStatus.substitute: XlsxStyle(fill: 'D5F0EE'),
   };
 
   // Source files.
@@ -57,6 +58,8 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
     for (final o in others) ...['${o.value} (${t('rep_single_short')})', '${o.value} (A+B)'],
     t('rep_src_single'),
     t('rep_src_merged'),
+    t('rep_basis'),
+    t('rep_reasons'),
     t('rep_ai'),
   ];
   final headRow = sheet.rowCount;
@@ -86,6 +89,8 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
       for (final o in others) ...[r.single?.extra[o.key] ?? '', r.merged?.extra[o.key] ?? ''],
       r.single?.recordIds.join(', ') ?? '',
       r.merged?.recordIds.join(', ') ?? '',
+      [for (final k in r.basis.kinds) t('basis_$k'), if (r.basis.kinds.isNotEmpty) '${(r.basis.confidence * 100).round()}%'].join(' · '),
+      [for (final k in r.reasons) t('reason_$k')].join('; '),
       aiNotes,
     ]);
     sheet.style(row, 2, statusFill[r.status]!);
@@ -110,7 +115,7 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
     sheet.setWidth(c, widths[c]);
   }
   for (var c = 12; c < headers.length; c++) {
-    sheet.setWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 3 ? 24 : 18));
+    sheet.setWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 5 ? 26 : 18));
   }
 
   if (ai != null) {
