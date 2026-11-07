@@ -6,7 +6,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'ai_check.dart';
+import 'cloud/provider.dart';
 
 enum ThemePref { system, light, dark }
 
@@ -23,8 +23,9 @@ class AppSettings {
     this.tourDone = false,
     this.aiEnabled = false,
     this.localAiEnabled = false,
-    AiConfig? ai,
-  }) : ai = ai ?? AiConfig();
+    ProviderConfig? cloud,
+    this.legacyApiKey = '',
+  }) : cloud = cloud ?? ProviderConfig();
 
   String language;
   ThemePref theme;
@@ -44,7 +45,12 @@ class AppSettings {
 
   /// Use the downloaded local models in the check.
   bool localAiEnabled;
-  AiConfig ai;
+  /// Cloud AI provider; its API key is kept in the secure key store.
+  ProviderConfig cloud;
+
+  /// A key found in an old settings file (2.0 kept it in plain text); moved
+  /// to the key store at start-up and never written back.
+  final String legacyApiKey;
 
   Map<String, dynamic> toJson() => {
     'language': language,
@@ -55,7 +61,7 @@ class AppSettings {
     'tourDone': tourDone,
     'aiEnabled': aiEnabled,
     'localAiEnabled': localAiEnabled,
-    'ai': ai.toJson(),
+    'cloud': cloud.toJson(),
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -67,7 +73,8 @@ class AppSettings {
     tourDone: j['tourDone'] == true,
     aiEnabled: j['aiEnabled'] == true,
     localAiEnabled: j['localAiEnabled'] == true,
-    ai: j['ai'] is Map ? AiConfig.fromJson((j['ai'] as Map).cast()) : null,
+    cloud: j['cloud'] is Map ? ProviderConfig.fromJson((j['cloud'] as Map).cast()) : _legacyCloud(j['ai']),
+    legacyApiKey: j['ai'] is Map ? '${(j['ai'] as Map)['apiKey'] ?? ''}' : '',
   );
 
   static Future<AppSettings> load(String dir) async {
@@ -86,4 +93,18 @@ class AppSettings {
     await Directory(dir).create(recursive: true);
     await File(p.join(dir, 'settings.json')).writeAsString(const JsonEncoder.withIndent('  ').convert(toJson()));
   }
+}
+
+/// The provider of a 2.0 settings file.
+ProviderConfig? _legacyCloud(Object? ai) {
+  if (ai is! Map) return null;
+  final base = '${ai['baseUrl'] ?? ''}';
+  final kind = ai['provider'] == 'anthropic'
+      ? ProviderKind.anthropic
+      : base.contains('deepseek')
+      ? ProviderKind.deepseek
+      : base.isEmpty
+      ? ProviderKind.openai
+      : ProviderKind.custom;
+  return ProviderConfig(kind: kind, baseUrl: base, model: '${ai['model'] ?? ''}');
 }

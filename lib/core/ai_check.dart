@@ -1,47 +1,13 @@
-/// AI check: sends the part-by-part comparison to a language model (an
-/// OpenAI-compatible endpoint or Anthropic) and reads back an analysis with
-/// the differing fields it found.
+/// AI check: sends the finished comparison to the configured cloud model
+/// and reads back an analysis with the findings, checked against the
+/// schema and against the parts that exist.
 library;
 
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'bom.dart';
 import 'bom_compare.dart';
-
-enum AiProvider { openai, anthropic }
-
-class AiConfig {
-  AiConfig({this.provider = AiProvider.openai, this.baseUrl = '', this.apiKey = '', this.model = ''});
-
-  AiProvider provider;
-
-  /// Empty: the provider's public endpoint.
-  String baseUrl;
-  String apiKey;
-
-  /// Empty: the provider's default model.
-  String model;
-
-  static const openaiUrl = 'https://api.openai.com/v1';
-  static const anthropicUrl = 'https://api.anthropic.com';
-  static const openaiModel = 'gpt-4o-mini';
-  static const anthropicModel = 'claude-sonnet-5-5';
-
-  bool get ready => apiKey.trim().isNotEmpty || (provider == AiProvider.openai && baseUrl.trim().isNotEmpty);
-  String get url => (baseUrl.trim().isEmpty ? (provider == AiProvider.openai ? openaiUrl : anthropicUrl) : baseUrl.trim()).replaceAll(RegExp(r'/+$'), '');
-  String get modelName => model.trim().isNotEmpty ? model.trim() : (provider == AiProvider.openai ? openaiModel : anthropicModel);
-
-  Map<String, dynamic> toJson() => {'provider': provider.name, 'baseUrl': baseUrl, 'apiKey': apiKey, 'model': model};
-
-  factory AiConfig.fromJson(Map<String, dynamic> j) => AiConfig(
-    provider: AiProvider.values.firstWhere((p) => p.name == j['provider'], orElse: () => AiProvider.openai),
-    baseUrl: j['baseUrl'] as String? ?? '',
-    apiKey: j['apiKey'] as String? ?? '',
-    model: j['model'] as String? ?? '',
-  );
-}
+import 'cloud/provider.dart';
 
 enum AiSeverity { error, warning, info }
 
@@ -72,12 +38,16 @@ class AiFinding {
 }
 
 class AiResult {
-  AiResult({required this.summary, required this.findings, required this.model, required this.at});
+  AiResult({required this.summary, required this.findings, required this.model, required this.at, this.dropped = 0, Usage? usage}) : usage = usage ?? Usage();
 
   final String summary;
   final List<AiFinding> findings;
+
+  /// Findings that named parts not in the check, left out.
+  final int dropped;
   final String model;
   final DateTime at;
+  final Usage usage;
 
   Iterable<AiFinding> forPart(String pn) => findings.where((f) => f.partNo == pn);
 }
@@ -141,64 +111,6 @@ String comparisonJson(CompareReport report) {
   });
 }
 
-Future<String> _post(AiConfig cfg, String system, String user, {Duration timeout = const Duration(seconds: 180)}) async {
-  if (!cfg.ready) throw AiException('ai_not_configured');
-  final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
-  try {
-    final anthropic = cfg.provider == AiProvider.anthropic;
-    final uri = Uri.parse(anthropic ? '${cfg.url}/v1/messages' : '${cfg.url}/chat/completions');
-    final req = await client.postUrl(uri).timeout(timeout);
-    req.headers.contentType = ContentType.json;
-    if (anthropic) {
-      req.headers.set('x-api-key', cfg.apiKey.trim());
-      req.headers.set('anthropic-version', '2023-06-01');
-    } else if (cfg.apiKey.trim().isNotEmpty) {
-      req.headers.set('authorization', 'Bearer ${cfg.apiKey.trim()}');
-    }
-    final body = anthropic
-        ? {
-            'model': cfg.modelName,
-            'max_tokens': 8192,
-            'system': system,
-            'messages': [
-              {'role': 'user', 'content': user},
-            ],
-          }
-        : {
-            'model': cfg.modelName,
-            'temperature': 0,
-            'messages': [
-              {'role': 'system', 'content': system},
-              {'role': 'user', 'content': user},
-            ],
-          };
-    req.add(utf8.encode(jsonEncode(body)));
-    final res = await req.close().timeout(timeout);
-    final text = await res.transform(utf8.decoder).join().timeout(timeout);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw AiException('ai_http', '${res.statusCode} ${_clip(text, 300)}');
-    }
-    final j = jsonDecode(text) as Map<String, dynamic>;
-    if (anthropic) {
-      final content = j['content'] as List? ?? const [];
-      return content.whereType<Map>().where((b) => b['type'] == 'text').map((b) => '${b['text']}').join();
-    }
-    final choices = j['choices'] as List? ?? const [];
-    if (choices.isEmpty) throw AiException('ai_bad_reply', _clip(text, 300));
-    return '${(choices.first as Map)['message']?['content'] ?? ''}';
-  } on TimeoutException {
-    throw AiException('ai_timeout');
-  } on SocketException catch (e) {
-    throw AiException('ai_network', e.message);
-  } on HttpException catch (e) {
-    throw AiException('ai_network', e.message);
-  } on FormatException catch (e) {
-    throw AiException('ai_bad_reply', e.message);
-  } finally {
-    client.close(force: true);
-  }
-}
-
 /// Reads the JSON object out of a reply (models sometimes wrap it in a
 /// code block or add a sentence).
 Map<String, dynamic> extractJson(String reply) {
@@ -211,16 +123,59 @@ Map<String, dynamic> extractJson(String reply) {
   }
 }
 
-Future<AiResult> runAiCheck(AiConfig cfg, CompareReport report) async {
-  final reply = await _post(cfg, _system, comparisonJson(report));
-  final j = extractJson(reply);
+const _schema = {
+  'type': 'object',
+  'properties': {
+    'summary': {'type': 'string'},
+    'findings': {
+      'type': 'array',
+      'items': {
+        'type': 'object',
+        'properties': {
+          'partNo': {'type': 'string'},
+          'field': {'type': 'string'},
+          'side': {'type': 'string', 'enum': ['single', 'merged', 'both']},
+          'severity': {'type': 'string', 'enum': ['error', 'warning', 'info']},
+          'message': {'type': 'string'},
+          'singleValue': {'type': 'string'},
+          'mergedValue': {'type': 'string'},
+        },
+        'required': ['partNo', 'field', 'severity', 'message'],
+      },
+    },
+  },
+  'required': ['summary', 'findings'],
+};
+
+/// The analysis of a finished check, from [provider]. Findings that name a
+/// part not in the check are dropped: nothing invented reaches the screen.
+Future<AiResult> runAiCheck(CloudProvider provider, CompareReport report, {CloudCancel? cancel}) async {
+  final reply = await provider.ask(system: _system, user: comparisonJson(report), schema: _schema, maxTokens: 8192, cancel: cancel);
+  final known = {for (final r in report.rows) ...[r.partNo, ...r.singleParts.map((p) => p.partNo), ...r.mergedParts.map((p) => p.partNo)]};
+  final findings = [
+    for (final f in (reply.json['findings'] as List? ?? const []))
+      if (f is Map) AiFinding.fromJson(f.cast<String, dynamic>()),
+  ];
   return AiResult(
-    summary: '${j['summary'] ?? ''}'.trim(),
-    findings: [for (final f in (j['findings'] as List? ?? const [])) if (f is Map) AiFinding.fromJson(f.cast<String, dynamic>())],
-    model: cfg.modelName,
+    summary: '${reply.json['summary'] ?? ''}'.trim(),
+    findings: [for (final f in findings) if (known.contains(f.partNo)) f],
+    dropped: findings.where((f) => !known.contains(f.partNo)).length,
+    model: provider.model,
     at: DateTime.now(),
+    usage: reply.usage,
   );
 }
 
 /// A short request to check the endpoint, key and model.
-Future<String> testAi(AiConfig cfg) => _post(cfg, 'Reply with the single word OK.', 'OK?', timeout: const Duration(seconds: 40));
+Future<CloudReply> testCloud(CloudProvider provider) => provider.ask(
+  system: 'Reply with the JSON object {"ok": true}.',
+  user: 'Test',
+  schema: const {
+    'type': 'object',
+    'properties': {
+      'ok': {'type': 'boolean'},
+    },
+    'required': ['ok'],
+  },
+  maxTokens: 50,
+);

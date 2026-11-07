@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
 import 'package:smt_fai/core/ai_check.dart';
 import 'package:smt_fai/core/bom_compare.dart';
+import 'package:smt_fai/core/cloud/provider.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
@@ -52,7 +53,8 @@ void main() {
     if (ai) {
       // A sample analysis, as a model would return it.
       state.settings.aiEnabled = true;
-      state.settings.ai = AiConfig(apiKey: 'demo', model: 'gpt-4o-mini');
+      state.settings.cloud = ProviderConfig(model: 'gpt-4o-mini');
+      state.cloudKey = 'demo';
       state.ai = AiResult(
         summary: '共 28 个料号：19 个通过，5 个不一致，1 个需复核（HDMI 座料号不同且未登记替代），1 个认可替代料（绿色 LED）。主要问题：K1103-0106K0-001A 电容耐压 6.3V 与 10V 不一致；K1103-0220P0-001A 缺少位号 C21；K1102-1049K9-001A 多出 R32；K1104-2R2M00-001A 用量 3 与位号数 2 不符。建议先确认电容耐压与缺失位号。',
         findings: [

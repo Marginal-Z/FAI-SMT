@@ -1059,7 +1059,7 @@ class _AiPanel extends StatelessWidget {
             children: [
               Text(s.t('ai_analysis'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.tx)),
               Text(
-                ai == null ? state.settings.ai.modelName : '${ai.model} · ${formatTime(ai.at)}',
+                ai == null ? state.settings.cloud.modelName : '${ai.model} · ${formatTime(ai.at)} · ${ai.usage.inputTokens + ai.usage.outputTokens} tokens · \$${ai.usage.cost.toStringAsFixed(4)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11.5, color: c.tx3),

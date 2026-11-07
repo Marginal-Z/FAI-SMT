@@ -9,6 +9,7 @@ import 'package:smt_fai/core/ai_check.dart';
 import 'package:smt_fai/core/bom.dart';
 import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/classify.dart';
+import 'package:smt_fai/core/cloud/provider.dart';
 import 'package:smt_fai/core/refdes.dart';
 import 'package:smt_fai/core/report.dart';
 import 'package:smt_fai/core/settings.dart';
@@ -453,13 +454,22 @@ void main() {
       expect(text, contains('localResult'));
     });
     test('AI settings round-trip and readiness', () {
-      final s = AppSettings.fromJson(AppSettings(aiEnabled: true, ai: AiConfig(provider: AiProvider.anthropic, apiKey: 'k')).toJson());
+      final s = AppSettings.fromJson(AppSettings(aiEnabled: true, cloud: ProviderConfig(kind: ProviderKind.anthropic)).toJson());
       expect(s.aiEnabled, isTrue);
-      expect(s.ai.provider, AiProvider.anthropic);
-      expect(s.ai.url, AiConfig.anthropicUrl);
-      expect(s.ai.modelName, AiConfig.anthropicModel);
-      expect(AiConfig().ready, isFalse);
-      expect(AiConfig(baseUrl: 'http://localhost:11434/v1/').url, 'http://localhost:11434/v1');
+      expect(s.cloud.kind, ProviderKind.anthropic);
+      expect(s.cloud.url, 'https://api.anthropic.com');
+      expect(s.cloud.modelName, 'claude-sonnet-5-5');
+      expect(ProviderConfig(kind: ProviderKind.custom, baseUrl: 'http://localhost:11434/v1/').url, 'http://localhost:11434/v1');
+      // The API key never goes into the settings file.
+      expect(jsonEncode(s.toJson()), isNot(contains('apiKey')));
+      // A 2.0 settings file: provider kept, plain-text key handed over for
+      // the key store.
+      final old = AppSettings.fromJson({
+        'ai': {'provider': 'openai', 'baseUrl': 'https://api.deepseek.com/v1', 'apiKey': 'sk-old', 'model': 'deepseek-chat'},
+      });
+      expect(old.cloud.kind, ProviderKind.deepseek);
+      expect(old.legacyApiKey, 'sk-old');
+      expect(jsonEncode(old.toJson()), isNot(contains('sk-old')));
     });
   });
 
@@ -481,7 +491,7 @@ void main() {
           if (r != BomRole.serial) 'role_${r.name}',
         'w_qty_refs', 'w_dup_ref', 'w_no_part_no',
         'err_bom_empty', 'err_bom_no_parts', 'err_xls_unsupported', 'err_read_failed', 'err_empty',
-        for (final c in ['not_configured', 'http', 'timeout', 'bad_reply', 'network']) 'err_ai_$c',
+        for (final c in ['no_key', 'auth', 'rate_limited', 'server', 'http', 'timeout', 'network', 'bad_reply', 'truncated', 'schema', 'cancelled']) 'err_cloud_$c',
         for (final c in ['network', 'no_release', 'no_asset', 'download', 'install', 'signature']) 'upd_err_$c',
         for (final k in ['quick', 'files', 'rules', 'ai', 'export', 'keys', 'faq']) ...['guide_${k}_title', 'guide_${k}_body'],
       ];

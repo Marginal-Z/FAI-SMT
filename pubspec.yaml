@@ -42,6 +42,7 @@ dependencies:
   xml: ^6.6.1
   desktop_drop: ^0.8.0
   crypto: ^3.0.8
+  flutter_secure_storage: 11.2.0
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import '../core/ai_check.dart';
+import '../core/cloud/provider.dart';
 import '../core/local_ai/model_store.dart';
 import '../core/settings.dart';
 import '../core/updater.dart';
@@ -121,7 +122,7 @@ class _SettingsList extends StatelessWidget {
           SettingsSection.ai,
           Lucide.sparkles,
           const Color(0xFF0E8A84),
-          state.settings.ai.ready ? s.t('set_ai_hint_ready', {'m': state.settings.ai.modelName}) : s.t('set_ai_hint'),
+          state.cloudReady ? s.t('set_ai_hint_ready', {'m': state.settings.cloud.modelName}) : s.t('set_ai_hint'),
           null,
         ),
         (
@@ -675,10 +676,12 @@ class _AiSettings extends StatefulWidget {
 }
 
 class _AiSettingsState extends State<_AiSettings> {
-  late final _url = TextEditingController(text: widget.state.settings.ai.baseUrl);
-  late final _key = TextEditingController(text: widget.state.settings.ai.apiKey);
-  late final _model = TextEditingController(text: widget.state.settings.ai.model);
-  late AiProvider _provider = widget.state.settings.ai.provider;
+  late final _url = TextEditingController(text: widget.state.settings.cloud.baseUrl);
+  late final _key = TextEditingController(text: widget.state.cloudKey);
+  late final _model = TextEditingController(text: widget.state.settings.cloud.model);
+  late final _priceIn = TextEditingController(text: '${widget.state.settings.cloud.price.input}');
+  late final _priceOut = TextEditingController(text: '${widget.state.settings.cloud.price.output}');
+  late ProviderKind _kind = widget.state.settings.cloud.kind;
   bool _showKey = false;
 
   /// Connection test: null idle, '' running, else the result line.
@@ -687,35 +690,58 @@ class _AiSettingsState extends State<_AiSettings> {
 
   @override
   void dispose() {
-    _url.dispose();
-    _key.dispose();
-    _model.dispose();
+    for (final c in [_url, _key, _model, _priceIn, _priceOut]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  AiConfig get _config => AiConfig(provider: _provider, baseUrl: _url.text.trim(), apiKey: _key.text.trim(), model: _model.text.trim());
+  ProviderConfig get _config => ProviderConfig(
+    kind: _kind,
+    baseUrl: _url.text.trim(),
+    model: _model.text.trim(),
+    price: Price(double.tryParse(_priceIn.text.trim()) ?? 0, double.tryParse(_priceOut.text.trim()) ?? 0),
+    timeoutSeconds: widget.state.settings.cloud.timeoutSeconds,
+    maxRetries: widget.state.settings.cloud.maxRetries,
+    minIntervalMs: widget.state.settings.cloud.minIntervalMs,
+  );
 
   void _save() {
-    widget.state.updateAi(_config);
+    widget.state.updateCloud(_config);
     if (_test != null && _test!.isNotEmpty) setState(() => _test = null);
+  }
+
+  /// Another vendor: its defaults and its own stored key.
+  Future<void> _switch(ProviderKind k) async {
+    final p = providerPresets[k]!;
+    setState(() {
+      _kind = k;
+      _url.text = '';
+      _model.text = '';
+      _priceIn.text = '${p.price.input}';
+      _priceOut.text = '${p.price.output}';
+    });
+    await widget.state.updateCloud(_config);
+    _key.text = widget.state.cloudKey;
   }
 
   Future<void> _runTest() async {
     final s = Strings.of(context);
     _save();
+    await widget.state.setCloudKey(_key.text);
     setState(() => _test = '');
     try {
-      final reply = await testAi(_config);
+      final reply = await testCloud(widget.state.cloudProvider);
       if (!mounted) return;
       setState(() {
         _testOk = true;
-        _test = s.t('ai_test_ok', {'m': _config.modelName, 'r': reply.trim().split('\n').first});
+        _test = s.t('ai_test_ok', {'m': reply.model, 'r': '${reply.usage.inputTokens + reply.usage.outputTokens} tokens'});
       });
-    } on AiException catch (e) {
+    } on CloudException catch (e) {
       if (!mounted) return;
       setState(() {
         _testOk = false;
-        _test = '${s.t('err_${e.code}')}${e.detail.isEmpty ? '' : '\n${e.detail}'}';
+        _test = '${s.t('err_cloud_${e.code}')}${e.detail.isEmpty ? '' : '\n${e.detail}'}';
       });
     }
   }
@@ -754,7 +780,7 @@ class _AiSettingsState extends State<_AiSettings> {
       );
     }
 
-    final anthropic = _provider == AiProvider.anthropic;
+    final preset = providerPresets[_kind]!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -788,38 +814,47 @@ class _AiSettingsState extends State<_AiSettings> {
           s.t('ai_provider'),
           Align(
             alignment: Alignment.centerLeft,
-            child: Segmented<AiProvider>(
-              value: _provider,
-              options: [(AiProvider.openai, s.t('ai_openai')), (AiProvider.anthropic, 'Anthropic')],
-              onChanged: (v) {
-                setState(() => _provider = v);
-                _save();
-              },
+            child: DropdownSelect<ProviderKind>(
+              value: _kind,
+              width: 220,
+              options: [(ProviderKind.openai, 'OpenAI'), (ProviderKind.deepseek, 'DeepSeek'), (ProviderKind.anthropic, 'Anthropic'), (ProviderKind.custom, s.t('ai_custom'))],
+              onChanged: _switch,
             ),
           ),
         ),
         row(
           s.t('ai_base_url'),
-          TextInput(controller: _url, hint: anthropic ? AiConfig.anthropicUrl : AiConfig.openaiUrl, mono: true, onChanged: (_) => _save()),
-          hint: s.t(anthropic ? 'ai_base_url_hint_anthropic' : 'ai_base_url_hint_openai'),
+          TextInput(controller: _url, hint: preset.baseUrl.isEmpty ? 'http://…/v1' : preset.baseUrl, mono: true, onChanged: (_) => _save()),
+          hint: s.t(_kind == ProviderKind.custom ? 'ai_base_url_hint_openai' : 'ai_base_url_hint_default'),
         ),
         row(
           s.t('ai_key'),
           Row(
             children: [
               Expanded(
-                child: TextInput(controller: _key, hint: anthropic ? 'sk-ant-…' : 'sk-…', mono: true, obscure: !_showKey, onChanged: (_) => _save()),
+                child: TextInput(controller: _key, hint: _kind == ProviderKind.anthropic ? 'sk-ant-…' : 'sk-…', mono: true, obscure: !_showKey, onChanged: (v) => state.setCloudKey(v)),
               ),
               const SizedBox(width: 8),
               GlassButton(icon: _showKey ? Lucide.eyeOff : Lucide.eye, size: 36, iconSize: 15, tooltip: s.t(_showKey ? 'ai_hide_key' : 'ai_show_key'), onTap: () => setState(() => _showKey = !_showKey)),
             ],
           ),
-          hint: s.t('ai_key_hint'),
+          hint: s.t(state.keys.secure ? 'ai_key_secure' : 'ai_key_session'),
         ),
         row(
           s.t('ai_model'),
-          TextInput(controller: _model, hint: anthropic ? AiConfig.anthropicModel : AiConfig.openaiModel, mono: true, onChanged: (_) => _save()),
+          TextInput(controller: _model, hint: preset.model.isEmpty ? 'model' : preset.model, mono: true, onChanged: (_) => _save()),
           hint: s.t('ai_model_hint'),
+        ),
+        row(
+          s.t('ai_price'),
+          Row(
+            children: [
+              Expanded(child: TextInput(controller: _priceIn, hint: '0', mono: true, onChanged: (_) => _save())),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('/', style: TextStyle(color: c.tx3))),
+              Expanded(child: TextInput(controller: _priceOut, hint: '0', mono: true, onChanged: (_) => _save())),
+            ],
+          ),
+          hint: s.t('ai_price_hint'),
         ),
         const SizedBox(height: 10),
         Row(
@@ -830,7 +865,7 @@ class _AiSettingsState extends State<_AiSettings> {
               kind: PillKind.soft,
               height: 38,
               fontSize: 14,
-              onTap: _test == '' || !_config.ready ? null : _runTest,
+              onTap: _test == '' ? null : _runTest,
             ),
             const SizedBox(width: 12),
             if (_test == '') ...[const Spinner(size: 16), const SizedBox(width: 8), Text(s.t('ai_testing'), style: TextStyle(fontSize: 13, color: c.tx2))],
@@ -844,6 +879,8 @@ class _AiSettingsState extends State<_AiSettings> {
             child: Text(_test!, maxLines: 6, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, height: 1.45, color: _testOk ? c.okTx : c.ngTx)),
           ),
         ],
+        const SizedBox(height: 18),
+        _UsagePanel(state: state),
         const SizedBox(height: 18),
         Container(
           padding: const EdgeInsets.all(12),
@@ -987,6 +1024,45 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
         const SizedBox(height: 8),
         Text(s.t('local_note', {'size': _size(total), 'dir': state.models.dir}), style: TextStyle(fontSize: 12, height: 1.5, color: c.tx3)),
       ],
+    );
+  }
+}
+
+/// Tokens and cost of this session, and the latest requests (no prompt
+/// text or key is kept).
+class _UsagePanel extends StatelessWidget {
+  const _UsagePanel({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final u = state.sessionUsage;
+    final log = state.requestLog.reversed.take(8).toList();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final mono = TextStyle(fontSize: 12, fontFamily: monoFontFamily, color: c.tx2);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: c.well, borderRadius: c.r(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(s.t('ai_usage', {'r': u.requests, 'i': u.inputTokens, 'o': u.outputTokens, 'c': u.cost.toStringAsFixed(4)}), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx)),
+          const SizedBox(height: 8),
+          if (log.isEmpty)
+            Text(s.t('ai_log_empty'), style: TextStyle(fontSize: 12.5, color: c.tx3))
+          else
+            for (final r in log)
+              Text(
+                '${two(r.at.hour)}:${two(r.at.minute)}:${two(r.at.second)}  ${r.model}  ${r.status == 0 ? '—' : r.status}  ${r.millis} ms  ${r.usage.inputTokens}+${r.usage.outputTokens}${r.attempt > 1 ? '  #${r.attempt}' : ''}${r.error.isEmpty ? '' : '  ${r.error}'}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: r.error.isEmpty ? mono : mono.copyWith(color: c.ngTx),
+              ),
+        ],
+      ),
     );
   }
 }

@@ -48,7 +48,7 @@ jobs:
       - name: Install Linux desktop toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
       - name: Cache Flutter SDK
         uses: actions/cache@v6
         with:
@@ -94,7 +94,7 @@ jobs:
           Section: misc
           Priority: optional
           Architecture: ${{ matrix.deb_arch }}
-          Depends: libgtk-3-0 | libgtk-3-0t64
+          Depends: libgtk-3-0 | libgtk-3-0t64, libsecret-1-0
           Maintainer: Marginal-Z <289210392+Marginal-Z@users.noreply.github.com>
           Description: SMT-FAI
            Checks a single BOM against A-BOM + B-BOM part by part, with optional AI analysis.

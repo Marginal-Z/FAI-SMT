@@ -410,7 +410,7 @@ class AiSwitch extends StatelessWidget {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final on = state.settings.aiEnabled;
-    final configured = state.settings.ai.ready;
+    final configured = state.cloudReady;
     final (String sub, Color color) = !configured
         ? (s.t('ai_not_set'), c.warnTx)
         : !on

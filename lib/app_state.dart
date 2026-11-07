@@ -11,12 +11,14 @@ import 'package:path_provider/path_provider.dart';
 import 'core/ai_check.dart';
 import 'core/bom.dart';
 import 'core/bom_compare.dart';
+import 'core/cloud/provider.dart';
 import 'core/local_ai/local_ai.dart';
 import 'core/local_ai/model_store.dart';
 import 'core/local_ai/semantic_match.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/updater.dart';
+import 'services/key_store.dart';
 import 'update_installer.dart';
 import 'version.dart';
 
@@ -54,7 +56,7 @@ enum AiStatus { idle, running, done, failed }
 enum LocalStatus { idle, running, done, failed }
 
 class AppState extends ChangeNotifier {
-  AppState(this.settings, this.settingsDir, {ModelStore? models}) : models = models ?? ModelStore.forApp(settingsDir);
+  AppState(this.settings, this.settingsDir, {ModelStore? models, KeyStore? keys}) : models = models ?? ModelStore.forApp(settingsDir), keys = keys ?? SecureKeyStore();
 
   AppSettings settings;
   final String settingsDir;
@@ -379,7 +381,7 @@ class AppState extends ChangeNotifier {
       // The local embedding model proposes counterparts for unmatched
       // lines; the cloud AI waits for its result.
       _runLocal(run);
-    } else if (settings.aiEnabled && settings.ai.ready) {
+    } else if (settings.aiEnabled && cloudReady) {
       runAi();
     }
   }
@@ -433,21 +435,69 @@ class AppState extends ChangeNotifier {
       _status('status_local_failed', {'e': e.code});
     }
     notifyListeners();
-    if (run == _checkRun && settings.aiEnabled && settings.ai.ready) runAi();
+    if (run == _checkRun && settings.aiEnabled && cloudReady) runAi();
   }
 
   void setAiEnabled(bool v) {
     settings.aiEnabled = v;
     persist();
     notifyListeners();
-    if (v && report != null && ai == null && aiStatus != AiStatus.running && settings.ai.ready) runAi();
+    if (v && report != null && ai == null && aiStatus != AiStatus.running && cloudReady) runAi();
   }
 
-  void updateAi(AiConfig cfg) {
-    settings.ai = cfg;
-    persist();
+  // ----------------------------------------------------------------- cloud
+
+  final KeyStore keys;
+
+  /// API key of the selected provider, read from the key store.
+  String cloudKey = '';
+
+  /// Every cloud request of this session (no prompt text or key), newest last.
+  final requestLog = <RequestRecord>[];
+  final sessionUsage = Usage();
+
+  bool get cloudReady => cloudKey.trim().isNotEmpty || (settings.cloud.kind == ProviderKind.custom && settings.cloud.url.isNotEmpty);
+
+  /// Reads the selected provider's key; moves a 2.0 plain-text key into
+  /// the key store and out of the settings file.
+  Future<void> loadKeys() async {
+    if (settings.legacyApiKey.isNotEmpty) {
+      await keys.write(settings.cloud.kind.name, settings.legacyApiKey);
+      await persist();
+    }
+    cloudKey = await keys.read(settings.cloud.kind.name) ?? '';
     notifyListeners();
   }
+
+  Future<void> setCloudKey(String key) async {
+    cloudKey = key.trim();
+    if (cloudKey.isEmpty) {
+      await keys.delete(settings.cloud.kind.name);
+    } else {
+      await keys.write(settings.cloud.kind.name, cloudKey);
+    }
+    notifyListeners();
+  }
+
+  /// Switching vendor loads that vendor's key.
+  Future<void> updateCloud(ProviderConfig cfg) async {
+    final kindChanged = cfg.kind != settings.cloud.kind;
+    settings.cloud = cfg;
+    persist();
+    if (kindChanged) cloudKey = await keys.read(cfg.kind.name) ?? '';
+    notifyListeners();
+  }
+
+  CloudProvider get cloudProvider => HttpCloudProvider(settings.cloud, cloudKey, onRecord: _record);
+
+  void _record(RequestRecord r) {
+    requestLog.add(r);
+    if (requestLog.length > 200) requestLog.removeAt(0);
+    sessionUsage.add(r.usage);
+    notifyListeners();
+  }
+
+  CloudCancel? _aiCancel;
 
   /// Sends the comparison to the configured model; a newer run or a reload
   /// discards an older answer.
@@ -455,26 +505,29 @@ class AppState extends ChangeNotifier {
     final r = report;
     if (r == null) return;
     final run = ++_aiRun;
+    _aiCancel?.cancel();
+    final cancel = _aiCancel = CloudCancel();
     aiStatus = AiStatus.running;
     aiError = '';
     aiErrorDetail = '';
     notifyListeners();
     try {
-      final result = await runAiCheck(settings.ai, r);
+      final result = await runAiCheck(cloudProvider, r, cancel: cancel);
       if (run != _aiRun) return;
       ai = result;
       aiStatus = AiStatus.done;
       _status('status_ai_done', {'n': result.findings.length});
-    } on AiException catch (e) {
+    } on CloudException catch (e) {
       if (run != _aiRun) return;
       aiStatus = AiStatus.failed;
-      aiError = 'err_${e.code}';
+      aiError = 'err_cloud_${e.code}';
       aiErrorDetail = e.detail;
     }
     notifyListeners();
   }
 
   void cancelAi() {
+    _aiCancel?.cancel();
     _aiRun++;
     aiStatus = AiStatus.idle;
     notifyListeners();
