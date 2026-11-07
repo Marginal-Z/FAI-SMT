@@ -20,10 +20,23 @@ void main(List<String> args) {
       groups.putIfAbsent('pn style ${g.layout.partNoStyle}', Tally.new),
     ]);
   }
-  String pct(double v) => '${(v * 100).toStringAsFixed(1)}%'.padLeft(7);
-  stdout.writeln('| group | ${metrics.join(' | ')} |');
-  stdout.writeln('|---|${metrics.map((_) => '---:').join('|')}|');
-  for (final e in [MapEntry('all ($n)', all), ...(groups.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))]) {
-    stdout.writeln('| ${e.key} | ${metrics.map((m) => pct(e.value.rate(m))).join(' | ')} |');
+  String pct(Tally t, String m) => (t.total[m] ?? 0) == 0 ? '      —' : '${(t.rate(m) * 100).toStringAsFixed(1)}%'.padLeft(7);
+  void table(List<String> cols) {
+    stdout.writeln('| group | ${cols.join(' | ')} |');
+    stdout.writeln('|---|${cols.map((_) => '---:').join('|')}|');
+    for (final e in [MapEntry('all ($n)', all), ...(groups.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))]) {
+      stdout.writeln('| ${e.key} | ${cols.map((m) => pct(e.value, m)).join(' | ')} |');
+    }
+    stdout.writeln();
+  }
+
+  table(metrics);
+  table(attrMetrics);
+  // Item kinds: one row per kind.
+  final kinds = all.total.keys.where((k) => k.startsWith('kind:')).toList()..sort();
+  stdout.writeln('| kind | samples | correct |');
+  stdout.writeln('|---|---:|---:|');
+  for (final k in kinds) {
+    stdout.writeln('| ${k.substring(5)} | ${all.total[k]} | ${pct(all, k)} |');
   }
 }

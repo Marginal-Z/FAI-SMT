@@ -892,6 +892,19 @@ class _Detail extends StatelessWidget {
         ].join(' · '),
         style: TextStyle(fontSize: 12, color: c.tx3),
       ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final k in {?row.single?.kind, ?row.merged?.kind}) DBadge(text: s.t('kind_${k.name}'), background: c.well, color: c.tx2),
+          if (row.single?.dnp == true || row.merged?.dnp == true) DBadge(text: s.t('dnp_badge'), background: c.warnTint, color: c.warnTx),
+        ],
+      ),
+      if ({...?row.single?.alternates, ...?row.merged?.alternates}.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Text(s.t('alt_list', {'alts': {...?row.single?.alternates, ...?row.merged?.alternates}.join(', ')}), style: TextStyle(fontSize: 12, color: c.tx2)),
+      ],
       const SizedBox(height: 12),
       if (row.status == DiffStatus.onlySingle || row.status == DiffStatus.onlyMerged) ...[
         Container(

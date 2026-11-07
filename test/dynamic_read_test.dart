@@ -54,14 +54,17 @@ void main() {
     }
   });
 
-  // Measured on 2026-11-07 (phase 1); see docs/architecture/phase-1.md.
-  // Raise these as recognition improves; never lower them.
+  // Raised in phase 2 (docs/architecture/phase-2.md); never lower them.
   test('recognition accuracy floors', () {
     final t = Tally();
     for (var seed = 0; seed < samples; seed++) {
       scoreSample(generateBom(seed), [t]);
     }
-    const floors = {'read_ok': 1.0, 'col_qty': 0.98, 'col_refs': 0.98, 'col_partNo': 0.82, 'part_found': 0.82, 'part_row': 0.82, 'col_desc': 0.55};
+    const floors = {
+      'read_ok': 1.0, 'col_qty': 0.99, 'col_refs': 0.99, 'col_partNo': 0.98, 'part_found': 0.98, 'part_row': 0.98, 'col_desc': 0.98,
+      'col_maker': 0.95, 'col_mpn': 0.97, 'col_alt': 0.97, 'col_level': 0.97, 'col_dnp': 0.78, 'attr_no_false': 0.98,
+      'remark_not_desc': 0.97, 'part_dnp': 0.95, 'part_level': 0.97, 'part_alt': 0.97, 'kind': 0.97,
+    };
     for (final e in floors.entries) {
       expect(t.rate(e.key), greaterThanOrEqualTo(e.value), reason: '${e.key}: ${t.rate(e.key)}');
     }

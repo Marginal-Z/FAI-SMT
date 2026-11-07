@@ -208,7 +208,7 @@ FieldCompare compareExact(String key, String header, String single, String merge
       final extra = {for (final e in p.extra.entries) relabel[e.key] ?? e.key: e.value};
       final existing = byPn[p.partNo];
       if (existing == null) {
-        final copy = BomPart(p.partNo, description: p.description, quantity: p.quantity, refs: [...p.refs], extra: extra, sources: [...p.sources], recordIds: [...p.recordIds]);
+        final copy = BomPart(p.partNo, description: p.description, quantity: p.quantity, refs: [...p.refs], extra: extra, sources: [...p.sources], recordIds: [...p.recordIds], dnp: p.dnp, alternates: p.alternates, kind: p.kind);
         byPn[p.partNo] = copy;
         order.add(copy);
         sources[p.partNo] = [tag];

@@ -4,8 +4,38 @@
 /// result can cite the original file, sheet and Excel row.
 library;
 
+import 'knowledge.dart';
+
+export 'knowledge.dart' show ItemKind;
+
 /// What a column holds.
-enum BomRole { partNo, description, quantity, refs, serial, other }
+enum BomRole {
+  partNo,
+  description,
+  quantity,
+  refs,
+  serial,
+
+  /// Manufacturer part number.
+  mpn,
+
+  /// Component maker.
+  maker,
+
+  /// Alternate (substitute) part numbers.
+  alternate,
+
+  /// Level in a multi-level BOM.
+  level,
+
+  /// Fitted / not fitted flag.
+  dnp,
+  other;
+
+  /// Columns compared value by value between two BOMs (paired by role,
+  /// or by header for [other]).
+  bool get attribute => index >= BomRole.mpn.index;
+}
 
 /// A row of the original file: file name, sheet and the row number as Excel
 /// shows it (1-based).
@@ -50,7 +80,7 @@ class BomColumn {
   final double confidence;
   final String evidence;
 
-  String get key => role == BomRole.other ? 'col:$label' : role.name;
+  String get key => role.attribute ? 'col:$label' : role.name;
 
   /// Excel-style column letter.
   String get letter {
@@ -85,6 +115,12 @@ class BomRecord {
     required this.quantity,
     required this.refs,
     required this.extra,
+    this.dnp = false,
+    this.level,
+    this.parentId,
+    this.alternates = const [],
+    this.kind = ItemKind.unknown,
+    this.kindEvidence = '',
   });
 
   /// Stable within its document: `<document id>:<sheet>!<first row>`.
@@ -105,6 +141,21 @@ class BomRecord {
   /// Other columns by [BomColumn.label] → value.
   final Map<String, String> extra;
 
+  /// Marked as not fitted (DNP / NC / 不贴 …).
+  final bool dnp;
+
+  /// Level in a multi-level BOM (top items 1), and the record of the
+  /// assembly it belongs to.
+  final int? level;
+  final String? parentId;
+
+  /// Alternate part numbers named on this line.
+  final List<String> alternates;
+
+  /// What the item is, and what that was decided from.
+  final ItemKind kind;
+  final String kindEvidence;
+
   SourceRef get source => sources.first;
 
   Map<String, dynamic> toJson() => {
@@ -115,13 +166,19 @@ class BomRecord {
     if (quantity != null) 'quantity': quantity,
     if (refs.isNotEmpty) 'refs': refs,
     if (extra.values.any((v) => v.isNotEmpty)) 'extra': {for (final e in extra.entries) if (e.value.isNotEmpty) e.key: e.value},
+    if (dnp) 'dnp': true,
+    if (level != null) 'level': level,
+    if (parentId != null) 'parent': parentId,
+    if (alternates.isNotEmpty) 'alternates': alternates,
+    'kind': kind.name,
   };
 }
 
 /// The records of one part number (a part listed twice in a file is one
 /// part): what the comparison works on.
 class BomPart {
-  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds}) : recordIds = recordIds ?? [];
+  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds, this.dnp = false, this.alternates = const [], this.kind = ItemKind.unknown})
+    : recordIds = recordIds ?? [];
 
   /// [records] of one part number, in file order.
   factory BomPart.of(String partNo, Iterable<BomRecord> records) {
@@ -144,6 +201,9 @@ class BomPart {
       extra: extra,
       sources: [for (final r in list) ...r.sources],
       recordIds: [for (final r in list) r.id],
+      dnp: list.every((r) => r.dnp),
+      alternates: {for (final r in list) ...r.alternates}.toList(),
+      kind: list.map((r) => r.kind).firstWhere((k) => k != ItemKind.unknown, orElse: () => ItemKind.unknown),
     );
   }
 
@@ -159,10 +219,15 @@ class BomPart {
   final List<SourceRef> sources;
   final List<String> recordIds;
 
+  /// Every record of the part is marked not fitted.
+  final bool dnp;
+  final List<String> alternates;
+  final ItemKind kind;
+
   /// Excel row numbers, for short display.
   List<int> get rows => [for (final s in sources) s.row];
 
-  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds]);
+  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds], dnp: dnp, alternates: alternates, kind: kind);
 }
 
 /// Something worth telling the user about a file.
@@ -219,8 +284,8 @@ class BomDocument {
 
   BomColumn? column(BomRole role) => columns.where((c) => c.role == role).firstOrNull;
 
-  /// Other columns that will be compared, by label.
-  Iterable<BomColumn> get others => columns.where((c) => c.role == BomRole.other);
+  /// Columns compared value by value, by label.
+  Iterable<BomColumn> get others => columns.where((c) => c.role.attribute);
 
   BomRecord? record(String id) => records.where((r) => r.id == id).firstOrNull;
 

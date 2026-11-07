@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/core/ai_check.dart';
 import 'package:smt_fai/core/bom.dart';
 import 'package:smt_fai/core/bom_compare.dart';
+import 'package:smt_fai/core/classify.dart';
 import 'package:smt_fai/core/refdes.dart';
 import 'package:smt_fai/core/report.dart';
 import 'package:smt_fai/core/settings.dart';
@@ -205,6 +206,88 @@ void main() {
     });
   });
 
+  group('item attributes', () {
+    test('maker part numbers, makers, alternates by header and by form', () {
+      final d = bom([
+        ['料号', '描述', 'Mfr P/N', 'Manufacturer', '替代料号', '用量', '位号'],
+        ['K1102-102000-001A', '贴片电阻 10K 0402', 'RC0402FR-0710KL', 'Yageo', 'K1102-102000-002A', '2', 'R1,R2'],
+        ['K1103-010400-001A', '贴片电容 100nF 0402', 'GRM155R71C104KA88D', 'Murata', '', '1', 'C1'],
+        ['K1104-022000-001A', '贴片电感 2.2uH', 'SWPA4020S2R2MT', 'Sunlord', '', '1', 'L1'],
+      ]);
+      expect(d.column(BomRole.partNo)!.header, '料号');
+      expect(d.column(BomRole.mpn)!.header, 'Mfr P/N');
+      expect(d.column(BomRole.maker)!.header, 'Manufacturer');
+      expect(d.column(BomRole.alternate)!.header, '替代料号');
+      expect(d.records.first.alternates, ['K1102-102000-002A']);
+      // Without headers: a second code column of the same form holds
+      // alternates, of another form maker part numbers.
+      final h = bom([
+        ['K1102-102000-001A', '贴片电阻 10K 0402', 'RC0402FR-0710KL', 'K1102-102000-002A', '2', 'R1,R2'],
+        ['K1103-010400-001A', '贴片电容 100nF 0402', 'GRM155R71C104KA88D', '', '1', 'C1'],
+        ['K1104-022000-001A', '贴片电感 2.2uH', 'SWPA4020S2R2MT', '', '1', 'L1'],
+        ['K1105-024000-001A', '晶振 24MHz 3225', 'X322524MSB4SI', 'K1105-024000-003A', '1', 'Y1'],
+      ]);
+      expect(h.column(BomRole.partNo)!.index, 0);
+      expect(h.column(BomRole.mpn)!.index, 2);
+      expect(h.column(BomRole.alternate)!.index, 3);
+    });
+    test('DNP: by words, by "fitted" polarity, by majority without a header', () {
+      final words = bom([
+        ['料号', '描述', '用量', '位号', 'DNP'],
+        ['K1', '电阻 10K', '1', 'R1', ''],
+        ['K2', '电阻 1K', '1', 'R2', 'DNP'],
+        ['K3', '电容 1uF NC', '1', 'C1', ''],
+      ]);
+      expect(words.records.map((r) => r.dnp), [false, true, true]);
+      final fitted = bom([
+        ['料号', '描述', '用量', '位号', '是否贴装'],
+        ['K1', '电阻 10K', '1', 'R1', '是'],
+        ['K2', '电阻 1K', '1', 'R2', '否'],
+      ]);
+      expect(fitted.records.map((r) => r.dnp), [false, true]);
+      final majority = bom([
+        ['K1102-1', '电阻 10K 0402', '1', 'R1', 'Y'],
+        ['K1102-2', '电阻 1K 0402', '1', 'R2', 'N'],
+        ['K1102-3', '电阻 2K 0402', '1', 'R3', 'Y'],
+        ['K1102-4', '电阻 3K 0402', '1', 'R4', 'Y'],
+      ]);
+      expect(majority.column(BomRole.dnp)!.confidence, 0.5);
+      expect(majority.records.map((r) => r.dnp), [false, true, false, false]);
+      // "NC7SZ04" is a part name, not a "not connected" marker.
+      expect(bom([['料号', '描述', '用量', '位号'], ['K1', 'IC NC7SZ04 SOT353', '1', 'U1']]).records.single.dnp, isFalse);
+    });
+    test('BOM levels and the assembly each line belongs to', () {
+      final d = bom([
+        ['Level', 'Part Number', 'Description', 'Qty', 'Designator'],
+        ['1', 'A100', 'PCBA main board', '1', ''],
+        ['2', 'R100', 'Resistor 10K 0402', '2', 'R1,R2'],
+        ['2', 'C100', 'Capacitor 1uF 0402', '1', 'C1'],
+        ['1', 'S100', 'Shield can', '1', ''],
+      ]);
+      expect(d.records.map((r) => r.level), [1, 2, 2, 1]);
+      expect(d.records[1].parentId, d.records[0].id);
+      expect(d.records[3].parentId, isNull);
+      // Dotted depths are recognised without a header.
+      final h = bom([
+        ['.1', 'A100', 'PCBA 主板', '1', ''],
+        ['..2', 'R100', '电阻 10K 0402', '2', 'R1,R2'],
+        ['..2', 'C100', '电容 1uF 0402', '1', 'C1'],
+      ]);
+      expect(h.column(BomRole.level)!.index, 0);
+    });
+    test('item kinds from words, designators and units', () {
+      (ItemKind, String) k(String d, [List<String> r = const []]) => classifyItem(d, r);
+      expect(k('贴片电阻 10K 0402').$1, ItemKind.resistor);
+      expect(k('Keramikkondensator 100nF').$1, ItemKind.capacitor);
+      expect(k('Shielded power inductor 2.2uH').$1, ItemKind.inductor);
+      expect(k('发光二极管 红色 0603').$1, ItemKind.led);
+      expect(k('ESD bag 100x150').$1, ItemKind.packaging);
+      expect(k('XYZ-123', ['U1', 'U2']), (ItemKind.ic, 'designator'));
+      expect(k('10uF 6.3V 0603'), (ItemKind.capacitor, 'unit'));
+      expect(k('ABC-123').$1, ItemKind.unknown);
+    });
+  });
+
   group('description rule', () {
     test('only letters and digits count; Chinese wording may differ', () {
       expect(compareDescription('贴片电阻 10K ±1% 0402', '贴片电阻器 10K ±1% 0402').equal, isTrue);
@@ -249,7 +332,7 @@ void main() {
       expect(row('K1102-1049K9-001A').extraRefs, ['R32']);
       expect(row('K1104-2R2M00-001A').differences.map((f) => f.key), ['quantity']);
       expect(row('K1103-0106K0-001A').differences.map((f) => f.key), ['description']);
-      expect(row('K1109-MOS340-001A').differences.map((f) => f.key), ['col:品牌']);
+      expect(row('K1109-MOS340-001A').differences.map((f) => f.key), ['col:maker']);
       expect(row('K1402-LABEL0-001A').status, DiffStatus.onlySingle);
       expect(row('K1102-1000R0-009A').status, DiffStatus.onlyMerged);
     });

@@ -44,14 +44,14 @@ const designatorKinds = <String, ItemKind>{
 /// Words naming an item kind (lower case; matched as substrings, so the
 /// Chinese and Thai entries need no word breaks).
 const kindWords = <ItemKind, List<String>>{
-  ItemKind.resistor: ['resistor', 'res ', 'res.', 'resistance', 'widerstand', 'résistance', 'resistencia', '电阻', '排阻', '热敏', 'ตัวต้านทาน', '抵抗', 'thermistor'],
-  ItemKind.capacitor: ['capacitor', 'cap ', 'cap.', 'mlcc', 'kondensator', 'condensateur', 'condensador', '电容', '钽电容', '电解', 'ตัวเก็บประจุ', 'คาปาซิเตอร์', 'コンデンサ'],
+  ItemKind.resistor: ['resistor', 'res', 'resistance', 'widerstand', 'résistance', 'resistencia', '电阻', '排阻', '热敏', 'ตัวต้านทาน', '抵抗', 'thermistor'],
+  ItemKind.capacitor: ['capacitor', 'cap', 'mlcc', 'kondensator', 'condensateur', 'condensador', '电容', '钽电容', '电解', 'ตัวเก็บประจุ', 'คาปาซิเตอร์', 'コンデンサ'],
   ItemKind.inductor: ['inductor', 'choke', 'coil', 'drossel', 'spule', 'inductance', 'bobine', '电感', '扼流', 'ตัวเหนี่ยวนำ', 'インダクタ'],
   ItemKind.ferrite: ['ferrite', 'bead', '磁珠', 'ferrit'],
   ItemKind.diode: ['diode', 'rectifier', 'schottky', 'zener', 'tvs', 'esd', '二极管', '稳压管', 'ไดโอด', 'ダイオード'],
-  ItemKind.led: ['led', '发光', '灯珠', 'แอลอีดี'],
-  ItemKind.transistor: ['transistor', 'mosfet', 'mos管', 'mos ', 'bjt', '三极管', '晶体管', '场效应', 'ทรานซิสเตอร์', 'トランジスタ'],
-  ItemKind.ic: ['ic ', ' ic', 'integrated circuit', 'mcu', 'microcontroller', 'regulator', 'ldo', 'dc-dc', 'op amp', 'opamp', 'flash', 'eeprom', 'dram', 'ddr', 'emmc', 'soc', 'driver', 'controller', 'chip', '芯片', '集成电路', '主控', 'ไอซี'],
+  ItemKind.led: ['led', '发光二极管', '发光', '灯珠', 'แอลอีดี'],
+  ItemKind.transistor: ['transistor', 'mosfet', 'mos管', 'mos', 'bjt', '三极管', '晶体管', '场效应', 'ทรานซิสเตอร์', 'トランジスタ'],
+  ItemKind.ic: ['ic', 'integrated circuit', 'mcu', 'microcontroller', 'regulator', 'ldo', 'dc-dc', 'op amp', 'opamp', 'flash', 'eeprom', 'dram', 'ddr', 'emmc', 'soc', 'driver', 'controller', 'chip', '芯片', '集成电路', '主控', 'ไอซี'],
   ItemKind.crystal: ['crystal', 'oscillator', 'resonator', 'quarz', 'quartz', '晶振', '晶体', 'คริสตัล', '水晶'],
   ItemKind.connector: ['connector', 'header', 'socket', 'receptacle', 'plug', 'jack', 'terminal', 'fpc', 'ffc', 'usb', 'hdmi', 'steckverbinder', 'buchse', 'stecker', '连接器', '插座', '排针', '排母', '端子', '座子', 'คอนเนคเตอร์', 'コネクタ'],
   ItemKind.switchKind: ['switch', 'button', 'tact', 'taster', 'schalter', '开关', '按键', 'สวิตช์'],
@@ -63,7 +63,7 @@ const kindWords = <ItemKind, List<String>>{
   ItemKind.speaker: ['speaker', 'buzzer', 'lautsprecher', 'summer', '喇叭', '蜂鸣器', 'ลำโพง'],
   ItemKind.battery: ['battery', 'coin cell', 'batterie', 'akku', '电池', 'แบตเตอรี่'],
   ItemKind.testPoint: ['test point', 'testpoint', 'testpunkt', '测试点'],
-  ItemKind.pcb: ['pcb', 'printed circuit', 'leiterplatte', '光板', '线路板', 'แผงวงจร'],
+  ItemKind.pcb: ['pcb', 'pcba', 'printed circuit', 'leiterplatte', 'circuit board', 'main board', 'mainboard', '光板', '线路板', '主板', '电路板', 'แผงวงจร'],
   ItemKind.mechanical: ['shield', 'screw', 'nut', 'washer', 'bracket', 'housing', 'enclosure', 'heatsink', 'heat sink', 'standoff', 'spacer', 'gasket', 'foam', 'abschirmung', 'schraube', 'gehäuse', '屏蔽', '螺丝', '螺钉', '螺母', '支架', '外壳', '散热', '铜柱', '泡棉', '胶垫', 'ฝาครอบ', 'สกรู'],
   ItemKind.packaging: ['bag', 'box', 'carton', 'tray', 'reel', 'label', 'manual', 'esd bag', 'beutel', 'karton', 'etikett', 'verpackung', '袋', '包装', '纸箱', '彩盒', '标签', '说明书', '吸塑', 'ถุง', 'กล่อง', 'ฉลาก'],
   ItemKind.consumable: ['solder', 'paste', 'flux', 'glue', 'adhesive', 'tape', 'lot', 'lötpaste', 'kleber', '锡膏', '锡条', '锡线', '助焊', '胶水', '红胶', '胶带', 'ตะกั่ว'],

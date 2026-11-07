@@ -18,6 +18,13 @@ class TruePart {
 
   /// Excel row of its first line, filled in when the sheet is laid out.
   int row = 0;
+
+  // Optional attributes, set when the sheet has the column.
+  String maker = '';
+  String mpn = '';
+  List<String> alternates = const [];
+  bool dnp = false;
+  int? level;
 }
 
 /// How the sheet was laid out, for per-category statistics.
@@ -95,6 +102,30 @@ const _rare = {
 };
 const _junk = ['Remark', '备注', 'Supplier', 'Lead time', 'RoHS', 'Unit price'];
 
+// Real makers; some are deliberately not in the app's knowledge list.
+const _makers = ['Murata', 'Yageo', 'Samsung', 'TDK', 'Vishay', 'Texas Instruments', 'Nexperia', 'Molex', 'Kemet', 'Everlight', 'Hirose', 'Diodes Inc', 'Hongfa', 'Torex', '3PEAK', 'Chipown', 'UNI-ROYAL', 'Fenghua'];
+
+// Attribute column headers: common wordings, then rarer ones.
+const _attrHeaders = {
+  'maker': (['Manufacturer', '厂商', 'Hersteller', 'ผู้ผลิต', 'Brand'], ['Make', 'Source', '供应商品牌']),
+  'mpn': (['MPN', '厂商料号', 'Herstellerteilenummer', 'Mfr P/N'], ['Maker P/N', 'OEM No.', '原厂编码']),
+  'alt': (['Alternate', '替代料号', 'Ersatzteil'], ['Second source', 'Sub P/N', '代料']),
+  'dnp': (['DNP', '贴装', 'Fitted'], ['Bestückt', 'Assembly option', '是否装配']),
+  'level': (['Level', '阶层', 'Ebene'], ['Lvl.', 'BOM depth', '层']),
+  'remark': (['Remark', '备注', 'Bemerkung', 'หมายเหตุ'], ['Note', 'Hinweis', '说明']),
+};
+
+String _mpn(Random r) {
+  const al = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789';
+  final n = 9 + r.nextInt(9);
+  final b = StringBuffer(String.fromCharCodes([65 + r.nextInt(26), 65 + r.nextInt(26)]));
+  for (var i = 0; i < n; i++) {
+    if (i == 6 && r.nextBool()) b.write('-');
+    b.write(al[r.nextInt(al.length)]);
+  }
+  return b.toString();
+}
+
 String _partNo(Random r, int style, int i) => switch (style) {
   0 => 'K${1100 + r.nextInt(400)}-${r.nextInt(999999).toString().padLeft(6, '0')}-${i.toString().padLeft(3, '0')}A',
   1 => '${10 + r.nextInt(80)}-${r.nextInt(9999).toString().padLeft(4, '0')}-${i.toString().padLeft(3, '0')}',
@@ -159,8 +190,37 @@ GeneratedBom generateBom(int seed) {
     parts.add(TruePart(pn, f.names[language]!, f.spec(r), refs, qty, f.kind));
   }
 
+  // Optional attribute columns, from their own random stream so the base
+  // layout of a seed stays the same.
+  final r2 = Random(seed * 7919 + 17);
+  final attr = <String>[
+    if (r2.nextDouble() < 0.45) 'maker',
+    if (r2.nextDouble() < 0.35) 'mpn',
+    if (r2.nextDouble() < 0.3) 'alt',
+    if (r2.nextDouble() < 0.25) 'dnp',
+    if (r2.nextDouble() < 0.15) 'level',
+    if (r2.nextDouble() < 0.3) 'remark',
+  ];
+  final dottedLevel = r2.nextBool();
+  final dnpHeader = _pick(r2, headerStyle == 'rare' ? _attrHeaders['dnp']!.$2 : _attrHeaders['dnp']!.$1);
+  final fittedStyle = !dnpHeader.contains('DNP');
+  if (attr.contains('level')) {
+    // One sub-assembly on level 1; the parts below it on level 2.
+    final asm = TruePart(_partNo(r2, pnStyle, 900), {'zh': 'PCBA 主板', 'en': 'PCBA main board', 'de': 'Leiterplattenbaugruppe', 'th': 'แผงวงจร PCBA'}[language]!, 'V1.0', const [], 1, 'pcb')..level = 1;
+    for (final p in parts) {
+      p.level = 2;
+    }
+    parts.insert(0, asm);
+  }
+  for (final p in parts) {
+    if (attr.contains('maker')) p.maker = _pick(r2, _makers);
+    if (attr.contains('mpn')) p.mpn = _mpn(r2);
+    if (attr.contains('alt') && r2.nextDouble() < 0.35) p.alternates = [_partNo(r2, pnStyle, 500 + r2.nextInt(400))];
+    if (attr.contains('dnp') && p.refs.isNotEmpty && r2.nextDouble() < 0.15) p.dnp = true;
+  }
+
   // Columns in random order, with unrelated ones.
-  final fields = ['partNo', if (split) ...['name', 'spec'] else 'desc', 'qty', 'refs'];
+  final fields = ['partNo', if (split) ...['name', 'spec'] else 'desc', 'qty', 'refs', ...attr];
   final junk = {for (var k = 0; k < r.nextInt(3); k++) _junk[r.nextInt(_junk.length)]}.toList();
   final order = [...fields, ...junk.map((j) => 'junk:$j')]..shuffle(r);
   if (r.nextDouble() < 0.5) order.insert(0, 'serial');
@@ -169,6 +229,8 @@ GeneratedBom generateBom(int seed) {
   String header(String f) {
     if (f == 'serial') return _pick(r, ['No.', '序号', 'Pos', '#']);
     if (f.startsWith('junk:')) return f.substring(5);
+    if (f == 'dnp') return dnpHeader;
+    if (_attrHeaders.containsKey(f)) return _pick(r2, headerStyle == 'rare' ? _attrHeaders[f]!.$2 : _attrHeaders[f]!.$1);
     final key = f == 'desc' ? 'name' : f;
     if (headerStyle == 'rare') return _pick(r, _rare[key]!);
     final byLang = _common[key]!;
@@ -198,6 +260,12 @@ GeneratedBom generateBom(int seed) {
           'desc' => '${p.name} ${p.spec}',
           'qty' => qtyText,
           'refs' => _refsText(r, first, refStyle),
+          'maker' => p.maker,
+          'mpn' => p.mpn,
+          'alt' => p.alternates.join(','),
+          'dnp' => p.dnp ? _pick(r2, fittedStyle ? ['N', '否', 'NO'] : ['DNP', 'NC', '不贴']) : (fittedStyle ? _pick(r2, ['Y', '是', 'YES']) : ''),
+          'level' => dottedLevel ? '${'.' * p.level!}${p.level}' : '${p.level}',
+          'remark' => _pick(r2, ['RoHS', '无铅', 'Lead-free', '环保 RoHS', 'REACH']),
           _ => r.nextDouble() < 0.5 ? '' : _pick(r, ['Y', 'N/A', 'OK', '3 weeks', '0.02']),
         },
     ]);
