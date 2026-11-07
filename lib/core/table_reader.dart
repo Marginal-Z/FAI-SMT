@@ -20,15 +20,34 @@ class TableReadException implements Exception {
   String toString() => 'TableReadException($code) $detail';
 }
 
-/// One sheet as rows of trimmed strings.
+/// One sheet as rows of trimmed strings, with its merged cell ranges.
 class Grid {
-  Grid(this.name, this.rows);
+  Grid(this.name, this.rows, {this.merges = const []});
 
   final String name;
   final List<List<String>> rows;
 
+  /// Merged ranges as 0-based (first row, first column, last row, last
+  /// column); only the first cell of a range holds the value.
+  final List<(int, int, int, int)> merges;
+
+  late final Map<int, (int, int, int, int)> _mergeAt = {
+    for (final m in merges)
+      for (var r = m.$1; r <= m.$3 && r - m.$1 < 2000; r++)
+        for (var c = m.$2; c <= m.$4 && c - m.$2 < 200; c++) r * 65536 + c: m,
+  };
+
   String cell(int r, int c) =>
       (r < rows.length && c < rows[r].length) ? rows[r][c] : '';
+
+  /// The merged range (r, c) lies in, if any.
+  (int, int, int, int)? mergeAt(int r, int c) => merges.isEmpty ? null : _mergeAt[r * 65536 + c];
+
+  /// What is shown at (r, c): a merged cell shows its range's value.
+  String shown(int r, int c) {
+    final m = mergeAt(r, c);
+    return m == null ? cell(r, c) : cell(m.$1, m.$2);
+  }
 }
 
 Future<List<Grid>> readTableFile(String path) async {
@@ -65,7 +84,7 @@ List<Grid> _readXlsx(Uint8List bytes) {
     while (rows.isNotEmpty && rows.last.every((s) => s.isEmpty)) {
       rows.removeLast();
     }
-    if (rows.isNotEmpty) grids.add(Grid(sh.name, rows));
+    if (rows.isNotEmpty) grids.add(Grid(sh.name, rows, merges: sh.merges));
   }
   if (grids.isEmpty) throw TableReadException('empty');
   return grids;
@@ -102,6 +121,7 @@ String _utf16(Uint8List b, {required bool little}) {
 List<List<String>> parseDelimited(String text) {
   final lines = const LineSplitter().convert(text);
   final sample = lines.where((l) => l.trim().isNotEmpty).take(30).toList();
+  final quotedBreak = RegExp(r'"[^"]*\n').hasMatch(text.replaceAll('\r\n', '\n'));
   String? delim;
   var best = 0;
   for (final d in ['\t', ',', ';']) {
@@ -112,6 +132,8 @@ List<List<String>> parseDelimited(String text) {
     }
   }
   if (best < sample.length ~/ 2) delim = null;
+  // A quoted field holding a line break: parse the text as a whole.
+  if (delim != null && quotedBreak) return _parseCsv(text.replaceAll('\r\n', '\n'), delim);
   final rows = <List<String>>[];
   for (final line in lines) {
     if (line.trim().isEmpty) {
@@ -121,6 +143,50 @@ List<List<String>> parseDelimited(String text) {
     rows.add(delim == null
         ? _splitWhitespace(line)
         : _splitQuoted(line, delim).map((s) => s.trim()).toList());
+  }
+  return rows;
+}
+
+/// RFC 4180 style: quotes may hold delimiters, doubled quotes and line
+/// breaks; one row per record.
+List<List<String>> _parseCsv(String text, String delim) {
+  final rows = <List<String>>[];
+  var row = <String>[];
+  final buf = StringBuffer();
+  var quoted = false;
+  void endField() {
+    row.add(buf.toString().trim());
+    buf.clear();
+  }
+
+  for (var i = 0; i < text.length; i++) {
+    final ch = text[i];
+    if (quoted) {
+      if (ch == '"') {
+        if (i + 1 < text.length && text[i + 1] == '"') {
+          buf.write('"');
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        buf.write(ch);
+      }
+    } else if (ch == '"') {
+      quoted = true;
+    } else if (ch == delim) {
+      endField();
+    } else if (ch == '\n') {
+      endField();
+      rows.add(row.every((s) => s.isEmpty) ? const [] : row);
+      row = <String>[];
+    } else {
+      buf.write(ch);
+    }
+  }
+  if (buf.isNotEmpty || row.isNotEmpty) {
+    endField();
+    rows.add(row);
   }
   return rows;
 }

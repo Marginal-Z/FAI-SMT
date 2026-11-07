@@ -17,6 +17,7 @@ void main(List<String> args) {
       groups.putIfAbsent('layout ${g.layout.category}', Tally.new),
       groups.putIfAbsent('lang ${g.layout.language}', Tally.new),
       groups.putIfAbsent('desc ${g.layout.splitDescription ? 'split' : 'single'}', Tally.new),
+      groups.putIfAbsent('pn style ${g.layout.partNoStyle}', Tally.new),
     ]);
   }
   String pct(double v) => '${(v * 100).toStringAsFixed(1)}%'.padLeft(7);

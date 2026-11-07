@@ -12,10 +12,13 @@ import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
 class XlsxSheet {
-  XlsxSheet(this.name, this.rows);
+  XlsxSheet(this.name, this.rows, [this.merges = const []]);
 
   final String name;
   final List<List<String>> rows;
+
+  /// Merged ranges as 0-based (first row, first column, last row, last column).
+  final List<(int, int, int, int)> merges;
 }
 
 List<XlsxSheet> readXlsx(Uint8List bytes) {
@@ -51,7 +54,8 @@ List<XlsxSheet> readXlsx(Uint8List bytes) {
     final path = rels[rid];
     final xml = path == null ? null : text(path);
     if (xml == null) continue;
-    sheets.add(XlsxSheet(s.getAttribute('name') ?? 'Sheet', _readSheet(xml, shared)));
+    final doc = XmlDocument.parse(xml);
+    sheets.add(XlsxSheet(s.getAttribute('name') ?? 'Sheet', _readSheet(doc, shared), _merges(doc)));
   }
   return sheets;
 }
@@ -59,9 +63,29 @@ List<XlsxSheet> readXlsx(Uint8List bytes) {
 String _textOf(XmlElement e) =>
     e.findAllElements('t').where((t) => t.parentElement?.name.local != 'rPh').map((t) => t.innerText).join();
 
-List<List<String>> _readSheet(String xml, List<String> shared) {
+List<(int, int, int, int)> _merges(XmlDocument doc) {
+  final out = <(int, int, int, int)>[];
+  for (final m in doc.findAllElements('mergeCell')) {
+    final parts = (m.getAttribute('ref') ?? '').split(':');
+    if (parts.length != 2) continue;
+    final (r0, c0) = _cellRef(parts[0]);
+    final (r1, c1) = _cellRef(parts[1]);
+    if (r0 < 0 || c0 < 0 || r1 < r0 || c1 < c0) continue;
+    out.add((r0, c0, r1, c1));
+  }
+  return out;
+}
+
+/// `B12` → (11, 1).
+(int, int) _cellRef(String ref) {
+  final m = RegExp(r'^\$?([A-Za-z]+)\$?(\d+)$').firstMatch(ref.trim());
+  if (m == null) return (-1, -1);
+  return (int.parse(m.group(2)!) - 1, _colIndex(m.group(1)!));
+}
+
+List<List<String>> _readSheet(XmlDocument xml, List<String> shared) {
   final rows = <List<String>>[];
-  final data = XmlDocument.parse(xml).findAllElements('sheetData').firstOrNull;
+  final data = xml.findAllElements('sheetData').firstOrNull;
   if (data == null) return rows;
   for (final row in data.findElements('row')) {
     final rAttr = int.tryParse(row.getAttribute('r') ?? '');

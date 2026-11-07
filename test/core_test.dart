@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:ffi' show Abi;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +108,60 @@ void main() {
       expect(f.warnings.map((w) => w.code), containsAll(['w_qty_refs', 'w_dup_ref']));
     });
 
+    test('two-row header with merged cells; part numbers merged down', () {
+      // Row 0: 料号 and 用量 merged down, 物料 merged across 品名 + 规格.
+      final grid = Grid('s', [
+        ['料号', '物料', '', '用量', '位号'],
+        ['', '品名', '规格', '', ''],
+        ['K1', '贴片电阻', '10K 0402', '2', 'R1,R2'],
+        ['K2', '贴片电容', '1uF 0402', '1', 'C1'],
+        ['', '', '', '1', 'C2'],
+        ['K3', '电感', '2.2uH', '1', 'L1'],
+      ], merges: [(0, 0, 1, 0), (0, 1, 0, 2), (0, 3, 1, 3), (0, 4, 1, 4), (3, 0, 4, 0), (3, 1, 4, 1), (3, 2, 4, 2)]);
+      final d = readBom([grid]);
+      expect(d.column(BomRole.partNo)!.header, '料号');
+      expect(d.columns.where((c) => c.role == BomRole.description).map((c) => c.header), ['物料 品名', '物料 规格']);
+      expect(d.records.first.source.row, 3);
+      // K2 is merged over two rows, each with its own quantity and designator.
+      final k2 = d.parts.firstWhere((p) => p.partNo == 'K2');
+      expect(k2.quantity, 2);
+      expect(k2.refs, ['C1', 'C2']);
+      expect(k2.rows, [4, 5]);
+      expect(d.parts.firstWhere((p) => p.partNo == 'K3').quantity, 1);
+    });
+    test('quoted CSV fields may hold line breaks', () {
+      final text = 'PN,Description,Qty,Designator\nK1,"Resistor 10K\n0402",3,"R1,\nR2,R3"\nK2,Cap 1uF 0402,1,C1\n';
+      final grids = readTableBytes(Uint8List.fromList(utf8.encode(text)), 'x.csv');
+      final d = readBom(grids);
+      expect(d.parts.map((p) => p.partNo), ['K1', 'K2']);
+      expect(d.parts.first.refs, ['R1', 'R2', 'R3']);
+      expect(d.parts.first.description, 'Resistor 10K 0402');
+      expect(d.records[1].source.row, 3);
+    });
+    test('sheets with the same columns are one BOM', () {
+      List<List<String>> sheet(List<List<String>> rows) => [['料号', '描述', '用量', '位号'], ...rows];
+      final d = readBom([
+        Grid('TOP', sheet([['K1', '电阻 10K 0402', '2', 'R1,R2'], ['K2', '电容 1uF', '1', 'C1']])),
+        Grid('BOT', sheet([['K1', '电阻 10K 0402', '1', 'R3'], ['K3', '电感 1uH', '1', 'L1']])),
+        Grid('Notes', [['Rev', 'Date'], ['A', '2026-01-01']]),
+      ]);
+      expect(d.records.map((r) => r.id), ['S:TOP!2', 'S:TOP!3', 'S:BOT!2', 'S:BOT!3']);
+      expect(d.parts.firstWhere((p) => p.partNo == 'K1').refs, ['R1', 'R2', 'R3']);
+      expect(d.sheets, ['TOP', 'BOT', 'Notes']);
+    });
+    test('digit-only part numbers and a brand column', () {
+      final d = bom([
+        ['460100030', '贴片电阻', '10K ±1% 0402', 'Yageo', '2', 'R1,R2'],
+        ['460100031', '贴片电容', '1uF 10V 0402', 'Murata', '1', 'C1'],
+        ['460100032', '贴片电感', '2.2uH 2A', 'Sunlord', '2', 'L1,L2'],
+        ['460100033', '晶振', '24MHz 3225', 'TXC', '1', 'Y1'],
+        ['460100034', '贴片电阻', '4.7K ±1% 0402', 'Yageo', '1', 'R3'],
+      ]);
+      expect(d.column(BomRole.partNo)!.index, 0);
+      expect(d.column(BomRole.quantity)!.index, 4);
+      expect(d.columns.where((c) => c.role == BomRole.description).map((c) => c.index), [1, 2]);
+      expect(d.columns.firstWhere((c) => c.index == 3).role, isNot(BomRole.description));
+    });
     test('a sheet without part numbers is refused', () {
       expect(() => bom([['hello'], ['world']]), throwsA(isA<BomReadException>()));
     });

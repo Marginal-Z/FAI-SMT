@@ -22,7 +22,7 @@ class TruePart {
 
 /// How the sheet was laid out, for per-category statistics.
 class Layout {
-  Layout({required this.language, required this.headerless, required this.titleRows, required this.splitDescription, required this.headerStyle});
+  Layout({required this.language, required this.headerless, required this.titleRows, required this.splitDescription, required this.headerStyle, this.partNoStyle = 0});
 
   final String language;
   final bool headerless;
@@ -31,6 +31,9 @@ class Layout {
 
   /// `common` (words a BOM usually uses), `rare` (unusual wording) or `none`.
   final String headerStyle;
+
+  /// 0 letters+digits with dashes, 1 digit groups, 2 digits only, 3 prefix-number.
+  final int partNoStyle;
 
   String get category => headerless ? 'headerless' : '$headerStyle-header';
 }
@@ -208,7 +211,7 @@ GeneratedBom generateBom(int seed) {
   return GeneratedBom(
     Grid('Sheet1', rows),
     parts,
-    Layout(language: language, headerless: headerless, titleRows: titleRows, splitDescription: split, headerStyle: headerStyle),
+    Layout(language: language, headerless: headerless, titleRows: titleRows, splitDescription: split, headerStyle: headerStyle, partNoStyle: pnStyle),
     columnOf,
   );
 }

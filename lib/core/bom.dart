@@ -6,6 +6,7 @@ library;
 import 'dart:math' as math;
 
 import 'bom_model.dart';
+import 'knowledge.dart';
 import 'refdes.dart';
 import 'table_reader.dart';
 
@@ -45,6 +46,12 @@ final _cjk = RegExp(r'[⺀-鿿豈-﫿]');
 final _numberCell = RegExp(r'^-?\d+(?:\.\d+)?$');
 final _designator = RegExp(r'^\d{0,3}[A-Z]{1,6}\d{1,5}[A-Z]?$');
 final _partNoLike = RegExp(r'^[A-Za-z0-9][A-Za-z0-9\-_./#]{3,39}$');
+// Long digit-only codes (T100 / SAP style part numbers such as 460100030):
+// numbers by form, but no quantity or row number is this long.
+final _digitCode = RegExp(r'^\d{6,20}$');
+// Words in any script (names such as 电阻, Resistor, ตัวต้านทาน).
+final _wordy = RegExp(r'^[\p{L}\p{M}][\p{L}\p{M}\s\-/&().]*$', unicode: true);
+final _letter = RegExp(r'\p{L}', unicode: true);
 final _param = RegExp(r'\d+(?:\.\d+)?\s?(?:K|M|R|Ω|UF|NF|PF|MF|UH|NH|MH|V|W|A|%|MHZ|KHZ|HZ|PPM)\b|\b(?:01005|0201|0402|0603|0805|1206|1210|2512)\b', caseSensitive: false);
 
 double? parseQuantity(String s) {
@@ -105,7 +112,47 @@ BomDocument readBom(List<Grid> sheets, {String file = '', String id = 'S'}) {
     }
   }
   if (best == null) throw BomReadException(sheets.every((g) => g.rows.isEmpty) ? 'bom_empty' : 'bom_no_parts');
-  return best;
+  // Further sheets with the same columns (a BOM split over several sheets,
+  // e.g. top and bottom side) are read into the same document.
+  final layout = _layoutKey(best);
+  final more = <BomDocument>[];
+  for (final g in sheets) {
+    if (g.name == best.sheet) continue;
+    try {
+      final f = _readSheet(g, file: file, id: id, sheets: names);
+      if (_layoutKey(f) == layout && layout.isNotEmpty) more.add(f);
+    } on BomReadException {
+      continue;
+    }
+  }
+  if (more.isEmpty) return best;
+  final records = [...best.records, for (final f in more) ...f.records];
+  final warnings = [
+    for (final f in [best, ...more]) ...f.warnings.where((w) => w.code == 'w_no_part_no'),
+  ];
+  final doc = BomDocument(id: id, file: file, sheet: best.sheet, sheets: names, headerRow: best.headerRow, columns: best.columns, records: records, warnings: warnings);
+  _partWarnings(doc);
+  return doc;
+}
+
+/// Columns by role and header; equal for sheets of one BOM.
+String _layoutKey(BomDocument d) =>
+    d.headerRow < 0 ? '' : [for (final c in d.columns) '${c.index}:${c.role.name}:${cleanCell(c.header).toLowerCase()}'].join('|');
+
+/// Whether the row under the header row is the second row of a two-row
+/// header.
+bool _secondHeaderRow(Grid g, int headerRow, int width) {
+  var mergedDown = 0, groupAbove = false;
+  for (var c = 0; c < width; c++) {
+    final m = g.mergeAt(headerRow, c);
+    if (m == null) continue;
+    if (m.$1 == headerRow && m.$3 > headerRow) mergedDown++;
+    if (m.$1 == headerRow && m.$4 > m.$2 && cleanCell(g.cell(headerRow + 1, c)).isNotEmpty) groupAbove = true;
+  }
+  if (mergedDown == 0 && !groupAbove) return false;
+  // The next row holds only words, no part data.
+  final next = [for (var c = 0; c < width; c++) cleanCell(g.cell(headerRow + 1, c))].where((v) => v.isNotEmpty).toList();
+  return next.isNotEmpty && next.every((v) => !_numberCell.hasMatch(v) && !splitRefs(v).every(_designator.hasMatch));
 }
 
 /// Header row: the row in the first 30 with the most header words; without
@@ -143,7 +190,7 @@ int _headerRow(Grid g) {
 }
 
 class _Features {
-  double fill = 0, refs = 0, refsMany = 0, number = 0, index = 0, partNo = 0, unique = 0, text = 0, avgLen = 0;
+  double fill = 0, refs = 0, refsMany = 0, number = 0, index = 0, partNo = 0, unique = 0, text = 0, avgLen = 0, code = 0, wordy = 0, letters = 0;
 }
 
 _Features _features(List<String> values, int rows) {
@@ -151,7 +198,7 @@ _Features _features(List<String> values, int rows) {
   final v = values.where((s) => s.isNotEmpty).toList();
   if (v.isEmpty || rows == 0) return f;
   f.fill = v.length / rows;
-  var refs = 0, many = 0, num = 0, pn = 0, text = 0, len = 0;
+  var refs = 0, many = 0, num = 0, pn = 0, text = 0, len = 0, code = 0, wordy = 0, letters = 0;
   int? prev;
   var consecutive = 0;
   for (final s in v) {
@@ -167,8 +214,15 @@ _Features _features(List<String> values, int rows) {
       if (n != null && prev != null && n == prev + 1) consecutive++;
       prev = n;
     }
-    if (_partNoLike.hasMatch(s) && RegExp(r'\d').hasMatch(s) && !_numberCell.hasMatch(s) && !_designator.hasMatch(s.toUpperCase())) pn++;
+    if (_digitCode.hasMatch(s)) {
+      code++;
+      pn++;
+    } else if (_partNoLike.hasMatch(s) && RegExp(r'\d').hasMatch(s) && !_numberCell.hasMatch(s) && !_designator.hasMatch(s.toUpperCase())) {
+      pn++;
+    }
     if (_cjk.hasMatch(s) || _param.hasMatch(s) || s.contains(' ')) text++;
+    if (_wordy.hasMatch(s) && s.length >= 2) wordy++;
+    if (_letter.hasMatch(s)) letters++;
   }
   f.refs = refs / v.length;
   f.refsMany = many / v.length;
@@ -178,6 +232,9 @@ _Features _features(List<String> values, int rows) {
   f.unique = v.toSet().length / v.length;
   f.text = text / v.length;
   f.avgLen = len / v.length;
+  f.code = code / v.length;
+  f.wordy = wordy / v.length;
+  f.letters = letters / v.length;
   return f;
 }
 
@@ -185,12 +242,22 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   final headerRow = _headerRow(g);
   final width = g.rows.fold<int>(0, (m, r) => math.max(m, r.length));
   if (width == 0) throw BomReadException('bom_empty');
+  // A two-row header: a header cell merged down into the next row, or a
+  // group title merged across columns above the sub-titles.
+  final twoRow = headerRow >= 0 && headerRow + 1 < g.rows.length && _secondHeaderRow(g, headerRow, width);
+  final lastHeader = twoRow ? headerRow + 1 : headerRow;
   final data = [
-    for (var r = headerRow + 1; r < g.rows.length; r++)
+    for (var r = lastHeader + 1; r < g.rows.length; r++)
       if (g.rows[r].any((c) => c.trim().isNotEmpty)) r,
   ];
   if (data.isEmpty) throw BomReadException('bom_no_parts');
-  String header(int c) => headerRow >= 0 ? cleanCell(g.cell(headerRow, c)) : '';
+  final headers = [
+    for (var c = 0; c < width; c++)
+      headerRow < 0
+          ? ''
+          : {for (var r = headerRow; r <= lastHeader; r++) cleanCell(g.shown(r, c))}.where((h) => h.isNotEmpty).join(' '),
+  ];
+  String header(int c) => headers[c];
   final features = [for (var c = 0; c < width; c++) _features([for (final r in data) cleanCell(g.cell(r, c))], data.length)];
 
   final used = <int>{};
@@ -214,6 +281,12 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
     return best;
   }
 
+  // A column of component makers (named in general industry knowledge).
+  bool isMaker(int c) {
+    final v = [for (final r in data) cleanCell(g.cell(r, c)).toLowerCase()].where((x) => x.isNotEmpty).toList();
+    return v.isNotEmpty && v.where(makers.contains).length / v.length >= 0.5;
+  }
+
   // What a recognition was based on: the header, the contents, or both.
   String evidence(int c, BomRole role) {
     final byHeader = _hint(header(c), role) > 0;
@@ -235,7 +308,7 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   // Sequential numbers (序号) are not compared.
   final indexCols = <int>{
     for (var c = 0; c < width; c++)
-      if ((features[c].number > 0.9 && features[c].index > 0.8) || (_hint(header(c), BomRole.serial) >= 1 && features[c].number > 0.6)) c,
+      if (features[c].code < 0.5 && ((features[c].number > 0.9 && features[c].index > 0.8) || (_hint(header(c), BomRole.serial) >= 1 && features[c].number > 0.6))) c,
   };
   used.addAll(indexCols);
 
@@ -254,7 +327,7 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
     return n == 0 ? 0 : hit / n;
   }
 
-  final qtyCol = pick((c) => features[c].number * features[c].fill + qtyMatch(c) * 0.6 + _hint(header(c), BomRole.quantity) * 0.8, min: 0.4);
+  final qtyCol = pick((c) => features[c].number * features[c].fill * (1 - features[c].code) + qtyMatch(c) * 0.6 + _hint(header(c), BomRole.quantity) * 0.8, min: 0.4);
   final pnCol = pick((c) => features[c].partNo * features[c].fill * (0.4 + 0.6 * features[c].unique) + _hint(header(c), BomRole.partNo) * 0.8, min: 0.3);
   // Description: one column, or name and specification side by side.
   final descCols = <int>[];
@@ -263,7 +336,11 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
     descCols.add(first);
     for (var c = 0; c < width; c++) {
       if (used.contains(c)) continue;
-      if (_hint(header(c), BomRole.description) >= 0.7 && features[c].fill > 0.3) {
+      final f = features[c];
+      // By header, or by content: a well-filled column of names or
+      // parameters that is neither a code nor a number.
+      final byContent = f.fill >= 0.7 && f.letters >= 0.6 && (f.text >= 0.5 || f.wordy >= 0.7) && f.partNo < 0.3 && f.number < 0.2 && f.refs < 0.2 && !isMaker(c);
+      if ((_hint(header(c), BomRole.description) >= 0.7 && f.fill > 0.3) || byContent) {
         descCols.add(c);
         used.add(c);
       }
@@ -297,7 +374,17 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   final records = <BomRecord>[];
   final headerKeys = {for (final col in columns) cleanCell(col.header)};
   for (final r in data) {
-    String cell(int? c) => c == null ? '' : cleanCell(g.cell(r, c));
+    // A cell merged down from the row above shows that row's value;
+    // quantities and designators are only read where written, so they
+    // are never counted twice.
+    String cell(int? c) {
+      if (c == null) return '';
+      final own = cleanCell(g.cell(r, c));
+      if (own.isNotEmpty) return own;
+      final m = g.mergeAt(r, c);
+      return m != null && m.$1 < r && m.$2 == m.$4 ? cleanCell(g.cell(m.$1, m.$2)) : '';
+    }
+
     final pn = cell(pnCol);
     final desc = [for (final c in descCols) cell(c)].where((s) => s.isNotEmpty).join(' ');
     final refs = refsCol == null ? const <String>[] : splitRefs(g.cell(r, refsCol));
@@ -333,7 +420,14 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   if (records.isEmpty) throw BomReadException('bom_no_parts');
   final doc = BomDocument(id: id, file: file, sheet: g.name, sheets: sheets, headerRow: headerRow, columns: columns, records: records, warnings: warnings);
 
-  // Checks inside one file, per part.
+  _partWarnings(doc);
+  return doc;
+}
+
+/// Checks inside one file, per part: quantity against designator count,
+/// designators used twice.
+void _partWarnings(BomDocument doc) {
+  final warnings = doc.warnings;
   final seen = <String, String>{};
   for (final p in doc.parts) {
     if (p.quantity != null && p.refs.isNotEmpty && p.quantity != p.refs.length) {
@@ -345,5 +439,4 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
       seen[ref] = p.partNo;
     }
   }
-  return doc;
 }
