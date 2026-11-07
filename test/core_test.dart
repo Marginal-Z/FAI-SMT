@@ -3,7 +3,7 @@ import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:excel/excel.dart';
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/core/ai_check.dart';
 import 'package:smt_fai/core/bom.dart';
@@ -14,6 +14,7 @@ import 'package:smt_fai/core/report.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/core/table_reader.dart';
 import 'package:smt_fai/core/updater.dart';
+import 'package:smt_fai/core/xlsx_writer.dart';
 import 'package:smt_fai/l10n/strings.dart';
 import 'package:smt_fai/version.dart';
 
@@ -374,22 +375,49 @@ void main() {
         model: 'm',
         at: DateTime(2026),
       );
-      final bytes = exportCompareWorkbook(r, Strings('zh').t, ai: ai, singleName: 's.xlsx', aName: 'a.xlsx', bName: 'b.xlsx');
-      final book = Excel.decodeBytes(bytes);
-      final sheet = book.tables[Strings('zh').t('rep_sheet')]!;
-      final header = sheet.rows.indexWhere((row) => row.isNotEmpty && row.first?.value.toString() == '#');
-      expect(sheet.rows[header].first!.cellStyle!.backgroundColor.colorHex, contains('E5E7EB'));
-      expect(header, greaterThan(0));
-      final rows = sheet.rows.skip(header + 1).toList();
-      expect(rows.map((row) => row[1]!.value.toString()), [for (final x in r.rows) x.partNo]);
-      final diff = rows.firstWhere((row) => row[1]?.value.toString() == 'K1103-0106K0-001A');
-      expect(diff[4]!.cellStyle!.backgroundColor.colorHex, contains('FFE3A3'));
-      expect(diff.last!.value.toString(), '电压不同');
-      expect(book.tables.containsKey(Strings('zh').t('rep_ai_sheet')), isTrue);
+      final t = Strings('zh').t;
+      final book = buildCompareWorkbook(r, t, ai: ai, singleName: 's.xlsx', aName: 'a.xlsx', bName: 'b.xlsx');
+      final sheet = book.sheets.first;
+      expect(sheet.name, t('rep_sheet'));
+      final header = [for (var i = 0; i < sheet.rowCount; i++) i].firstWhere((i) => sheet.value(i, 0) == '#');
+      expect(sheet.styleAt(header, 0)!.fill, 'E5E7EB');
+      expect(sheet.styleAt(header, 0)!.bold, isTrue);
+      final rows = [for (var i = header + 1; i < sheet.rowCount; i++) i];
+      expect(rows.map((i) => sheet.value(i, 1)), [for (final x in r.rows) x.partNo]);
+      final diff = rows.firstWhere((i) => sheet.value(i, 1) == 'K1103-0106K0-001A');
+      expect(sheet.styleAt(diff, 4)!.fill, 'FFE3A3');
+      expect(sheet.styleAt(diff, 2)!.fill, 'FDE2E1');
+      var last = 0;
+      while (sheet.value(header, last + 1) != null) {
+        last++;
+      }
+      expect(sheet.value(diff, last), '电压不同');
+      expect(sheet.styleAt(diff, last)!.fill, 'E4D7FB');
+      expect(book.sheets.map((x) => x.name), contains(t('rep_ai_sheet')));
       // Every row cites its source records.
-      final srcCol = sheet.rows[header].indexWhere((c) => c?.value.toString() == Strings('zh').t('rep_src_single'));
-      expect(diff[srcCol]!.value.toString(), startsWith('S:BOM!'));
-      expect(diff[srcCol + 1]!.value.toString(), startsWith('A:A-BOM!'));
+      final srcCol = [for (var c = 0; c <= last; c++) c].firstWhere((c) => sheet.value(header, c) == t('rep_src_single'));
+      expect(sheet.value(diff, srcCol), startsWith('S:BOM!'));
+      expect(sheet.value(diff, srcCol + 1), startsWith('A:A-BOM!'));
+      // The file reads back with the same values.
+      final grids = readTableBytes(book.encode(), 'r.xlsx');
+      expect(grids.map((g) => g.name), [t('rep_sheet'), t('rep_ai_sheet')]);
+      expect(grids.first.cell(diff, 1), 'K1103-0106K0-001A');
+      expect(grids.first.cell(diff, 0), '${rows.indexOf(diff) + 1}');
+      expect(grids.first.cell(header, srcCol), t('rep_src_single'));
+    });
+    test('xlsx writer: escaping, control characters, styles in the file', () {
+      final w = XlsxWriter();
+      final s = w.addSheet('A/B:C*?[x]');
+      s.appendRow(['<a & "b">', 'line\nbreak\u0001', 3, 2.5, null, '']);
+      s.style(0, 0, const XlsxStyle(bold: true, fill: 'FFE3A3'));
+      final bytes = w.encode();
+      final g = readTableBytes(bytes, 'w.xlsx').single;
+      expect(g.name, 'A B C   x');
+      expect(g.rows.first.take(4), ['<a & "b">', 'line\nbreak', '3', '2.5']);
+      final zip = ZipDecoder().decodeBytes(bytes);
+      final styles = utf8.decode(zip.findFile('xl/styles.xml')!.content);
+      expect(styles, contains('FFFFE3A3'));
+      expect(utf8.decode(zip.findFile('xl/worksheets/sheet1.xml')!.content), contains('<c r="A1" s="1" t="inlineStr">'));
     });
     test('AI reply: the JSON is found inside other text', () {
       final j = extractJson('Here you go:\n```json\n{"summary":"ok","findings":[{"partNo":"K1","severity":"error","message":"x"}]}\n```');

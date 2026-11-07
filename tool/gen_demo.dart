@@ -5,7 +5,7 @@
 //   dart run tool/gen_demo.dart
 import 'dart:io';
 
-import 'package:excel/excel.dart';
+import 'package:smt_fai/core/xlsx_writer.dart';
 
 /// (part no, name, spec, designators, brand)
 typedef Part = (String, String, String, List<String>, String);
@@ -50,11 +50,10 @@ void main() {
   }
 
   // ---- Single BOM: a title line, then 序号 / 料号 / 品名 / 规格 / 用量 / 位号 / 品牌.
-  final book = Excel.createExcel();
-  final sheet = book['BOM'];
-  book.delete('Sheet1');
-  sheet.appendRow([TextCellValue('BOM 物料清单  机种: S905-MB-V1.2')]);
-  sheet.appendRow([for (final h in ['序号', '料号', '品名', '规格', '用量', '位号', '品牌']) TextCellValue(h)]);
+  final book = XlsxWriter();
+  final sheet = book.addSheet('BOM');
+  sheet.appendRow(['BOM 物料清单  机种: S905-MB-V1.2']);
+  sheet.appendRow([for (final h in ['序号', '料号', '品名', '规格', '用量', '位号', '品牌']) h]);
   var n = 0;
   for (final p in _bom) {
     n++;
@@ -63,26 +62,25 @@ void main() {
     final first = refs.length > 5 ? refs.sublist(0, 5) : refs;
     final rest = refs.length > 5 ? refs.sublist(5) : const <String>[];
     sheet.appendRow([
-      IntCellValue(n),
-      TextCellValue(p.$1),
-      TextCellValue(p.$2),
-      TextCellValue(p.$3),
-      IntCellValue(refs.isEmpty ? 1 : refs.length),
-      TextCellValue(first.join(',')),
-      TextCellValue(p.$5),
+      n,
+      p.$1,
+      p.$2,
+      p.$3,
+      refs.isEmpty ? 1 : refs.length,
+      first.join(','),
+      p.$5,
     ]);
     if (rest.isNotEmpty) {
-      sheet.appendRow([TextCellValue(''), TextCellValue(''), TextCellValue(''), TextCellValue(''), TextCellValue(''), TextCellValue(rest.join(',')), TextCellValue('')]);
+      sheet.appendRow(['', '', '', '', '', rest.join(','), '']);
     }
   }
-  File('${dir.path}/demo_single_BOM.xlsx').writeAsBytesSync(book.encode()!);
+  File('${dir.path}/demo_single_BOM.xlsx').writeAsBytesSync(book.encode());
 
   // ---- A-BOM: English headers, name and spec in one description column,
   // the Chinese names worded differently (which still matches).
-  final a = Excel.createExcel();
-  final sa = a['A-BOM'];
-  a.delete('Sheet1');
-  sa.appendRow([for (final h in ['Item', 'Part Number', 'Description', 'Qty', 'Reference', '品牌']) TextCellValue(h)]);
+  final a = XlsxWriter();
+  final sa = a.addSheet('A-BOM');
+  sa.appendRow([for (final h in ['Item', 'Part Number', 'Description', 'Qty', 'Reference', '品牌']) h]);
   const reworded = {'贴片电阻': '贴片电阻器', '贴片电容': '贴片陶瓷电容', '贴片电感': '功率电感', '贴片MOS': '贴片MOS管'};
   var item = 0;
   for (final p in _bom) {
@@ -109,27 +107,26 @@ void main() {
     }
     item++;
     sa.appendRow([
-      IntCellValue(item),
-      TextCellValue(p.$1),
-      TextCellValue('${reworded[p.$2] ?? p.$2} $spec'),
-      IntCellValue(qty),
-      TextCellValue(refs.join(' ')),
-      TextCellValue(brand),
+      item,
+      p.$1,
+      '${reworded[p.$2] ?? p.$2} $spec',
+      qty,
+      refs.join(' '),
+      brand,
     ]);
   }
   item++;
-  sa.appendRow([IntCellValue(item), TextCellValue('K1102-1000R0-009A'), TextCellValue('贴片电阻 1K ±1% 0402'), IntCellValue(1), TextCellValue('R99'), TextCellValue('Yageo')]);
-  File('${dir.path}/demo_A_BOM.xlsx').writeAsBytesSync(a.encode()!);
+  sa.appendRow([item, 'K1102-1000R0-009A', '贴片电阻 1K ±1% 0402', 1, 'R99', 'Yageo']);
+  File('${dir.path}/demo_A_BOM.xlsx').writeAsBytesSync(a.encode());
 
   // ---- B-BOM: no header row and the columns in another order
   // (designators, part number, description, quantity, brand).
-  final b = Excel.createExcel();
-  final sb = b['B'];
-  b.delete('Sheet1');
+  final b = XlsxWriter();
+  final sb = b.addSheet('B');
   for (final p in _bom) {
     if (!_onB.contains(p.$1)) continue;
-    sb.appendRow([TextCellValue(p.$4.join(',')), TextCellValue(p.$1), TextCellValue('${p.$2}，${p.$3}'), IntCellValue(p.$4.length), TextCellValue(p.$5)]);
+    sb.appendRow([p.$4.join(','), p.$1, '${p.$2}，${p.$3}', p.$4.length, p.$5]);
   }
-  File('${dir.path}/demo_B_BOM.xlsx').writeAsBytesSync(b.encode()!);
+  File('${dir.path}/demo_B_BOM.xlsx').writeAsBytesSync(b.encode());
   stdout.writeln('Demo files written to ${dir.path}');
 }

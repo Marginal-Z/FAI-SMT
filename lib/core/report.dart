@@ -4,11 +4,10 @@ library;
 
 import 'dart:typed_data';
 
-import 'package:excel/excel.dart';
-
 import 'ai_check.dart';
 import 'bom.dart';
 import 'bom_compare.dart';
+import 'xlsx_writer.dart';
 
 String _stamp(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');
@@ -16,36 +15,30 @@ String _stamp(DateTime t) {
 }
 
 /// [t] translates the report's text keys (`rep_*`, `status_*`).
-Uint8List exportCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = ''}) {
-  final book = Excel.createExcel();
-  final defaultSheet = book.getDefaultSheet();
-  final sheetName = t('rep_sheet');
-  final sheet = book[sheetName];
-  if (defaultSheet != null && defaultSheet != sheetName) book.delete(defaultSheet);
+Uint8List exportCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = ''}) =>
+    buildCompareWorkbook(report, t, ai: ai, singleName: singleName, aName: aName, bName: bName).encode();
 
-  final head = CellStyle(bold: true, backgroundColorHex: ExcelColor.fromHexString('#E5E7EB'), horizontalAlign: HorizontalAlign.Center);
-  final diffFill = CellStyle(backgroundColorHex: ExcelColor.fromHexString('#FFE3A3'));
-  final aiFill = CellStyle(backgroundColorHex: ExcelColor.fromHexString('#E4D7FB'));
-  final statusFill = {
-    DiffStatus.same: ExcelColor.fromHexString('#D9F2E1'),
-    DiffStatus.different: ExcelColor.fromHexString('#FDE2E1'),
-    DiffStatus.onlySingle: ExcelColor.fromHexString('#FFE7C2'),
-    DiffStatus.onlyMerged: ExcelColor.fromHexString('#DCE8FA'),
+/// The report before encoding, so its cells and fills can be inspected.
+XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = ''}) {
+  final book = XlsxWriter();
+  final sheet = book.addSheet(t('rep_sheet'));
+
+  const head = XlsxStyle(bold: true, fill: 'E5E7EB', center: true);
+  const diffFill = XlsxStyle(fill: 'FFE3A3');
+  const aiFill = XlsxStyle(fill: 'E4D7FB');
+  const statusFill = {
+    DiffStatus.same: XlsxStyle(fill: 'D9F2E1'),
+    DiffStatus.different: XlsxStyle(fill: 'FDE2E1'),
+    DiffStatus.onlySingle: XlsxStyle(fill: 'FFE7C2'),
+    DiffStatus.onlyMerged: XlsxStyle(fill: 'DCE8FA'),
   };
 
   // Source files.
-  var row = 0;
-  void line(List<String> cells) {
-    // An empty list appends nothing, so a blank line gets one empty cell.
-    sheet.appendRow([for (final c in cells.isEmpty ? const [''] : cells) TextCellValue(c)]);
-    row++;
-  }
-
-  line([t('rep_single'), singleName]);
-  line([t('rep_a'), aName]);
-  if (bName.isNotEmpty) line([t('rep_b'), bName]);
-  line([t('rep_time'), _stamp(report.at)]);
-  line([]);
+  sheet.appendRow([t('rep_single'), singleName]);
+  sheet.appendRow([t('rep_a'), aName]);
+  if (bName.isNotEmpty) sheet.appendRow([t('rep_b'), bName]);
+  sheet.appendRow([t('rep_time'), _stamp(report.at)]);
+  sheet.appendRow([]);
 
   final others = report.compared.entries.toList();
   final headers = [
@@ -66,37 +59,36 @@ Uint8List exportCompareWorkbook(CompareReport report, String Function(String key
     t('rep_src_merged'),
     t('rep_ai'),
   ];
-  final headRow = row;
-  line(headers);
+  final headRow = sheet.rowCount;
+  sheet.appendRow(headers);
   for (var c = 0; c < headers.length; c++) {
-    sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: headRow)).cellStyle = head;
+    sheet.style(headRow, c, head);
   }
 
   var n = 0;
   for (final r in report.rows) {
     n++;
+    final row = sheet.rowCount;
     final aiNotes = ai?.forPart(r.partNo).map((f) => f.message).join('; ') ?? '';
-    final cells = <CellValue>[
-      IntCellValue(n),
-      TextCellValue(r.partNo),
-      TextCellValue(t('status_${r.status.name}')),
-      TextCellValue(r.sources.join('+')),
-      TextCellValue(r.single?.description ?? ''),
-      TextCellValue(r.merged?.description ?? ''),
-      TextCellValue(formatQuantity(r.single?.quantity)),
-      TextCellValue(formatQuantity(r.merged?.quantity)),
-      TextCellValue(r.single?.refs.join(',') ?? ''),
-      TextCellValue(r.merged?.refs.join(',') ?? ''),
-      TextCellValue(r.missingRefs.join(',')),
-      TextCellValue(r.extraRefs.join(',')),
-      for (final o in others) ...[TextCellValue(r.single?.extra[o.key] ?? ''), TextCellValue(r.merged?.extra[o.key] ?? '')],
-      TextCellValue(r.single?.recordIds.join(', ') ?? ''),
-      TextCellValue(r.merged?.recordIds.join(', ') ?? ''),
-      TextCellValue(aiNotes),
-    ];
-    sheet.appendRow(cells);
-    void fill(int col, CellStyle style) => sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row)).cellStyle = style;
-    fill(2, CellStyle(backgroundColorHex: statusFill[r.status]!));
+    sheet.appendRow([
+      n,
+      r.partNo,
+      t('status_${r.status.name}'),
+      r.sources.join('+'),
+      r.single?.description ?? '',
+      r.merged?.description ?? '',
+      formatQuantity(r.single?.quantity),
+      formatQuantity(r.merged?.quantity),
+      r.single?.refs.join(',') ?? '',
+      r.merged?.refs.join(',') ?? '',
+      r.missingRefs.join(','),
+      r.extraRefs.join(','),
+      for (final o in others) ...[r.single?.extra[o.key] ?? '', r.merged?.extra[o.key] ?? ''],
+      r.single?.recordIds.join(', ') ?? '',
+      r.merged?.recordIds.join(', ') ?? '',
+      aiNotes,
+    ]);
+    sheet.style(row, 2, statusFill[r.status]!);
     // Differing fields: both sides of the field are filled.
     for (final f in r.differences) {
       final col = switch (f.key) {
@@ -106,46 +98,39 @@ Uint8List exportCompareWorkbook(CompareReport report, String Function(String key
         _ => 12 + 2 * others.indexWhere((o) => 'col:${o.key}' == f.key),
       };
       if (col < 4) continue;
-      fill(col, diffFill);
-      fill(col + 1, diffFill);
+      sheet.style(row, col, diffFill);
+      sheet.style(row, col + 1, diffFill);
     }
-    if (r.missingRefs.isNotEmpty) fill(10, diffFill);
-    if (r.extraRefs.isNotEmpty) fill(11, diffFill);
-    if (aiNotes.isNotEmpty) fill(headers.length - 1, aiFill);
-    row++;
+    if (r.missingRefs.isNotEmpty) sheet.style(row, 10, diffFill);
+    if (r.extraRefs.isNotEmpty) sheet.style(row, 11, diffFill);
+    if (aiNotes.isNotEmpty) sheet.style(row, headers.length - 1, aiFill);
   }
   const widths = [6.0, 22.0, 10.0, 8.0, 36.0, 36.0, 8.0, 8.0, 30.0, 30.0, 18.0, 18.0];
   for (var c = 0; c < widths.length; c++) {
-    sheet.setColumnWidth(c, widths[c]);
+    sheet.setWidth(c, widths[c]);
   }
   for (var c = 12; c < headers.length; c++) {
-    sheet.setColumnWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 3 ? 24 : 18));
+    sheet.setWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 3 ? 24 : 18));
   }
 
   if (ai != null) {
-    final s = book[t('rep_ai_sheet')];
-    s.appendRow([TextCellValue(t('rep_ai_model')), TextCellValue(ai.model)]);
-    s.appendRow([TextCellValue(t('rep_time')), TextCellValue(_stamp(ai.at))]);
-    s.appendRow([TextCellValue(t('rep_ai_summary')), TextCellValue(ai.summary)]);
-    s.appendRow([TextCellValue('')]);
+    final s = book.addSheet(t('rep_ai_sheet'));
+    s.appendRow([t('rep_ai_model'), ai.model]);
+    s.appendRow([t('rep_time'), _stamp(ai.at)]);
+    s.appendRow([t('rep_ai_summary'), ai.summary]);
+    s.appendRow([]);
     final h = [t('rep_part_no'), t('rep_ai_field'), t('rep_ai_severity'), t('rep_ai_single'), t('rep_ai_merged'), t('rep_ai_message')];
-    s.appendRow([for (final x in h) TextCellValue(x)]);
+    final hr = s.rowCount;
+    s.appendRow(h);
     for (var c = 0; c < h.length; c++) {
-      s.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 4)).cellStyle = head;
+      s.style(hr, c, head);
     }
     for (final f in ai.findings) {
-      s.appendRow([
-        TextCellValue(f.partNo),
-        TextCellValue(f.field),
-        TextCellValue(t('ai_sev_${f.severity.name}')),
-        TextCellValue(f.singleValue),
-        TextCellValue(f.mergedValue),
-        TextCellValue(f.message),
-      ]);
+      s.appendRow([f.partNo, f.field, t('ai_sev_${f.severity.name}'), f.singleValue, f.mergedValue, f.message]);
     }
     for (final (c, w) in [(0, 22.0), (1, 14.0), (2, 8.0), (3, 30.0), (4, 30.0), (5, 70.0)]) {
-      s.setColumnWidth(c, w);
+      s.setWidth(c, w);
     }
   }
-  return Uint8List.fromList(book.encode()!);
+  return book;
 }

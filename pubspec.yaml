@@ -31,14 +31,14 @@ dependencies:
   flutter:
     sdk: flutter
 
-  excel: ^4.0.6
   fast_gbk: ^1.0.0
   file_picker: ^13.1.0
   path_provider: ^2.1.6
   path: ^1.9.1
   flutter_localizations:
     sdk: flutter
-  archive: ^3.6.1
+  archive: ^4.0.7
+  llamadart: 0.17.2
   xml: ^6.6.1
   desktop_drop: ^0.8.0
 
