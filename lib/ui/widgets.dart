@@ -520,11 +520,14 @@ class _CheckPainter extends CustomPainter {
 
 /// Segmented selector, used instead of a dropdown.
 class Segmented<T> extends StatelessWidget {
-  const Segmented({super.key, required this.value, required this.options, required this.onChanged});
+  const Segmented({super.key, required this.value, required this.options, required this.onChanged, this.expand = false});
 
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T> onChanged;
+
+  /// Fill the available width, options sharing it equally.
+  final bool expand;
 
   @override
   Widget build(BuildContext context) {
@@ -533,17 +536,24 @@ class Segmented<T> extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(color: c.hover, borderRadius: c.r(999)),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
         children: [
           for (var i = 0; i < options.length; i++) ...[
             if (i > 0) const SizedBox(width: 2),
-            Hoverable(
+            if (expand) Expanded(child: _segment(context, c, i)) else _segment(context, c, i),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(BuildContext context, AppColors c, int i) => Hoverable(
               onTap: () => onChanged(options[i].$1),
               builder: (context, hover, _) {
                 final on = options[i].$1 == value;
                 return Container(
                   height: Metrics.of(context).touch ? 36 : 32,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: EdgeInsets.symmetric(horizontal: expand ? 6 : 14),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: on ? c.solid : (hover ? c.hover : null),
@@ -552,16 +562,13 @@ class Segmented<T> extends StatelessWidget {
                   ),
                   child: Text(
                     options[i].$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 13, color: on ? c.blueTx : c.tx2, fontWeight: on ? FontWeight.w600 : FontWeight.w500),
                   ),
                 );
               },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+            );
 }
 
 /// Panel with a slim title bar, like docked panels in CAD / image editors.

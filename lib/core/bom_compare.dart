@@ -76,7 +76,7 @@ class FieldCompare {
 class MatchBasis {
   const MatchBasis(this.kinds, this.confidence);
 
-  /// `partNo`, `refs`, `mpn`, `alternate`, `params`, `semantic`.
+  /// `partNo`, `refs`, `mpn`, `alternate`, `params`, `semantic`, `cloud`.
   final List<String> kinds;
   final double confidence;
 
@@ -99,6 +99,7 @@ class CompareRow {
     this.mergedParts = const [],
     this.basis = const MatchBasis([], 0),
     this.reasons = const [],
+    this.cloudNote = '',
   });
 
   /// Part number of the first BOM's side, else of the other.
@@ -128,6 +129,9 @@ class CompareRow {
   /// `desc_text`, `param_incomplete`, `pn_differs`, `weak_match`, `split`,
   /// `dnp_differs`, `dnp_unsure`, `only_single`, `only_merged`.
   final List<String> reasons;
+
+  /// What the cloud model said about the line (HYBRID / CLOUD_FULL).
+  final String cloudNote;
 
   /// The other side's part number(s) when they differ from [partNo].
   String get otherPartNo => mergedParts.map((p) => p.partNo).where((p) => p != partNo).join(' + ');
@@ -407,7 +411,11 @@ BomPart _combine(List<BomPart> parts) {
 /// REVIEW.
 typedef SemanticSuggestions = Map<String, (String, double)>;
 
-CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {SemanticSuggestions semantic = const {}}) {
+/// [pairs], when given, replaces the program's matching (CLOUD_FULL): each
+/// is a set of part numbers of the first BOM and of the other side that
+/// form one line; everything else is unmatched. Fields are still compared
+/// by the program, and a pairing without firm evidence stays REVIEW.
+CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {SemanticSuggestions semantic = const {}, List<(List<String>, List<String>)>? pairs}) {
   final relabelA = matchColumns(single, a);
   final relabelB = b == null ? const <String, String>{} : matchColumns(single, b);
   final (merged, sources) = mergeBoms(a, b, relabelA: relabelA, relabelB: relabelB);
@@ -449,9 +457,26 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
   final usedL = <BomPart>{}, usedR = <BomPart>{};
   final groups = <(List<BomPart>, List<BomPart>, MatchBasis)>[];
 
+  if (pairs != null) {
+    final lByPn = {for (final p in left) p.partNo: p}, rByPn = {for (final q in right) q.partNo: q};
+    for (final (lp, rp) in pairs) {
+      final ls = [for (final x in lp) ?lByPn[x]].where((p) => !usedL.contains(p)).toList();
+      final rs = [for (final x in rp) ?rByPn[x]].where((q) => !usedR.contains(q)).toList();
+      if (ls.isEmpty || rs.isEmpty) continue;
+      // Firm evidence the program can see for itself.
+      final samePn = ls.length == 1 && rs.length == 1 && ls.single.partNo == rs.single.partNo;
+      final sharedRefs = {for (final p in ls) ...p.refs}.intersection({for (final q in rs) ...q.refs}).isNotEmpty;
+      final alt = ls.any((p) => rs.any((q) => p.alternates.contains(q.partNo) || q.alternates.contains(p.partNo)));
+      groups.add((ls, rs, MatchBasis(['cloud', if (samePn) 'partNo', if (sharedRefs) 'refs', if (alt) 'alternate'], samePn || sharedRefs ? 1 : 0.5)));
+      usedL.addAll(ls);
+      usedR.addAll(rs);
+    }
+  }
+
   // 1. The same part number.
   final rightByPn = {for (final p in right) p.partNo: p};
   for (final p in left) {
+    if (pairs != null) break;
     final q = rightByPn[p.partNo];
     if (q != null && !p.partNo.startsWith('#')) {
       groups.add(([p], [q], const MatchBasis(['partNo'], 1)));
@@ -464,7 +489,7 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
   final refOwnerR = <String, BomPart>{for (final q in right) if (!usedR.contains(q)) for (final r in q.refs) r: q};
   final linked = <BomPart, Set<BomPart>>{};
   for (final p in left) {
-    if (usedL.contains(p)) continue;
+    if (usedL.contains(p) || pairs != null) continue;
     for (final r in p.refs) {
       final q = refOwnerR[r];
       if (q != null) (linked[p] ??= {}).add(q);
@@ -502,7 +527,7 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
   // 3. The same maker part number; 4. a listed alternate.
   String mpnOf(BomPart p) => (p.extra['mpn'] ?? '').trim();
   for (final p in left) {
-    if (usedL.contains(p)) continue;
+    if (usedL.contains(p) || pairs != null) continue;
     final m = mpnOf(p);
     BomPart? q;
     var basis = '';
@@ -532,7 +557,7 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
 
   final sigL = <String, List<BomPart>>{}, sigR = <String, List<BomPart>>{};
   for (final p in left) {
-    if (usedL.contains(p)) continue;
+    if (usedL.contains(p) || pairs != null) continue;
     final k = signature(p);
     if (k != null) (sigL[k] ??= []).add(p);
   }

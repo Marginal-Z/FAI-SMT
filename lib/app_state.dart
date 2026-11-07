@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'core/ai_check.dart';
 import 'core/bom.dart';
 import 'core/bom_compare.dart';
+import 'core/cloud/full.dart';
+import 'core/cloud/hybrid.dart';
 import 'core/cloud/provider.dart';
 import 'core/local_ai/local_ai.dart';
 import 'core/local_ai/model_store.dart';
@@ -27,10 +29,13 @@ import 'version.dart';
 enum InputKind { single, a, b }
 
 class LoadedFile {
-  LoadedFile(this.name, this.bom, {this.size = 0, this.sheets = 1, DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
+  LoadedFile(this.name, this.bom, {this.size = 0, this.sheets = 1, this.grids = const [], DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
 
   final String name;
   final BomDocument bom;
+
+  /// The sheets as read, for a cloud reading of the columns (CLOUD_FULL).
+  final List<Grid> grids;
 
   /// File size in bytes and number of sheets read.
   final int size;
@@ -318,7 +323,7 @@ class AppState extends ChangeNotifier {
     } on BomReadException catch (e) {
       throw UserMessage('err_${e.code}');
     }
-    final f = LoadedFile(name, bom, size: bytes.length, sheets: grids.length);
+    final f = LoadedFile(name, bom, size: bytes.length, sheets: grids.length, grids: grids);
     switch (kind) {
       case InputKind.single:
         single = f;
@@ -377,13 +382,108 @@ class AppState extends ChangeNotifier {
     _checkedStatus();
     notifyListeners();
     final run = ++_checkRun;
-    if (settings.localAiEnabled && localModelsReady && report!.count(CheckStatus.unmatched) > 0) {
+    cloudRun = null;
+    cloudError = '';
+    _cloudCancel?.cancel();
+    if (settings.checkMode == CheckMode.cloudFull) {
+      _runCloudFull(run);
+    } else if (settings.localAiEnabled && localModelsReady && report!.count(CheckStatus.unmatched) > 0) {
       // The local embedding model proposes counterparts for unmatched
-      // lines; the cloud AI waits for its result.
+      // lines; the cloud steps wait for its result.
       _runLocal(run);
+    } else {
+      _afterLocal(run);
+    }
+  }
+
+  /// After the local check: the HYBRID cloud step, then the AI analysis.
+  void _afterLocal(int run) {
+    if (run != _checkRun) return;
+    if (settings.checkMode == CheckMode.hybrid && cloudReady) {
+      _runHybrid(run);
     } else if (settings.aiEnabled && cloudReady) {
       runAi();
     }
+  }
+
+  void setCheckMode(CheckMode m) {
+    settings.checkMode = m;
+    persist();
+    notifyListeners();
+  }
+
+  void setPrivacy(PrivacyOptions p) {
+    settings.privacy = p;
+    persist();
+    notifyListeners();
+  }
+
+  /// Progress of the cloud part of the running or last check.
+  CloudRun? cloudRun;
+  String cloudError = '';
+  bool cloudRunning = false;
+  CloudCancel? _cloudCancel;
+
+  void cancelCloud() => _cloudCancel?.cancel();
+
+  Future<void> _runHybrid(int run) async {
+    final cancel = _cloudCancel = CloudCancel();
+    cloudRunning = true;
+    _status('status_cloud_running');
+    notifyListeners();
+    final (r, cr) = await hybridCheck(report!, cloudProvider, privacy: settings.privacy, cancel: cancel, onProgress: (p) {
+      cloudRun = p;
+      notifyListeners();
+    });
+    if (run != _checkRun) return;
+    report = r;
+    cloudRun = cr;
+    cloudRunning = false;
+    if (cr.complete) {
+      _checkedStatus();
+    } else {
+      // The local result stands where the cloud did not answer.
+      _status('status_cloud_partial', {'done': cr.batchesDone, 'all': cr.batches, 'e': cr.errors.toSet().join(', ')});
+    }
+    notifyListeners();
+    if (settings.aiEnabled) runAi();
+  }
+
+  Future<void> _runCloudFull(int run) async {
+    final cancel = _cloudCancel = CloudCancel();
+    cloudRunning = true;
+    // Until the cloud has answered there is no CLOUD_FULL result.
+    report = null;
+    _status('status_cloud_running');
+    notifyListeners();
+    try {
+      final (r, cr) = await cloudFullCheck(
+        single!.grids,
+        bomA!.grids,
+        bomB?.grids,
+        cloudProvider,
+        singleName: single!.name,
+        aName: bomA!.name,
+        bName: bomB?.name ?? '',
+        privacy: settings.privacy,
+        cancel: cancel,
+        onProgress: (p) {
+          cloudRun = p;
+          notifyListeners();
+        },
+      );
+      if (run != _checkRun) return;
+      report = r;
+      cloudRun = cr;
+      _checkedStatus();
+    } on CloudException catch (e) {
+      if (run != _checkRun) return;
+      cloudError = 'err_cloud_${e.code}';
+      _status('status_cloud_failed', {'e': e.code});
+    }
+    cloudRunning = false;
+    notifyListeners();
+    if (run == _checkRun && report != null && settings.aiEnabled) runAi();
   }
 
   void _checkedStatus() {
@@ -435,7 +535,7 @@ class AppState extends ChangeNotifier {
       _status('status_local_failed', {'e': e.code});
     }
     notifyListeners();
-    if (run == _checkRun && settings.aiEnabled && cloudReady) runAi();
+    _afterLocal(run);
   }
 
   void setAiEnabled(bool v) {

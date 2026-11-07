@@ -6,9 +6,14 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'cloud/hybrid.dart' show PrivacyOptions;
 import 'cloud/provider.dart';
 
 enum ThemePref { system, light, dark }
+
+/// How a check is run: the program and local models only; then the cloud
+/// for what they could not settle; or the cloud reading and pairing.
+enum CheckMode { local, hybrid, cloudFull }
 
 /// Interface styles: the modern design, and the flat industrial one.
 enum ThemeStyle { modern, industrial }
@@ -23,6 +28,8 @@ class AppSettings {
     this.tourDone = false,
     this.aiEnabled = false,
     this.localAiEnabled = false,
+    this.checkMode = CheckMode.local,
+    this.privacy = const PrivacyOptions(),
     ProviderConfig? cloud,
     this.legacyApiKey = '',
   }) : cloud = cloud ?? ProviderConfig();
@@ -45,6 +52,11 @@ class AppSettings {
 
   /// Use the downloaded local models in the check.
   bool localAiEnabled;
+
+  CheckMode checkMode;
+
+  /// What may be sent to a cloud model.
+  PrivacyOptions privacy;
   /// Cloud AI provider; its API key is kept in the secure key store.
   ProviderConfig cloud;
 
@@ -61,6 +73,8 @@ class AppSettings {
     'tourDone': tourDone,
     'aiEnabled': aiEnabled,
     'localAiEnabled': localAiEnabled,
+    'checkMode': checkMode.name,
+    'privacy': privacy.toJson(),
     'cloud': cloud.toJson(),
   };
 
@@ -73,6 +87,8 @@ class AppSettings {
     tourDone: j['tourDone'] == true,
     aiEnabled: j['aiEnabled'] == true,
     localAiEnabled: j['localAiEnabled'] == true,
+    checkMode: CheckMode.values.firstWhere((m) => m.name == j['checkMode'], orElse: () => CheckMode.local),
+    privacy: j['privacy'] is Map ? PrivacyOptions.fromJson((j['privacy'] as Map).cast()) : const PrivacyOptions(),
     cloud: j['cloud'] is Map ? ProviderConfig.fromJson((j['cloud'] as Map).cast()) : _legacyCloud(j['ai']),
     legacyApiKey: j['ai'] is Map ? '${(j['ai'] as Map)['apiKey'] ?? ''}' : '',
   );

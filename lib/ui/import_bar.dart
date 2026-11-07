@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import '../core/bom.dart';
+import '../core/settings.dart';
 import '../l10n/strings.dart';
 import 'actions.dart';
 import 'design.dart';
@@ -374,6 +375,8 @@ class ImportActions extends StatelessWidget {
               ],
             ),
                 const SizedBox(height: 10),
+                ModeSelector(state: state),
+                const SizedBox(height: 10),
                 AiSwitch(state: state),
               ],
             )
@@ -382,6 +385,8 @@ class ImportActions extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 run,
+                const SizedBox(height: 10),
+                ModeSelector(state: state),
                 const SizedBox(height: 10),
                 AiSwitch(state: state),
                 const SizedBox(height: 10),
@@ -394,6 +399,60 @@ class ImportActions extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// Check mode: local, hybrid or cloud; the cloud modes need an API (they
+/// open the AI settings until one is set). While the cloud works, its
+/// progress and a cancel button.
+class ModeSelector extends StatelessWidget {
+  const ModeSelector({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final mode = state.settings.checkMode;
+    final run = state.cloudRun;
+    return Column(
+      key: tourTargets.modeSelector,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Hoverable(
+          tooltip: s.t('mode_${mode.name}_hint'),
+          cursor: SystemMouseCursors.basic,
+          builder: (context, hover, _) => Segmented<CheckMode>(
+            expand: true,
+            value: mode,
+            options: [for (final m in CheckMode.values) (m, s.t('mode_${m.name}'))],
+            onChanged: (m) {
+              state.setCheckMode(m);
+              if (m != CheckMode.local && !state.cloudReady) state.openSettings(SettingsSection.ai);
+            },
+          ),
+        ),
+        if (state.cloudRunning || (run != null && !run.complete)) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (state.cloudRunning) ...[const Spinner(size: 13), const SizedBox(width: 6)],
+              Expanded(
+                child: Text(
+                  run == null ? s.t('cloud_starting') : s.t('cloud_progress', {'done': run.batchesDone, 'all': run.batches, 'failed': run.batchesFailed}),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: run != null && run.batchesFailed > 0 ? c.ngTx : c.tx2),
+                ),
+              ),
+              if (state.cloudRunning) Hoverable(onTap: state.cancelCloud, builder: (context, hover, _) => Text(s.t('dlg_cancel'), style: TextStyle(fontSize: 12, color: c.blueTx))),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

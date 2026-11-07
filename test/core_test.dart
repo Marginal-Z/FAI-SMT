@@ -484,8 +484,9 @@ void main() {
     test('every code shown to the user is translated', () {
       final codes = [
         for (final d in CheckStatus.values) ...['status_${d.name}'],
-        for (final k in ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'param_incomplete', 'pn_differs', 'weak_match', 'split', 'dnp_differs', 'dnp_unsure', 'only_single', 'only_merged', 'no_placement', 'wording_unsure', 'level']) 'reason_$k',
-        for (final k in ['partNo', 'refs', 'mpn', 'alternate', 'params', 'semantic']) 'basis_$k',
+        for (final k in ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'param_incomplete', 'pn_differs', 'weak_match', 'split', 'dnp_differs', 'dnp_unsure', 'only_single', 'only_merged', 'no_placement', 'wording_unsure', 'level', 'cloud_missing', 'cloud_same', 'cloud_different', 'cloud_unsure', 'cloud_no_counterpart', 'cloud_conflict', 'cloud_says_ng', 'cloud_contradicted']) 'reason_$k',
+        for (final k in ['partNo', 'refs', 'mpn', 'alternate', 'params', 'semantic', 'cloud']) 'basis_$k',
+        for (final m in ['local', 'hybrid', 'cloudFull']) ...['mode_$m', 'mode_${m}_hint'],
         for (final s in AiSeverity.values) 'ai_sev_${s.name}',
         for (final r in BomRole.values)
           if (r != BomRole.serial) 'role_${r.name}',

@@ -24,6 +24,7 @@ class TourTargets {
   final fileChecks = GlobalKey(debugLabel: 'tour-file-checks');
   final runButton = GlobalKey(debugLabel: 'tour-run');
   final aiSwitch = GlobalKey(debugLabel: 'tour-ai-switch');
+  final modeSelector = GlobalKey(debugLabel: 'tour-mode');
   final checkCards = GlobalKey(debugLabel: 'tour-check-cards');
   final checkFilters = GlobalKey(debugLabel: 'tour-check-filters');
   final checkTable = GlobalKey(debugLabel: 'tour-check-table');

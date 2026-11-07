@@ -155,7 +155,11 @@ class _CheckViewState extends State<CheckView> {
     if (report == null) {
       final hint = DCard(
         radius: 24,
-        child: EmptyState(icon: Lucide.clipboardCheck, text: s.t(state.ready ? 'empty_ready' : 'empty_check_import')),
+        child: state.cloudRunning
+            ? EmptyState(icon: Lucide.sparkles, text: s.t('cloud_full_running', {'done': state.cloudRun?.batchesDone ?? 0, 'all': state.cloudRun?.batches ?? 0}))
+            : state.cloudError.isNotEmpty
+            ? EmptyState(icon: Lucide.alert, text: '${s.t(state.cloudError)}\n${s.t('cloud_full_failed')}')
+            : EmptyState(icon: Lucide.clipboardCheck, text: s.t(state.ready ? 'empty_ready' : 'empty_check_import')),
       );
       if (phone) {
         return ListView(
@@ -911,7 +915,7 @@ class _Detail extends StatelessWidget {
       ],
       const SizedBox(height: 12),
       // What the line was matched by, and why it is not PASS.
-      if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty) ...[
+      if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty || row.cloudNote.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(color: row.status == CheckStatus.pass ? c.well : _statusTint(c, row.status), borderRadius: c.r(12)),
@@ -925,6 +929,10 @@ class _Detail extends StatelessWidget {
                 ),
               if (row.otherPartNo.isNotEmpty) Text(s.t('match_other_pn', {'pn': row.otherPartNo}), style: TextStyle(fontSize: 12.5, color: c.tx2)),
               for (final r in row.reasons) Text('• ${s.t('reason_$r')}', style: TextStyle(fontSize: 13, height: 1.45, color: _statusText(c, row.status))),
+              if (row.cloudNote.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(s.t('cloud_note', {'n': row.cloudNote}), style: TextStyle(fontSize: 12.5, height: 1.45, color: aiText(c))),
+              ],
             ],
           ),
         ),

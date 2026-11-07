@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import '../core/ai_check.dart';
+import '../core/cloud/hybrid.dart' show PrivacyOptions;
 import '../core/cloud/provider.dart';
 import '../core/local_ai/model_store.dart';
 import '../core/settings.dart';
@@ -879,6 +880,18 @@ class _AiSettingsState extends State<_AiSettings> {
             child: Text(_test!, maxLines: 6, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, height: 1.45, color: _testOk ? c.okTx : c.ngTx)),
           ),
         ],
+        const SizedBox(height: 14),
+        Text(s.t('privacy_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
+        const SizedBox(height: 6),
+        for (final (key, value, apply) in [
+          ('privacy_part_numbers', state.settings.privacy.partNumbers, (bool v) => PrivacyOptions(partNumbers: v, designators: state.settings.privacy.designators, otherColumns: state.settings.privacy.otherColumns)),
+          ('privacy_designators', state.settings.privacy.designators, (bool v) => PrivacyOptions(partNumbers: state.settings.privacy.partNumbers, designators: v, otherColumns: state.settings.privacy.otherColumns)),
+          ('privacy_other_columns', state.settings.privacy.otherColumns, (bool v) => PrivacyOptions(partNumbers: state.settings.privacy.partNumbers, designators: state.settings.privacy.designators, otherColumns: v)),
+        ])
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: CheckBox(value: value, label: s.t(key), onChanged: (v) => state.setPrivacy(apply(v))),
+          ),
         const SizedBox(height: 18),
         _UsagePanel(state: state),
         const SizedBox(height: 18),
