@@ -5,70 +5,11 @@ library;
 
 import 'dart:math' as math;
 
+import 'bom_model.dart';
 import 'refdes.dart';
 import 'table_reader.dart';
 
-/// What a column holds.
-enum BomRole { partNo, description, quantity, refs, serial, other }
-
-class BomColumn {
-  BomColumn(this.index, this.header, this.role, {this.label = ''});
-
-  final int index;
-
-  /// Header text as written (empty when the sheet has none).
-  final String header;
-  final BomRole role;
-
-  /// For [BomRole.other]: the column name used to pair it with the column of
-  /// the other BOM (header text without spaces and case).
-  final String label;
-
-  String get key => role == BomRole.other ? 'col:$label' : role.name;
-}
-
-/// One part of a BOM: the rows of the same part number merged.
-class BomPart {
-  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.rows});
-
-  final String partNo;
-  String description;
-  double? quantity;
-  final List<String> refs;
-
-  /// Other columns by [BomColumn.label] → value.
-  final Map<String, String> extra;
-
-  /// 1-based source row numbers.
-  final List<int> rows;
-}
-
-class BomFile {
-  BomFile({required this.sheet, required this.headerRow, required this.columns, required this.parts, required this.warnings});
-
-  final String sheet;
-
-  /// 0-based row of the header, -1 when the sheet has no header row.
-  final int headerRow;
-  final List<BomColumn> columns;
-  final List<BomPart> parts;
-  final List<BomWarning> warnings;
-
-  BomColumn? column(BomRole role) => columns.where((c) => c.role == role).firstOrNull;
-
-  /// Other columns that will be compared, by label.
-  Iterable<BomColumn> get others => columns.where((c) => c.role == BomRole.other);
-}
-
-/// Something worth telling the user about a file (row numbers 1-based).
-class BomWarning {
-  const BomWarning(this.code, {this.row = 0, this.detail = ''});
-
-  /// Localisation key: `w_qty_refs`, `w_dup_ref`, `w_no_part_no`.
-  final String code;
-  final int row;
-  final String detail;
-}
+export 'bom_model.dart';
 
 class BomReadException implements Exception {
   BomReadException(this.code);
@@ -144,13 +85,16 @@ double _hint(String header, BomRole role) {
 
 // ----------------------------------------------------------------- detection
 
-/// Picks the sheet that looks most like a BOM and reads it.
-BomFile readBom(List<Grid> sheets) {
-  BomFile? best;
+/// Picks the sheet that looks most like a BOM and reads it. [file] is the
+/// file name and [id] the document's tag in a check; both end up in every
+/// record's source reference.
+BomDocument readBom(List<Grid> sheets, {String file = '', String id = 'S'}) {
+  BomDocument? best;
   var bestScore = -1.0;
+  final names = [for (final g in sheets) g.name];
   for (final g in sheets) {
     try {
-      final f = _readSheet(g);
+      final f = _readSheet(g, file: file, id: id, sheets: names);
       final score = f.parts.length.toDouble() + (f.column(BomRole.refs) != null ? 5 : 0) + (f.column(BomRole.partNo) != null ? 5 : 0);
       if (score > bestScore) {
         best = f;
@@ -237,7 +181,7 @@ _Features _features(List<String> values, int rows) {
   return f;
 }
 
-BomFile _readSheet(Grid g) {
+BomDocument _readSheet(Grid g, {required String file, required String id, required List<String> sheets}) {
   final headerRow = _headerRow(g);
   final width = g.rows.fold<int>(0, (m, r) => math.max(m, r.length));
   if (width == 0) throw BomReadException('bom_empty');
@@ -250,6 +194,8 @@ BomFile _readSheet(Grid g) {
   final features = [for (var c = 0; c < width; c++) _features([for (final r in data) cleanCell(g.cell(r, c))], data.length)];
 
   final used = <int>{};
+  // Score of each picked column, as its confidence.
+  final scores = <int, double>{};
   int? pick(double Function(int c) score, {double min = 0.35}) {
     int? best;
     var bestScore = min;
@@ -261,9 +207,30 @@ BomFile _readSheet(Grid g) {
         best = c;
       }
     }
-    if (best != null) used.add(best);
+    if (best != null) {
+      used.add(best);
+      scores[best] = bestScore;
+    }
     return best;
   }
+
+  // What a recognition was based on: the header, the contents, or both.
+  String evidence(int c, BomRole role) {
+    final byHeader = _hint(header(c), role) > 0;
+    final f = features[c];
+    final byContent = switch (role) {
+      BomRole.refs => f.refs > 0.5,
+      BomRole.quantity => f.number > 0.6,
+      BomRole.partNo => f.partNo > 0.4,
+      BomRole.description => f.text > 0.4,
+      BomRole.serial => f.index > 0.8,
+      BomRole.other => false,
+    };
+    return [if (byHeader) 'header', if (byContent) 'content'].join('+');
+  }
+
+  BomColumn col(int c, BomRole role, {String label = ''}) =>
+      BomColumn(c, header(c), role, label: label, confidence: (scores[c] ?? 1).clamp(0.0, 1.0).toDouble(), evidence: evidence(c, role));
 
   // Sequential numbers (序号) are not compared.
   final indexCols = <int>{
@@ -308,28 +275,26 @@ BomFile _readSheet(Grid g) {
   for (var c = 0; c < width; c++) {
     final h = header(c);
     if (c == pnCol) {
-      columns.add(BomColumn(c, h, BomRole.partNo));
+      columns.add(col(c, BomRole.partNo));
     } else if (descCols.contains(c)) {
-      columns.add(BomColumn(c, h, BomRole.description));
+      columns.add(col(c, BomRole.description));
     } else if (c == qtyCol) {
-      columns.add(BomColumn(c, h, BomRole.quantity));
+      columns.add(col(c, BomRole.quantity));
     } else if (c == refsCol) {
-      columns.add(BomColumn(c, h, BomRole.refs));
+      columns.add(col(c, BomRole.refs));
     } else if (indexCols.contains(c)) {
-      columns.add(BomColumn(c, h, BomRole.serial));
+      columns.add(col(c, BomRole.serial));
     } else if (features[c].fill >= 0.05) {
-      columns.add(BomColumn(c, h, BomRole.other, label: h.isEmpty ? '#${c + 1}' : _norm(h)));
+      columns.add(BomColumn(c, h, BomRole.other, label: h.isEmpty ? '#${c + 1}' : _norm(h), evidence: h.isEmpty ? '' : 'header'));
     }
   }
   if (pnCol == null && refsCol == null) throw BomReadException('bom_no_parts');
 
-  // Parts. A row with designators but no part number continues the previous
-  // one (long designator cells wrapped onto the next row); repeated part
-  // numbers are merged.
+  // Records: one per part line. A row with designators but nothing else
+  // continues the previous record (long designator cells wrapped onto the
+  // next row).
   final warnings = <BomWarning>[];
-  final byPn = <String, BomPart>{};
-  final order = <BomPart>[];
-  BomPart? last;
+  final records = <BomRecord>[];
   final headerKeys = {for (final col in columns) cleanCell(col.header)};
   for (final r in data) {
     String cell(int? c) => c == null ? '' : cleanCell(g.cell(r, c));
@@ -337,44 +302,40 @@ BomFile _readSheet(Grid g) {
     final desc = [for (final c in descCols) cell(c)].where((s) => s.isNotEmpty).join(' ');
     final refs = refsCol == null ? const <String>[] : splitRefs(g.cell(r, refsCol));
     final qty = qtyCol == null ? null : parseQuantity(g.cell(r, qtyCol));
+    final source = SourceRef(file, g.name, r + 1);
     // A repeated header row inside the data.
     if (pn.isNotEmpty && headerKeys.contains(pn)) continue;
     if (pn.isEmpty) {
-      if (refs.isNotEmpty && desc.isEmpty && qty == null && last != null) {
-        last.refs.addAll(refs);
-        last.rows.add(r + 1);
+      if (refs.isNotEmpty && desc.isEmpty && qty == null && records.isNotEmpty) {
+        records.last.refs.addAll(refs);
+        records.last.sources.add(source);
         continue;
       }
       if (refs.isEmpty && desc.isEmpty) continue;
       warnings.add(BomWarning('w_no_part_no', row: r + 1));
     }
-    final key = pn.isEmpty ? '#${r + 1}' : pn;
-    final extra = {
-      for (final col in columns)
-        if (col.role == BomRole.other) col.label: cell(col.index),
-    };
-    final existing = byPn[key];
-    if (existing != null) {
-      existing.refs.addAll(refs);
-      existing.rows.add(r + 1);
-      if (qty != null) existing.quantity = (existing.quantity ?? 0) + qty;
-      if (existing.description.isEmpty) existing.description = desc;
-      for (final e in extra.entries) {
-        if ((existing.extra[e.key] ?? '').isEmpty) existing.extra[e.key] = e.value;
-      }
-      last = existing;
-      continue;
-    }
-    final part = BomPart(pn.isEmpty ? key : pn, description: desc, quantity: qty, refs: [...refs], extra: extra, rows: [r + 1]);
-    byPn[key] = part;
-    order.add(part);
-    last = part;
+    records.add(
+      BomRecord(
+        id: '$id:${g.name}!${r + 1}',
+        sources: [source],
+        cells: [for (var c = 0; c < width; c++) g.cell(r, c)],
+        partNo: pn,
+        description: desc,
+        quantity: qty,
+        refs: [...refs],
+        extra: {
+          for (final col in columns)
+            if (col.role == BomRole.other) col.label: cell(col.index),
+        },
+      ),
+    );
   }
-  if (order.isEmpty) throw BomReadException('bom_no_parts');
+  if (records.isEmpty) throw BomReadException('bom_no_parts');
+  final doc = BomDocument(id: id, file: file, sheet: g.name, sheets: sheets, headerRow: headerRow, columns: columns, records: records, warnings: warnings);
 
-  // Checks inside one file.
+  // Checks inside one file, per part.
   final seen = <String, String>{};
-  for (final p in order) {
+  for (final p in doc.parts) {
     if (p.quantity != null && p.refs.isNotEmpty && p.quantity != p.refs.length) {
       warnings.add(BomWarning('w_qty_refs', row: p.rows.first, detail: '${p.partNo}: ${formatQuantity(p.quantity)} / ${p.refs.length}'));
     }
@@ -384,5 +345,5 @@ BomFile _readSheet(Grid g) {
       seen[ref] = p.partNo;
     }
   }
-  return BomFile(sheet: g.name, headerRow: headerRow, columns: columns, parts: order, warnings: warnings);
+  return doc;
 }

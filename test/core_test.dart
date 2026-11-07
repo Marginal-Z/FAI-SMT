@@ -16,11 +16,11 @@ import 'package:smt_fai/version.dart';
 
 Grid g(List<List<String>> rows) => Grid('s', rows);
 
-BomFile bom(List<List<String>> rows) => readBom([g(rows)]);
+BomDocument bom(List<List<String>> rows) => readBom([g(rows)]);
 
-BomFile demo(String name) {
+BomDocument demo(String name, {String id = 'S'}) {
   final p = 'samples/demo/$name';
-  return readBom(readTableBytes(File(p).readAsBytesSync(), p));
+  return readBom(readTableBytes(File(p).readAsBytesSync(), p), file: name, id: id);
 }
 
 void main() {
@@ -111,6 +111,44 @@ void main() {
     });
   });
 
+  group('unified model', () {
+    test('records cite file, sheet and Excel row; continuation rows included', () {
+      final d = readBom(readTableBytes(File('samples/demo/demo_single_BOM.xlsx').readAsBytesSync(), 'x.xlsx'), file: 'demo_single_BOM.xlsx', id: 'S');
+      // Title on row 1, header on row 2: the first part is on Excel row 3.
+      expect(d.headerRow + 1, 2);
+      final first = d.records.first;
+      expect(first.source, const SourceRef('demo_single_BOM.xlsx', 'BOM', 3));
+      expect(first.id, 'S:BOM!3');
+      expect(first.cells, hasLength(greaterThanOrEqualTo(7)));
+      // Eight resistors: five designators on the part row, three on the next.
+      final r = d.records.firstWhere((x) => x.partNo == 'K1102-1020K0-001A');
+      expect(r.sources.map((x) => x.row), [r.source.row, r.source.row + 1]);
+      expect(r.refs, hasLength(8));
+      expect(d.toJson()['records'], hasLength(d.records.length));
+    });
+    test('a part listed twice is one part made of two records', () {
+      final d = bom([
+        ['料号', '描述', '用量', '位号'],
+        ['K3', '电容 10uF 0603', '1', 'C3'],
+        ['K4', '电阻 1K', '1', 'R1'],
+        ['K3', '电容 10uF 0603', '1', 'C4'],
+      ]);
+      expect(d.records, hasLength(3));
+      final k3 = d.parts.firstWhere((p) => p.partNo == 'K3');
+      expect(k3.recordIds, ['S:s!2', 'S:s!4']);
+      expect(k3.rows, [2, 4]);
+      expect(k3.quantity, 2);
+    });
+    test('columns carry confidence and what they were recognised from', () {
+      final d = demo('demo_B_BOM.xlsx');
+      final refs = d.column(BomRole.refs)!;
+      expect(refs.header, isEmpty);
+      expect(refs.evidence, 'content');
+      expect(refs.confidence, greaterThan(0.5));
+      expect(refs.letter, 'A');
+    });
+  });
+
   group('description rule', () {
     test('only letters and digits count; Chinese wording may differ', () {
       expect(compareDescription('贴片电阻 10K ±1% 0402', '贴片电阻器 10K ±1% 0402').equal, isTrue);
@@ -137,7 +175,7 @@ void main() {
 
   group('comparing', () {
     late CompareReport r;
-    setUpAll(() => r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx'), demo('demo_B_BOM.xlsx')));
+    setUpAll(() => r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx', id: 'A'), demo('demo_B_BOM.xlsx', id: 'B')));
     CompareRow row(String pn) => r.rows.firstWhere((x) => x.partNo == pn);
 
     test('A and B are merged and compared with the single BOM', () {
@@ -190,7 +228,7 @@ void main() {
 
   group('report and AI', () {
     test('Excel report: both sides, differing cells filled', () {
-      final r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx'), demo('demo_B_BOM.xlsx'));
+      final r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx', id: 'A'), demo('demo_B_BOM.xlsx', id: 'B'));
       final ai = AiResult(
         summary: 's',
         findings: [AiFinding(partNo: 'K1103-0106K0-001A', field: 'description', side: 'both', severity: AiSeverity.error, message: '电压不同')],
@@ -209,6 +247,10 @@ void main() {
       expect(diff[4]!.cellStyle!.backgroundColor.colorHex, contains('FFE3A3'));
       expect(diff.last!.value.toString(), '电压不同');
       expect(book.tables.containsKey(Strings('zh').t('rep_ai_sheet')), isTrue);
+      // Every row cites its source records.
+      final srcCol = sheet.rows[header].indexWhere((c) => c?.value.toString() == Strings('zh').t('rep_src_single'));
+      expect(diff[srcCol]!.value.toString(), startsWith('S:BOM!'));
+      expect(diff[srcCol + 1]!.value.toString(), startsWith('A:A-BOM!'));
     });
     test('AI reply: the JSON is found inside other text', () {
       final j = extractJson('Here you go:\n```json\n{"summary":"ok","findings":[{"partNo":"K1","severity":"error","message":"x"}]}\n```');

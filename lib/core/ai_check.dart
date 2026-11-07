@@ -113,6 +113,7 @@ String comparisonJson(CompareReport report) {
   Map<String, dynamic> side(BomPart? p) => p == null
       ? {}
       : {
+          'records': p.recordIds,
           'description': _clip(p.description, 160),
           'quantity': formatQuantity(p.quantity),
           'refs': p.refs.join(','),

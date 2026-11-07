@@ -887,8 +887,8 @@ class _Detail extends StatelessWidget {
       const SizedBox(height: 4),
       Text(
         [
-          if (row.single != null) s.t('src_single_rows', {'rows': row.single!.rows.join(', ')}),
-          if (row.merged != null) s.t('src_merged', {'src': row.sources.join(' + ')}),
+          if (row.single != null) s.t('src_single_rows', {'rows': row.single!.sources.map((x) => x.label).join(', ')}),
+          if (row.merged != null) s.t('src_merged', {'src': row.merged!.recordIds.join(', ')}),
         ].join(' · '),
         style: TextStyle(fontSize: 12, color: c.tx3),
       ),

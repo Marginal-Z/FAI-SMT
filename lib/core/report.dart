@@ -62,6 +62,8 @@ Uint8List exportCompareWorkbook(CompareReport report, String Function(String key
     t('rep_missing'),
     t('rep_extra'),
     for (final o in others) ...['${o.value} (${t('rep_single_short')})', '${o.value} (A+B)'],
+    t('rep_src_single'),
+    t('rep_src_merged'),
     t('rep_ai'),
   ];
   final headRow = row;
@@ -88,6 +90,8 @@ Uint8List exportCompareWorkbook(CompareReport report, String Function(String key
       TextCellValue(r.missingRefs.join(',')),
       TextCellValue(r.extraRefs.join(',')),
       for (final o in others) ...[TextCellValue(r.single?.extra[o.key] ?? ''), TextCellValue(r.merged?.extra[o.key] ?? '')],
+      TextCellValue(r.single?.recordIds.join(', ') ?? ''),
+      TextCellValue(r.merged?.recordIds.join(', ') ?? ''),
       TextCellValue(aiNotes),
     ];
     sheet.appendRow(cells);
@@ -115,7 +119,7 @@ Uint8List exportCompareWorkbook(CompareReport report, String Function(String key
     sheet.setColumnWidth(c, widths[c]);
   }
   for (var c = 12; c < headers.length; c++) {
-    sheet.setColumnWidth(c, c == headers.length - 1 ? 50 : 18);
+    sheet.setColumnWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 3 ? 24 : 18));
   }
 
   if (ai != null) {

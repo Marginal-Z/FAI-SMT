@@ -79,6 +79,7 @@ class CompareReport {
     required this.singleOnlyColumns,
     required this.mergedOnlyColumns,
     required this.at,
+    this.uncovered = const [],
   });
 
   final List<CompareRow> rows;
@@ -90,6 +91,12 @@ class CompareReport {
   final List<String> singleOnlyColumns;
   final List<String> mergedOnlyColumns;
   final DateTime at;
+
+  /// Records of the input files that no result row accounts for. Must be
+  /// empty; anything else is a fault and the check is not complete.
+  final List<String> uncovered;
+
+  bool get complete => uncovered.isEmpty;
 
   int count(DiffStatus s) => rows.where((r) => r.status == s).length;
 }
@@ -192,7 +199,7 @@ FieldCompare compareExact(String key, String header, String single, String merge
 /// A-BOM and B-BOM as one list: the same part number in both is one part
 /// (quantities added, designators joined). [relabelA] / [relabelB] rename
 /// other-column labels (see [matchColumns]).
-(List<BomPart>, Map<String, List<String>>) mergeBoms(BomFile a, BomFile? b, {Map<String, String> relabelA = const {}, Map<String, String> relabelB = const {}}) {
+(List<BomPart>, Map<String, List<String>>) mergeBoms(BomDocument a, BomDocument? b, {Map<String, String> relabelA = const {}, Map<String, String> relabelB = const {}}) {
   final byPn = <String, BomPart>{};
   final sources = <String, List<String>>{};
   final order = <BomPart>[];
@@ -201,13 +208,15 @@ FieldCompare compareExact(String key, String header, String single, String merge
       final extra = {for (final e in p.extra.entries) relabel[e.key] ?? e.key: e.value};
       final existing = byPn[p.partNo];
       if (existing == null) {
-        final copy = BomPart(p.partNo, description: p.description, quantity: p.quantity, refs: [...p.refs], extra: extra, rows: [...p.rows]);
+        final copy = BomPart(p.partNo, description: p.description, quantity: p.quantity, refs: [...p.refs], extra: extra, sources: [...p.sources], recordIds: [...p.recordIds]);
         byPn[p.partNo] = copy;
         order.add(copy);
         sources[p.partNo] = [tag];
         continue;
       }
       existing.refs.addAll(p.refs);
+      existing.sources.addAll(p.sources);
+      existing.recordIds.addAll(p.recordIds);
       if (p.quantity != null) existing.quantity = (existing.quantity ?? 0) + p.quantity!;
       if (existing.description.isEmpty) existing.description = p.description;
       for (final e in extra.entries) {
@@ -223,7 +232,7 @@ FieldCompare compareExact(String key, String header, String single, String merge
 /// name, or no header at all) matched to a single-BOM column by content:
 /// most parts both files list carry the same value in both. Label of [f]
 /// → label of the single BOM.
-Map<String, String> matchColumns(BomFile single, BomFile f) {
+Map<String, String> matchColumns(BomDocument single, BomDocument f) {
   final singleLabels = {for (final c in single.others) c.label};
   final byPn = {for (final p in single.parts) p.partNo: p};
   final taken = {for (final c in f.others) if (singleLabels.contains(c.label)) c.label};
@@ -256,13 +265,13 @@ Map<String, String> matchColumns(BomFile single, BomFile f) {
 
 // ----------------------------------------------------------------- comparing
 
-CompareReport compareBoms(BomFile single, BomFile a, BomFile? b) {
+CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b) {
   final relabelA = matchColumns(single, a);
   final relabelB = b == null ? const <String, String>{} : matchColumns(single, b);
   final (merged, sources) = mergeBoms(a, b, relabelA: relabelA, relabelB: relabelB);
   final mergedByPn = {for (final p in merged) p.partNo: p};
   final singleByPn = {for (final p in single.parts) p.partNo: p};
-  Set<String> labels(BomFile f, Map<String, String> relabel) => {for (final c in f.others) relabel[c.label] ?? c.label};
+  Set<String> labels(BomDocument f, Map<String, String> relabel) => {for (final c in f.others) relabel[c.label] ?? c.label};
   final labelsA = labels(a, relabelA);
   final labelsB = b == null ? const <String>{} : labels(b, relabelB);
 
@@ -288,7 +297,7 @@ CompareReport compareBoms(BomFile single, BomFile a, BomFile? b) {
   final descHeader = single.column(BomRole.description)?.header ?? '';
   // A field of a merged part is compared only when every file it came from
   // has that column (B-BOM may lack a column A-BOM has).
-  BomFile src(String tag) => tag == 'A' ? a : b!;
+  BomDocument src(String tag) => tag == 'A' ? a : b!;
   bool has(String pn, BomRole role) => single.column(role) != null && (sources[pn] ?? const ['A']).every((t) => src(t).column(role) != null);
   bool hasOther(String pn, String label) => (sources[pn] ?? const ['A']).every((t) => (t == 'A' ? labelsA : labelsB).contains(label));
 
@@ -362,5 +371,14 @@ CompareReport compareBoms(BomFile single, BomFile a, BomFile? b) {
     for (final m in merged)
       if (!singleByPn.containsKey(m.partNo)) row(m.partNo, null, m),
   ];
-  return CompareReport(rows: rows, compared: compared, singleOnlyColumns: singleOnly, mergedOnlyColumns: mergedOnly, at: DateTime.now());
+  // Every source record must be accounted for by a result row.
+  final cited = {
+    for (final r in rows) ...[...?r.single?.recordIds, ...?r.merged?.recordIds],
+  };
+  final uncovered = [
+    for (final d in [single, a, ?b])
+      for (final rec in d.records)
+        if (!cited.contains(rec.id)) rec.id,
+  ];
+  return CompareReport(rows: rows, compared: compared, singleOnlyColumns: singleOnly, mergedOnlyColumns: mergedOnly, at: DateTime.now(), uncovered: uncovered);
 }

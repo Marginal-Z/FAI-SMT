@@ -464,7 +464,7 @@ String _colName(int i) {
 
 /// What was read from a BOM: the sheet and header row, the column found for
 /// each role (by content, not only by header), and the warnings.
-String _details(Strings s, BomFile bom) {
+String _details(Strings s, BomDocument bom) {
   final lines = <String>[bom.headerRow < 0 ? s.t('det_sheet_nohead', {'sheet': bom.sheet}) : s.t('det_sheet', {'sheet': bom.sheet, 'row': bom.headerRow + 1})];
   for (final col in bom.columns) {
     if (col.role == BomRole.serial) continue;

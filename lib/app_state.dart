@@ -25,7 +25,7 @@ class LoadedFile {
   LoadedFile(this.name, this.bom, {this.size = 0, this.sheets = 1, DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
 
   final String name;
-  final BomFile bom;
+  final BomDocument bom;
 
   /// File size in bytes and number of sheets read.
   final int size;
@@ -252,9 +252,13 @@ class AppState extends ChangeNotifier {
     } on TableReadException catch (e) {
       throw UserMessage('err_${e.code}', {'detail': e.detail});
     }
-    final BomFile bom;
+    final BomDocument bom;
     try {
-      bom = readBom(grids);
+      bom = readBom(grids, file: name, id: switch (kind) {
+        InputKind.single => 'S',
+        InputKind.a => 'A',
+        InputKind.b => 'B',
+      });
     } on BomReadException catch (e) {
       throw UserMessage('err_${e.code}');
     }
@@ -312,12 +316,17 @@ class AppState extends ChangeNotifier {
     selected = null;
     ai = null;
     aiStatus = AiStatus.idle;
-    _status('status_checked', {
-      'same': report!.count(DiffStatus.same),
-      'diff': report!.count(DiffStatus.different),
-      'single': report!.count(DiffStatus.onlySingle),
-      'merged': report!.count(DiffStatus.onlyMerged),
-    });
+    if (report!.complete) {
+      _status('status_checked', {
+        'same': report!.count(DiffStatus.same),
+        'diff': report!.count(DiffStatus.different),
+        'single': report!.count(DiffStatus.onlySingle),
+        'merged': report!.count(DiffStatus.onlyMerged),
+      });
+    } else {
+      // Never report a finished check while records are unaccounted for.
+      _status('status_incomplete', {'n': report!.uncovered.length});
+    }
     notifyListeners();
     if (settings.aiEnabled && settings.ai.ready) runAi();
   }
