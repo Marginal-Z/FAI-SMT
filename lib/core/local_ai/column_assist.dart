@@ -136,9 +136,12 @@ ColumnCheck reconcileColumns(Grid g, BomDocument doc, Map<int, BomRole> answer) 
       disagreements.add((c, have, said));
       continue;
     }
-    // A header the program recognised outright is not overruled.
+    // Columns the program named from their header, and descriptions it
+    // joined from their contents, stay; the model may name what the
+    // program left as "other" or recognised at low confidence.
     final byHeader = col != null && col.evidence.contains('header') && col.confidence >= 0.7 && have != BomRole.other;
-    if (byHeader) {
+    final settled = have == BomRole.description || (have != BomRole.other && (col?.confidence ?? 0) >= 0.7);
+    if (byHeader || settled) {
       disagreements.add((c, have, said));
       continue;
     }

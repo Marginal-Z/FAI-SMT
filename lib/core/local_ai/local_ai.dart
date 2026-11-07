@@ -74,7 +74,7 @@ class LlamaLocalModels implements LocalModels {
 
   Future<LlamaEngine> _embedding() async => _embed ??= await (_embedLoading ??= _load(embeddingPath, const ModelParams(contextSize: 512)));
 
-  Future<LlamaEngine> _language() async => _lang ??= await (_langLoading ??= _load(languagePath, const ModelParams(contextSize: 8192)));
+  Future<LlamaEngine> _language() async => _lang ??= await (_langLoading ??= _load(languagePath, const ModelParams(contextSize: 4096)));
 
   @override
   Future<List<List<double>>> embed(List<String> texts) async {

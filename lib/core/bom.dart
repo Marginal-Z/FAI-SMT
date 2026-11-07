@@ -676,8 +676,11 @@ bool contentFits(BomRole role, List<String> values) {
   return switch (role) {
     BomRole.quantity => share((x) => parseQuantity(x) != null) >= 0.8,
     BomRole.refs => share((x) => splitRefs(x).isNotEmpty && splitRefs(x).every(_designator.hasMatch)) >= 0.6,
-    BomRole.partNo || BomRole.mpn || BomRole.alternate => share((x) => !x.contains(' ') && RegExp(r'\d').hasMatch(x)) >= 0.6,
-    BomRole.maker => share((x) => _letter.hasMatch(x) && !RegExp(r'\d{3,}').hasMatch(x)) >= 0.6,
+    BomRole.partNo || BomRole.alternate => share((x) => !x.contains(' ') && x.length >= 4 && RegExp(r'\d').hasMatch(x)) >= 0.6,
+    // Maker part numbers mix letters and digits.
+    BomRole.mpn => share((x) => !x.contains(' ') && x.length >= 5 && RegExp(r'\d').hasMatch(x) && RegExp(r'[A-Za-z]').hasMatch(x)) >= 0.6,
+    // Names, not flags or notes.
+    BomRole.maker => share((x) => RegExp(r'\p{L}{3,}', unicode: true).hasMatch(x) && !_yes.contains(x.toLowerCase()) && !_no.contains(x.toLowerCase()) && !RegExp(r'\d{3,}').hasMatch(x)) >= 0.6 && v.toSet().length >= 2,
     BomRole.level => v.every((x) => _levelValue(x) != null),
     BomRole.dnp => v.toSet().length <= 6,
     BomRole.description => share((x) => _letter.hasMatch(x)) >= 0.6,

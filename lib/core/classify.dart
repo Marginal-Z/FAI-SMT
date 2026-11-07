@@ -19,6 +19,7 @@ final _phrases = <(RegExp, int, ItemKind)>[
 ];
 
 final _prefix = RegExp(r'^\d*([A-Z]+)');
+final _icPackage = RegExp(r'(?<![A-Za-z])(QFN|DFN|QFP|LQFP|TQFP|BGA|FBGA|LGA|SOIC|SOP|SSOP|TSSOP|MSOP|WLCSP)[-\s]?(\d{1,4})(?!\d)', caseSensitive: false);
 
 /// The kind of an item and what decided it: `words`, `designator` or
 /// `unit`; unknown when nothing does.
@@ -56,6 +57,9 @@ final _prefix = RegExp(r'^\d*([A-Z]+)');
   for (final e in unitKinds.entries) {
     if (e.key.hasMatch(description)) return (e.value, 'unit');
   }
+  // An IC package with six or more pins (QFN16, LQFP48, SOIC8, BGA128).
+  final pkg = _icPackage.firstMatch(description);
+  if (pkg != null && int.parse(pkg.group(2)!) >= 6) return (ItemKind.ic, 'package');
   return (ItemKind.unknown, '');
 }
 

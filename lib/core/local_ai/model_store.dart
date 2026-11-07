@@ -56,18 +56,20 @@ const localModels = [
       'hf-mirror': 'https://hf-mirror.com/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf',
     },
   ),
+  // Chosen over Qwen3-1.7B by benchmark (docs/architecture/phase-3.md):
+  // column roles 79% vs 34%, item kinds 73% vs 63%, at similar speed.
   LocalModelSpec(
-    id: 'qwen3-1.7b-q4km',
+    id: 'qwen3-4b-q4km',
     role: LocalModelRole.language,
-    name: 'Qwen3-1.7B (Q4_K_M)',
+    name: 'Qwen3-4B (Q4_K_M)',
     license: 'Apache-2.0',
-    file: 'Qwen3-1.7B-Q4_K_M.gguf',
-    bytes: 1282439264,
-    sha256: 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5',
+    file: 'Qwen3-4B-Q4_K_M.gguf',
+    bytes: 2497280640,
+    sha256: 'ab27b9bfa375a178d6cba48f3ad892b94b7739659dcc7aae8058ce0ffed6b328',
     urls: {
-      'modelscope': 'https://modelscope.cn/models/ggml-org/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf',
-      'huggingface': 'https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf',
-      'hf-mirror': 'https://hf-mirror.com/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf',
+      'modelscope': 'https://modelscope.cn/models/ggml-org/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf',
+      'huggingface': 'https://huggingface.co/ggml-org/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf',
+      'hf-mirror': 'https://hf-mirror.com/ggml-org/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf',
     },
   ),
 ];
