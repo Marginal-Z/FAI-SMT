@@ -29,6 +29,19 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      # Regression measures on generated BOMs, kept with every build.
+      - name: Evaluation
+        run: |
+          {
+            echo "# Evaluation $(git rev-parse --short HEAD)"
+            echo; echo "## Reading (development generator)"; dart run tool/eval_read.dart 1000
+            echo; echo "## Held-out generator"; dart run tool/eval_holdout.dart 400
+          } > evaluation.md
+          cat evaluation.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: evaluation
+          path: evaluation.md
 
   linux:
     needs: test

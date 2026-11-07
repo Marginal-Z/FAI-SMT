@@ -78,6 +78,8 @@ bool _stepsLikeLevels(List<String> values) {
 /// A value's form: letters → A, digits → 9, other characters kept.
 String _shapeOf(String s) => s.toUpperCase().replaceAll(RegExp(r'[A-Z]'), 'A').replaceAll(RegExp(r'\d'), '9');
 
+// Sizes: 100x150mm, M3x8, 20 x 20 mm, 5.5x2.1.
+final _dimension = RegExp(r'\d+(?:\.\d+)?\s?[x×*]\s?\d+|\b\d+(?:\.\d+)?\s?(?:mm|cm|mil)\b|\bM\d+(?:\.\d+)?x\d+', caseSensitive: false);
 final _letter = RegExp(r'\p{L}', unicode: true);
 final _param = RegExp(r'\d+(?:\.\d+)?\s?(?:K|M|R|Ω|UF|NF|PF|MF|UH|NH|MH|V|W|A|%|MHZ|KHZ|HZ|PPM)\b|\b(?:01005|0201|0402|0603|0805|1206|1210|2512)\b', caseSensitive: false);
 
@@ -96,15 +98,15 @@ String formatQuantity(double? q) {
 // ------------------------------------------------------------- header hints
 
 const _hints = <BomRole, List<String>>{
-  BomRole.partNo: ['料号', '料件编号', '物料编码', '物料编号', '物料代码', '品号', '元件编号', '组件料号', '编码', 'partno', 'partnumber', 'p/n', 'pn', 'itemcode', 'material'],
-  BomRole.description: ['描述', '品名', '规格', '名称', '型号规格', '物料名称', '物料描述', 'description', 'desc', 'value', 'comment', 'spec'],
-  BomRole.quantity: ['用量', '数量', '组成用量', '单机用量', '单位用量', 'qty', 'quantity', 'count', 'usage'],
-  BomRole.refs: ['位号', '插件位置', '元件位置', '点位', '位置', 'designator', 'reference', 'refdes', 'ref', 'location', 'position'],
+  BomRole.partNo: ['料号', '料件编号', '物料编码', '物料编号', '物料代码', '品号', '元件编号', '组件料号', '编码', '品番', '部品コード', '품번', '품목코드', 'código', 'codigo', 'référence', 'artikelnummer', 'partno', 'partnumber', 'p/n', 'pn', 'itemcode', 'material'],
+  BomRole.description: ['描述', '品名', '规格', '名称', '型号规格', '物料名称', '物料描述', '品名・仕様', '仕様', '품명', '규격', 'descripción', 'descripcion', 'désignation', 'bezeichnung', 'wert', 'valor', 'valeur', '値', 'description', 'desc', 'value', 'comment', 'spec'],
+  BomRole.quantity: ['用量', '数量', '组成用量', '单机用量', '单位用量', '員数', '数量', '수량', 'cantidad', 'quantité', 'menge', 'anzahl', 'qty', 'quantity', 'count', 'usage'],
+  BomRole.refs: ['位号', '插件位置', '元件位置', '点位', '位置', '部品番号', '回路番号', '부품위치', '위치번호', 'referencias', 'repères', 'bestückungsplatz', 'designator', 'reference', 'refdes', 'ref', 'location', 'position'],
   BomRole.serial: ['序号', '项次', '项目', '行号', 'no', 'no.', 'item', '#', 'line'],
-  BomRole.mpn: ['mpn', 'mfrpn', 'mfrp/n', 'mfgpn', 'mfgp/n', 'manufacturerpartnumber', 'manufacturerpn', 'manufacturerp/n', 'mfrpartnumber', 'mfgpartnumber', 'mfrpart#', 'vendorpartnumber', '厂商料号', '原厂料号', '原厂型号', '制造商料号', '厂家料号', '厂家型号', '厂商型号', '制造商型号', 'herstellerteilenummer', 'herstellernummer'],
-  BomRole.maker: ['manufacturer', 'manufacturername', 'mfr', 'mfg', 'maker', 'brand', '厂商', '厂家', '制造商', '品牌', '生产商', 'hersteller', 'fabricant', 'ผู้ผลิต', 'ยี่ห้อ'],
+  BomRole.mpn: ['mpn', 'メーカー品番', '제조사품번', 'ref.fabricante', 'referenciafabricante', 'mfrpn', 'mfrp/n', 'mfgpn', 'mfgp/n', 'manufacturerpartnumber', 'manufacturerpn', 'manufacturerp/n', 'mfrpartnumber', 'mfgpartnumber', 'mfrpart#', 'vendorpartnumber', '厂商料号', '原厂料号', '原厂型号', '制造商料号', '厂家料号', '厂家型号', '厂商型号', '制造商型号', 'herstellerteilenummer', 'herstellernummer'],
+  BomRole.maker: ['manufacturer', 'manufacturername', 'mfr', 'mfg', 'maker', 'brand', '厂商', '厂家', '制造商', '品牌', '生产商', 'メーカー', '제조사', 'fabricante', 'hersteller', 'fabricant', 'ผู้ผลิต', 'ยี่ห้อ'],
   BomRole.alternate: ['alternate', 'alternative', 'alternates', 'alt', 'altpn', 'substitute', 'secondsource', '2ndsource', '替代', '替代料', '替代料号', '代用料', '备选', '备选料', '关联料号', 'ersatz', 'ersatzteil'],
-  BomRole.level: ['level', 'lvl', 'bomlevel', '阶层', '层级', '层次', '阶次', 'ebene', 'stufe'],
+  BomRole.level: ['level', 'lvl', 'bomlevel', '阶层', '层级', '层次', '阶次', '階層', '階層レベル', '레벨', '계층', 'nivel', 'niveau', 'livello', 'ebene', 'stufe', 'уровень'],
   BomRole.dnp: ['dnp', 'dni', 'dnf', 'fitted', 'populate', 'populated', 'mounted', 'notfitted', '贴装', '是否贴装', '是否安装', '是否上件', '是否装配', '装配', '上件', '不贴', '空贴', 'bestückt'],
 };
 
@@ -351,7 +353,7 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   bool describes(int c) {
     final v = [for (final r in data) cleanCell(g.cell(r, c))].where((x) => x.isNotEmpty).toList();
     if (v.isEmpty) return false;
-    final hits = v.where((x) => _param.hasMatch(x) || classifyItem(x, const []).$1 != ItemKind.unknown).length;
+    final hits = v.where((x) => _param.hasMatch(x) || _dimension.hasMatch(x) || classifyItem(x, const []).$1 != ItemKind.unknown).length;
     return hits / v.length >= 0.5;
   }
 
