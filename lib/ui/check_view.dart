@@ -12,6 +12,7 @@ import '../app_state.dart';
 import '../core/ai_check.dart';
 import '../core/bom.dart';
 import '../core/bom_compare.dart';
+import '../core/params.dart';
 import '../core/refdes.dart';
 import '../l10n/strings.dart';
 import 'design.dart';
@@ -295,6 +296,19 @@ class _CheckViewState extends State<CheckView> {
         ),
       ],
     );
+    final riskSelect = DropdownSelect<Risk?>(
+      value: state.riskFilter,
+      width: 120,
+      options: [(null, s.t('risk_all')), for (final k in Risk.values) (k, s.t('risk_${k.name}'))],
+      onChanged: state.setRiskFilter,
+    );
+    final reasons = report.reasonCounts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final reasonSelect = DropdownSelect<String?>(
+      value: state.reasonFilter,
+      width: 190,
+      options: [(null, s.t('reason_all')), for (final e in reasons) (e.key, '${s.t('reason_${e.key}')} (${e.value})')],
+      onChanged: state.setReasonFilter,
+    );
     final columnsNote = _ColumnsNote(report: report);
     final filters = KeyedSubtree(
       key: tourTargets.checkFilters,
@@ -305,13 +319,25 @@ class _CheckViewState extends State<CheckView> {
                 search,
                 const SizedBox(height: 12),
                 Row(children: [resultSelect, const Spacer(), count]),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    riskSelect,
+                    const SizedBox(width: 8),
+                    Expanded(child: reasonSelect),
+                  ],
+                ),
               ],
             )
           : Row(
               children: [
-                SizedBox(width: 320, child: search),
+                SizedBox(width: 280, child: search),
                 const SizedBox(width: 16),
                 resultSelect,
+                const SizedBox(width: 10),
+                riskSelect,
+                const SizedBox(width: 10),
+                reasonSelect,
                 const SizedBox(width: 16),
                 Expanded(child: columnsNote),
                 const SizedBox(width: 16),
@@ -945,6 +971,14 @@ class _Detail extends StatelessWidget {
         if (f.key != 'refs') ...[
           field(fieldLabel(s, f), f.single, f.merged, f.singleSpans, f.mergedSpans, f.equal && !f.incomplete),
           if (f.equivalent) Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(s.t('equiv_note'), style: TextStyle(fontSize: 12, color: c.okTx))),
+          if (f.key == 'description' && (normalisedParams(f.single).isNotEmpty || normalisedParams(f.merged).isNotEmpty))
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              child: Text(
+                s.t('params_norm', {'a': normalisedParams(f.single).isEmpty ? '—' : normalisedParams(f.single), 'b': normalisedParams(f.merged).isEmpty ? '—' : normalisedParams(f.merged)}),
+                style: TextStyle(fontSize: 12, height: 1.5, color: c.tx2),
+              ),
+            ),
         ],
       if (row.field('refs') != null || row.missingRefs.isNotEmpty || row.extraRefs.isNotEmpty) ...[
         label(s.t('f_refs')),

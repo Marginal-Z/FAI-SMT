@@ -487,6 +487,12 @@ class AppState extends ChangeNotifier {
   }
 
   void _checkedStatus() {
+    report!
+      ..mode = settings.checkMode.name
+      ..models = [
+        if (localStatus == LocalStatus.done) modelFor(LocalModelRole.embedding).name,
+        if (settings.checkMode != CheckMode.local && cloudRun != null) '${settings.cloud.kind.name} ${settings.cloud.modelName}',
+      ];
     if (report!.complete) {
       _status('status_checked', {
         'pass': report!.count(CheckStatus.pass),
@@ -635,6 +641,20 @@ class AppState extends ChangeNotifier {
 
   // ------------------------------------------------------------------- view
 
+  /// Risk and reason filters; null shows every row.
+  Risk? riskFilter;
+  String? reasonFilter;
+
+  void setRiskFilter(Risk? r) {
+    riskFilter = r;
+    notifyListeners();
+  }
+
+  void setReasonFilter(String? r) {
+    reasonFilter = r;
+    notifyListeners();
+  }
+
   void setFilter(CheckStatus? s) {
     filter = s;
     notifyListeners();
@@ -659,6 +679,8 @@ class AppState extends ChangeNotifier {
     final q = search.trim().toUpperCase();
     return r.rows.where((row) {
       if (filter != null && row.status != filter) return false;
+      if (riskFilter != null && riskOf(row) != riskFilter) return false;
+      if (reasonFilter != null && !row.reasons.contains(reasonFilter)) return false;
       if (q.isEmpty) return true;
       return row.partNo.toUpperCase().contains(q) ||
           row.description.toUpperCase().contains(q) ||

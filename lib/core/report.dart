@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'ai_check.dart';
 import 'bom.dart';
 import 'bom_compare.dart';
+import 'params.dart';
 import 'xlsx_writer.dart';
 
 String _stamp(DateTime t) {
@@ -39,6 +40,10 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
   sheet.appendRow([t('rep_a'), aName]);
   if (bName.isNotEmpty) sheet.appendRow([t('rep_b'), bName]);
   sheet.appendRow([t('rep_time'), _stamp(report.at)]);
+  sheet.appendRow([t('rep_mode'), t('mode_${report.mode}'), if (report.models.isNotEmpty) '${t('rep_models')}: ${report.models.join(', ')}']);
+  // An incomplete check says so above the table.
+  sheet.appendRow([t('rep_complete'), report.complete ? t('rep_complete_yes') : t('rep_complete_no').replaceAll('{n}', '${report.uncovered.length}')]);
+  if (!report.complete) sheet.style(sheet.rowCount - 1, 1, const XlsxStyle(bold: true, fill: 'FDE2E1'));
   sheet.appendRow([]);
 
   final others = report.compared.entries.toList();
@@ -60,6 +65,10 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
     t('rep_src_merged'),
     t('rep_basis'),
     t('rep_reasons'),
+    t('rep_risk'),
+    t('rep_params_single'),
+    t('rep_params_merged'),
+    t('rep_cloud_note'),
     t('rep_ai'),
   ];
   final headRow = sheet.rowCount;
@@ -91,6 +100,10 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
       r.merged?.recordIds.join(', ') ?? '',
       [for (final k in r.basis.kinds) t('basis_$k'), if (r.basis.kinds.isNotEmpty) '${(r.basis.confidence * 100).round()}%'].join(' · '),
       [for (final k in r.reasons) t('reason_$k')].join('; '),
+      t('risk_${riskOf(r).name}'),
+      normalisedParams(r.single?.description ?? ''),
+      normalisedParams(r.merged?.description ?? ''),
+      r.cloudNote,
       aiNotes,
     ]);
     sheet.style(row, 2, statusFill[r.status]!);
@@ -115,8 +128,35 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
     sheet.setWidth(c, widths[c]);
   }
   for (var c = 12; c < headers.length; c++) {
-    sheet.setWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 5 ? 26 : 18));
+    sheet.setWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 9 ? 26 : 18));
   }
+
+  // Summary: counts by result, risk and reason.
+  final sum = book.addSheet(t('rep_summary_sheet'));
+  sum.appendRow([t('rep_result'), t('rep_count')]);
+  sum.style(0, 0, head);
+  sum.style(0, 1, head);
+  for (final st in CheckStatus.values) {
+    sum.appendRow([t('status_${st.name}'), report.count(st)]);
+  }
+  sum.appendRow([]);
+  final rh = sum.rowCount;
+  sum.appendRow([t('rep_risk'), t('rep_count')]);
+  sum.style(rh, 0, head);
+  sum.style(rh, 1, head);
+  for (final k in Risk.values) {
+    sum.appendRow([t('risk_${k.name}'), report.countRisk(k)]);
+  }
+  sum.appendRow([]);
+  final reh = sum.rowCount;
+  sum.appendRow([t('rep_reasons'), t('rep_count')]);
+  sum.style(reh, 0, head);
+  sum.style(reh, 1, head);
+  for (final e in (report.reasonCounts.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) {
+    sum.appendRow([t('reason_${e.key}'), e.value]);
+  }
+  sum.setWidth(0, 44);
+  sum.setWidth(1, 10);
 
   if (ai != null) {
     final s = book.addSheet(t('rep_ai_sheet'));

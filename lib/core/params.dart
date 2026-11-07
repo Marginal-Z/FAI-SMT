@@ -173,3 +173,38 @@ ParamComparison compareParams(String a, String b) {
       : (onlyAFinal.isNotEmpty || restB.isNotEmpty ? ParamVerdict.incomplete : ParamVerdict.same);
   return ParamComparison(verdict, matched, conflicts, onlyAFinal, restB);
 }
+
+/// A parameter in its normalised form, for display: 10 kΩ, 100 nF, 2.2 µH,
+/// 62.5 mW, 24 MHz, 1 %, X7R, 0402, SOT-23.
+String normalised(Param p) {
+  final v = p.value;
+  if (v == null) return p.key;
+  String si(double x, String unit) {
+    if (x == 0) return '0 $unit';
+    const steps = [(1e9, 'G'), (1e6, 'M'), (1e3, 'k'), (1.0, ''), (1e-3, 'm'), (1e-6, 'µ'), (1e-9, 'n'), (1e-12, 'p')];
+    for (final (f, pre) in steps) {
+      if (x.abs() >= f * 0.999999) {
+        // Six significant digits, trailing zeros dropped (0.1µ → 100 n).
+        final t = (x / f).toStringAsPrecision(6).replaceFirst(RegExp(r'\.?0+$'), '');
+        return '$t $pre$unit';
+      }
+    }
+    return '$x $unit';
+  }
+
+  return switch (p.kind) {
+    ParamKind.resistance => si(v, 'Ω'),
+    ParamKind.capacitance => si(v, 'F'),
+    ParamKind.inductance => si(v, 'H'),
+    ParamKind.voltage => si(v, 'V'),
+    ParamKind.current => si(v, 'A'),
+    ParamKind.power => si(v, 'W'),
+    ParamKind.frequency => si(v, 'Hz'),
+    ParamKind.tolerance => '${v == v.roundToDouble() ? v.toInt() : v} %',
+    ParamKind.tempco => '${v == v.roundToDouble() ? v.toInt() : v} ppm',
+    _ => p.key.isEmpty ? p.text : p.key,
+  };
+}
+
+/// All parameters of a description, normalised, in order.
+String normalisedParams(String description) => extractParams(description).map(normalised).join(' · ');

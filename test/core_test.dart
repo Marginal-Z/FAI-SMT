@@ -10,6 +10,7 @@ import 'package:smt_fai/core/bom.dart';
 import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/classify.dart';
 import 'package:smt_fai/core/cloud/provider.dart';
+import 'package:smt_fai/core/params.dart';
 import 'package:smt_fai/core/refdes.dart';
 import 'package:smt_fai/core/report.dart';
 import 'package:smt_fai/core/settings.dart';
@@ -421,10 +422,31 @@ void main() {
       expect(sheet.value(diff, srcCol + 1), startsWith('A:A-BOM!'));
       // The file reads back with the same values.
       final grids = readTableBytes(book.encode(), 'r.xlsx');
-      expect(grids.map((g) => g.name), [t('rep_sheet'), t('rep_ai_sheet')]);
+      expect(grids.map((g) => g.name), [t('rep_sheet'), t('rep_summary_sheet'), t('rep_ai_sheet')]);
       expect(grids.first.cell(diff, 1), 'K1103-0106K0-001A');
       expect(grids.first.cell(diff, 0), '${rows.indexOf(diff) + 1}');
       expect(grids.first.cell(header, srcCol), t('rep_src_single'));
+    });
+    test('report: risk, normalised parameters, mode and a summary sheet', () {
+      final r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx', id: 'A'), demo('demo_B_BOM.xlsx', id: 'B'));
+      final t = Strings('zh').t;
+      final book = buildCompareWorkbook(r, t);
+      final sheet = book.sheets.first;
+      final header = [for (var i = 0; i < sheet.rowCount; i++) i].firstWhere((i) => sheet.value(i, 0) == '#');
+      int col(String key) => [for (var c = 0; c < 60; c++) c].firstWhere((c) => sheet.value(header, c) == t(key));
+      final row = [for (var i = header + 1; i < sheet.rowCount; i++) i].firstWhere((i) => sheet.value(i, 1) == 'K1103-0106K0-001A');
+      expect(sheet.value(row, col('rep_risk')), t('risk_high'));
+      expect(sheet.value(row, col('rep_params_single')), '10 µF · 6.3 V · X5R · 0603');
+      expect(sheet.value(row, col('rep_params_merged')), '10 µF · 10 V · X5R · 0603');
+      expect([for (var i = 0; i < header; i++) sheet.value(i, 1)], contains(t('rep_complete_yes')));
+      final sum = book.sheets.firstWhere((x) => x.name == t('rep_summary_sheet'));
+      expect(sum.value(1, 1), r.count(CheckStatus.pass));
+      expect(riskOf(r.rows.firstWhere((x) => x.partNo == 'K1106-LED0G0-001A')), Risk.low);
+    });
+    test('parameters are shown in a normalised form', () {
+      expect(normalisedParams('贴片电阻 4K7 1/16W ±1% 0402'), '4.7 kΩ · 62.5 mW · 1 % · 0402');
+      expect(normalisedParams('MLCC 0.1uF 16V NPO'), '100 nF · 16 V · C0G');
+      expect(normalisedParams('Crystal 24MHz 10ppm'), '24 MHz · 10 ppm');
     });
     test('xlsx writer: escaping, control characters, styles in the file', () {
       final w = XlsxWriter();

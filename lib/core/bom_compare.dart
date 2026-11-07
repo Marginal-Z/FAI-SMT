@@ -36,6 +36,39 @@ enum CheckStatus {
   substitute,
 }
 
+/// How much a line matters to the person reviewing the check.
+enum Risk {
+  /// A confirmed difference that changes what is built: a parameter,
+  /// quantity, designator or fitted flag, or a part only one side places.
+  high,
+
+  /// Needs a person: an unsettled match or field, another column differs.
+  medium,
+
+  /// An approved substitute, or only wording left to confirm.
+  low,
+  none,
+}
+
+const _highReasons = {'param_conflict', 'qty', 'refs', 'dnp_differs', 'level', 'desc_text'};
+
+Risk riskOf(CompareRow r) {
+  switch (r.status) {
+    case CheckStatus.pass:
+      return Risk.none;
+    case CheckStatus.substitute:
+      return Risk.low;
+    case CheckStatus.ng:
+      return r.reasons.any(_highReasons.contains) ? Risk.high : Risk.medium;
+    case CheckStatus.unmatched:
+      // A placed part with no counterpart is missing from the build.
+      final p = r.single ?? r.merged;
+      return p != null && p.refs.isNotEmpty && !p.dnp ? Risk.high : Risk.medium;
+    case CheckStatus.review:
+      return r.reasons.every((x) => x == 'wording_unsure' || x.startsWith('cloud_')) ? Risk.low : Risk.medium;
+  }
+}
+
 /// A highlighted range [start, end) in a displayed value.
 typedef Span = (int, int);
 
@@ -149,9 +182,16 @@ class CompareReport {
     required this.mergedOnlyColumns,
     required this.at,
     this.uncovered = const [],
+    this.mode = 'local',
+    this.models = const [],
   });
 
   final List<CompareRow> rows;
+
+  /// How the check ran (`local`, `hybrid`, `cloudFull`) and which models
+  /// took part, for the report.
+  String mode;
+  List<String> models;
 
   /// Other columns compared: label → header.
   final Map<String, String> compared;
@@ -168,6 +208,19 @@ class CompareReport {
   bool get complete => uncovered.isEmpty;
 
   int count(CheckStatus s) => rows.where((r) => r.status == s).length;
+
+  int countRisk(Risk k) => rows.where((r) => riskOf(r) == k).length;
+
+  /// Reasons present, with how many lines have each.
+  Map<String, int> get reasonCounts {
+    final out = <String, int>{};
+    for (final r in rows) {
+      for (final x in r.reasons) {
+        out[x] = (out[x] ?? 0) + 1;
+      }
+    }
+    return out;
+  }
 }
 
 // ----------------------------------------------------------- description rule
