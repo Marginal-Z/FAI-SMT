@@ -4,7 +4,7 @@
 
 # SMT-FAI
 
-**SMT BOM 核对工具：单 BOM 与 A-BOM + B-BOM 按内容自动识别、逐料号核对、差异高亮，可选 AI 分析**
+**智能 BOM 核对：按内容理解未知 BOM、自动配对物料、严格校验参数；本地 / 混合 / 云端三种模式，无法确认的绝不判通过**
 
 [![最新版本](https://img.shields.io/github/v/release/Marginal-Z/FAI-SMT?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/Marginal-Z/FAI-SMT/releases/latest)
 [![构建](https://img.shields.io/github/actions/workflow/status/Marginal-Z/FAI-SMT/build.yml?branch=main&label=%E6%9E%84%E5%BB%BA)](https://github.com/Marginal-Z/FAI-SMT/actions/workflows/build.yml)
@@ -20,7 +20,15 @@
 
 SMT-FAI 用于 SMT 产线的 BOM 核对。导入作为基准的单 BOM，再导入 A-BOM（以及可选的 B-BOM）：A 与 B 合并后（同一料号用量相加、位号合并），与单 BOM 逐个料号比较物料描述、用量、位号和其他列，不一致的单元格填色、差异字符高亮。开启 AI 核对后，核对结果会交给你配置的大模型（OpenAI 兼容接口或 Anthropic）输出分析结果，并在表格中标记 AI 发现的问题。
 
-本地核对完全在本机完成。只有开启 AI 核对时，核对数据才会发送到你在设置中配置的接口。
+三种核对模式：
+
+| 模式 | 说明 |
+| --- | --- |
+| **本地** | 完全离线、不需要 API Key：程序识别字段、配对物料、按数值校验参数；可选的本地向量模型（Qwen3-Embedding-0.6B，随离线安装包提供或在软件内下载）为换了料号且没有位号的物料寻找对应项 |
+| **混合** | 先本地核对，再把无法确定的物料交给你选择的云端 AI；云端结论经程序交叉校验，不能推翻已确认的冲突 |
+| **云端** | 由云端 AI 识别字段并配对物料；程序校验记录覆盖、引用和每项数值，失败或不完整时不显示完成 |
+
+本地模式不联网。只有选择混合 / 云端模式或开启 AI 分析时，才会把核对数据发送到你在设置中配置的接口（可选择不发送料号原文、位号列表和其他列）；API Key 保存在系统安全存储中。
 
 ## 主要功能
 
@@ -32,8 +40,9 @@ SMT-FAI 用于 SMT 产线的 BOM 核对。导入作为基准的单 BOM，再导�
 | **其他列精确比较** | 用量、位号以及两边都有的其他列（品牌、类别、厂商料号等）必须百分之百一致；名称不同或无表头的列按内容自动配对 |
 | **智能匹配** | 按料号、位号（支持拆分 / 合并）、厂商料号、替代料号、类别 + 参数以及本地语义模型配对，每条结果带匹配依据、置信度和原因 |
 | **五种结果** | 通过、不一致、需复核、未匹配、认可替代料；无法确认的一律「需复核」，不猜测；差异单元格填色、差异字符加粗高亮 |
-| **AI 核对** | 核对页一个开关打开；支持 OpenAI 兼容接口（OpenAI、DeepSeek、通义千问、Kimi、Ollama、vLLM 等）与 Anthropic；输出总结与逐条发现，AI 标记的料号用青色标识 |
-| **Excel 报告** | 两边的值并排列出，结果按状态填色，差异单元格填黄色，AI 说明填青色；开启 AI 时附带「AI 分析」工作表 |
+| **云端 AI** | DeepSeek、OpenAI、Anthropic 与任意 OpenAI 兼容接口；结构化输出校验、超时重试、限流、取消、Token 与费用统计、请求日志；AI 分析输出总结与逐条发现，AI 标记的料号用青色标识 |
+| **本地模型** | 设置 → 本地模型：下载（断点续传、多镜像、SHA-256 校验）、状态与删除；离线安装包自带 |
+| **Excel 报告** | 两边的值并排列出，结果按状态填色，差异单元格填黄色；每行带来源行号、匹配依据、原因、风险和标准化参数；「汇总」工作表；未完成的核对在表头醒目提示 |
 | **使用体验** | 中文 / English / ไทย；现代 / 工业两种扁平界面风格；浅色 / 深色 / 跟随系统；新手引导；手机、平板竖屏与横屏各有专属布局；应用内自动更新 |
 
 ## 下载与安装
@@ -42,7 +51,7 @@ SMT-FAI 用于 SMT 产线的 BOM 核对。导入作为基准的单 BOM，再导�
 
 | 平台 | 系统要求 | 安装包 |
 | --- | --- | --- |
-| Windows | Windows 10 / 11，x64 或 ARM64 | `SMT-FAI-<版本>-windows-x64-setup.exe`（推荐）、`-arm64-setup.exe`；或 zip 绿色版 |
+| Windows | Windows 10 / 11，x64 或 ARM64 | `SMT-FAI-<版本>-windows-x64-setup.exe`（推荐）、`-arm64-setup.exe`；自带本地模型的离线完整包 `-full-setup.exe`（约 650 MB）；或 zip 绿色版 |
 | Android | Android 7.0 及以上 | `SMT-FAI-<版本>-android-universal.apk`；或对应架构的 APK |
 | Linux | Debian / Ubuntu 及衍生版，x64 或 ARM64 | `SMT-FAI-<版本>-linux-x64.deb`、`-arm64.deb`；或 tar.gz |
 
