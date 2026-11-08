@@ -941,7 +941,7 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
     final s = Strings.of(context);
     final state = widget.state;
     final ready = state.localModelsReady;
-    final total = localModels.fold<int>(0, (a, m) => a + m.bytes);
+    final total = localModels.where((m) => m.required).fold<int>(0, (a, m) => a + m.bytes);
     Widget model(LocalModelSpec m) {
       final st = state.modelStatus[m.id] ?? const ModelStatus(ModelState.missing);
       final busy = st.state == ModelState.downloading || st.state == ModelState.verifying;
@@ -968,7 +968,7 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
                       Text(m.name, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
                       const SizedBox(height: 2),
                       Text(
-                        '${s.t(m.role == LocalModelRole.embedding ? 'model_role_embedding' : 'model_role_language')} · ${_size(m.bytes)} · ${m.license}',
+                        '${s.t(m.role == LocalModelRole.embedding ? 'model_role_embedding' : 'model_role_language')} · ${_size(m.bytes)} · ${m.license}${m.required ? '' : ' · ${s.t('model_optional')}'}',
                         style: TextStyle(fontSize: 12.5, color: c.tx2),
                       ),
                     ],

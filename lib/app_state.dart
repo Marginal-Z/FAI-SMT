@@ -260,7 +260,7 @@ class AppState extends ChangeNotifier {
   final modelStatus = <String, ModelStatus>{};
   final _downloads = <String, DownloadCancel>{};
 
-  bool get localModelsReady => localModels.every((m) => modelStatus[m.id]?.state == ModelState.ready);
+  bool get localModelsReady => localModels.where((m) => m.required).every((m) => modelStatus[m.id]?.state == ModelState.ready);
 
   Future<void> refreshModels() async {
     for (final m in localModels) {
@@ -510,6 +510,9 @@ class AppState extends ChangeNotifier {
   // ------------------------------------------------------------ local AI
 
   LocalStatus localStatus = LocalStatus.idle;
+
+  /// Share of descriptions the local model has read (0–1).
+  double localProgress = 0;
   String localError = '';
 
   /// Lines the local model paired in the last check.
@@ -527,7 +530,10 @@ class AppState extends ChangeNotifier {
     try {
       final ai = await _localModels();
       final first = report!;
-      final sug = await semanticSuggestions(first, ai);
+      final sug = await semanticSuggestions(first, ai, cancelled: () => run != _checkRun, onProgress: (p) {
+        localProgress = p;
+        notifyListeners();
+      });
       if (run != _checkRun) return;
       report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, semantic: sug);
       localPaired = sug.length;

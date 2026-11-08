@@ -540,7 +540,7 @@ void main() {
         'tag_name': 'v1.3.0',
         'assets': [
           for (final n in [
-            'SMT-FAI-1.3.0-windows-x64.zip', 'SMT-FAI-1.3.0-windows-arm64.zip', 'SMT-FAI-1.3.0-windows-x64-setup.exe',
+            'SMT-FAI-1.3.0-windows-x64.zip', 'SMT-FAI-1.3.0-windows-arm64.zip', 'SMT-FAI-1.3.0-windows-x64-full-setup.exe', 'SMT-FAI-1.3.0-windows-x64-setup.exe',
             'SMT-FAI-1.3.0-linux-x64.tar.gz',
             'SMT-FAI-1.3.0-linux-arm64.tar.gz', 'SMT-FAI-1.3.0-android-arm64-v8a.apk', 'SMT-FAI-1.3.0-android-universal.apk',
           ])
@@ -552,6 +552,8 @@ void main() {
       // Installed with the setup program: update with the new setup, or the
       // zip when that architecture has no setup.
       expect(pickAsset(r, Abi.windowsX64, installer: true)!.name, endsWith('windows-x64-setup.exe'));
+      // The offline installer with the model is never picked for updates.
+      expect(pickAsset(r, Abi.windowsX64, installer: true)!.name, isNot(contains('full')));
       expect(pickAsset(r, Abi.windowsX64)!.name, endsWith('windows-x64.zip'));
       expect(pickAsset(r, Abi.windowsArm64, installer: true)!.name, endsWith('windows-arm64.zip'));
       expect(pickAsset(r, Abi.linuxX64)!.name, endsWith('linux-x64.tar.gz'));

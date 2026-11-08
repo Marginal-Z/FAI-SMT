@@ -19,7 +19,11 @@ enum LocalModelRole {
 }
 
 class LocalModelSpec {
-  const LocalModelSpec({required this.id, required this.role, required this.file, required this.bytes, required this.sha256, required this.urls, required this.name, required this.license});
+  const LocalModelSpec({required this.id, required this.role, required this.file, required this.bytes, required this.sha256, required this.urls, required this.name, required this.license, this.required = true});
+
+  /// Needed for the local check; optional models can be left out (and are
+  /// not in the offline installer).
+  final bool required;
 
   final String id;
   final LocalModelRole role;
@@ -58,8 +62,11 @@ const localModels = [
   ),
   // Chosen over Qwen3-1.7B by benchmark (docs/architecture/phase-3.md):
   // column roles 79% vs 34%, item kinds 73% vs 63%, at similar speed.
+  // Optional: measured worse than the program at reading columns
+  // (docs/architecture/phase-3.md), so no default check uses it.
   LocalModelSpec(
     id: 'qwen3-4b-q4km',
+    required: false,
     role: LocalModelRole.language,
     name: 'Qwen3-4B (Q4_K_M)',
     license: 'Apache-2.0',

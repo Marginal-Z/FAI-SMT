@@ -34,7 +34,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 #endif
 OutputDir=..\..\dist
+#ifdef ModelsDir
+OutputBaseFilename=SMT-FAI-{#AppVersion}-windows-{#AppArch}-full-setup
+#else
 OutputBaseFilename=SMT-FAI-{#AppVersion}-windows-{#AppArch}-setup
+#endif
 SetupIconFile=..\..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\smt_fai.exe
 UninstallDisplayName=SMT-FAI
@@ -56,6 +60,10 @@ Type: filesandordirs; Name: "{app}\data"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef ModelsDir
+; Full offline installer: the local model next to the program, used as is.
+Source: "{#ModelsDir}\*.gguf"; DestDir: "{app}\models"; Flags: ignoreversion nocompression
+#endif
 
 [Icons]
 Name: "{autoprograms}\SMT-FAI"; Filename: "{app}\smt_fai.exe"

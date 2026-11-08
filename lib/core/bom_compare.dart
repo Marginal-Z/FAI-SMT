@@ -548,31 +548,47 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
       if (q != null) (linked[p] ??= {}).add(q);
     }
   }
-  final seenL = <BomPart>{};
-  for (final start in linked.keys) {
-    if (seenL.contains(start)) continue;
-    // Walk the component: left parts sharing any right part.
-    final gl = <BomPart>{start}, gr = <BomPart>{};
-    var grew = true;
-    while (grew) {
-      grew = false;
-      for (final p in [...gl]) {
-        for (final q in linked[p] ?? const <BomPart>{}) {
-          if (gr.add(q)) grew = true;
-        }
-      }
-      for (final p in linked.keys) {
-        if (!gl.contains(p) && (linked[p]!.any(gr.contains))) {
-          gl.add(p);
-          grew = true;
-        }
+  // Components by union-find over left parts that share a right part.
+  final parent = <BomPart, BomPart>{for (final p in linked.keys) p: p};
+  BomPart find(BomPart x) {
+    var r = x;
+    while (parent[r] != r) {
+      r = parent[r]!;
+    }
+    // Path compression.
+    var y = x;
+    while (parent[y] != r) {
+      final next = parent[y]!;
+      parent[y] = r;
+      y = next;
+    }
+    return r;
+  }
+
+  final firstOwner = <BomPart, BomPart>{};
+  for (final e in linked.entries) {
+    for (final q in e.value) {
+      final o = firstOwner[q];
+      if (o == null) {
+        firstOwner[q] = e.key;
+      } else {
+        final ra = find(o), rb = find(e.key);
+        if (ra != rb) parent[ra] = rb;
       }
     }
-    seenL.addAll(gl);
+  }
+  final comps = <BomPart, (List<BomPart>, Set<BomPart>)>{};
+  for (final p in left) {
+    if (!linked.containsKey(p)) continue;
+    final c = comps.putIfAbsent(find(p), () => (<BomPart>[], <BomPart>{}));
+    c.$1.add(p);
+    c.$2.addAll(linked[p]!);
+  }
+  for (final (gl, gr) in comps.values) {
     final lr = {for (final p in gl) ...p.refs}, rr = {for (final q in gr) ...q.refs};
     final overlap = lr.intersection(rr).length / lr.union(rr).length;
     final alt = gl.any((p) => gr.any((q) => p.alternates.contains(q.partNo) || q.alternates.contains(p.partNo)));
-    groups.add((gl.toList(), gr.toList(), MatchBasis(['refs', if (alt) 'alternate'], overlap)));
+    groups.add((gl, gr.toList(), MatchBasis(['refs', if (alt) 'alternate'], overlap)));
     usedL.addAll(gl);
     usedR.addAll(gr);
   }

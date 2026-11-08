@@ -170,6 +170,16 @@ jobs:
           $src = (Resolve-Path "build/windows/${{ matrix.arch }}/runner/Release").Path
           & $iscc "/DAppVersion=$version" "/DAppArch=${{ matrix.arch }}" "/DSourceDir=$src" installer/windows/smt-fai.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Full offline installer with the local model, checked against its
+          # SHA-256 before it is packed.
+          $models = Join-Path $env:RUNNER_TEMP 'models'
+          New-Item -ItemType Directory -Force -Path $models | Out-Null
+          $file = Join-Path $models 'Qwen3-Embedding-0.6B-Q8_0.gguf'
+          Invoke-WebRequest -Uri 'https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf' -OutFile $file
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne '06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439') { throw "model hash mismatch: $hash" }
+          & $iscc "/DAppVersion=$version" "/DAppArch=${{ matrix.arch }}" "/DSourceDir=$src" "/DModelsDir=$models" installer/windows/smt-fai.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem dist
       - uses: actions/upload-artifact@v7
         with:

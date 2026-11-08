@@ -44,8 +44,9 @@ class LlamaLocalModels implements LocalModels {
   static Future<LlamaLocalModels> open(ModelStore store) async {
     final e = await store.status(modelFor(LocalModelRole.embedding));
     final l = await store.status(modelFor(LocalModelRole.language));
-    if (e.state != ModelState.ready || l.state != ModelState.ready) throw LocalAiException('model_missing');
-    return LlamaLocalModels(embeddingPath: e.path!, languagePath: l.path!);
+    if (e.state != ModelState.ready) throw LocalAiException('model_missing');
+    // The language model is optional; asking it without the file fails.
+    return LlamaLocalModels(embeddingPath: e.path!, languagePath: l.state == ModelState.ready ? l.path! : '');
   }
 
   final String embeddingPath;
@@ -65,6 +66,7 @@ class LlamaLocalModels implements LocalModels {
   String get languageModel => languageName ?? modelFor(LocalModelRole.language).name;
 
   Future<LlamaEngine> _load(String path, ModelParams params) async {
+    if (path.isEmpty) throw LocalAiException('model_missing');
     try {
       return await LlamaEngine.load(LlamaModel(ModelSource.parse(path)), params: params);
     } catch (e) {
