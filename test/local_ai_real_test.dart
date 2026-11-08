@@ -22,24 +22,33 @@ double _dot(List<double> a, List<double> b) {
 }
 
 void main() {
-  final present = localModels.every((m) => File('$modelDir/${m.file}').existsSync());
+  bool has(LocalModelSpec m) => File('$modelDir/${m.file}').existsSync();
+  final present = has(embeddingModels.first) && has(modelFor(LocalModelRole.language));
   final skip = present ? null : 'local models not present';
   late LlamaLocalModels ai;
 
   setUpAll(() {
     if (!present) return;
-    ai = LlamaLocalModels(embeddingPath: '$modelDir/${modelFor(LocalModelRole.embedding).file}', languagePath: '$modelDir/${modelFor(LocalModelRole.language).file}');
+    ai = LlamaLocalModels(embeddingPath: '$modelDir/${embeddingModels.first.file}', languagePath: '$modelDir/${modelFor(LocalModelRole.language).file}');
   });
   tearDownAll(() async {
     if (present) await ai.dispose();
   });
 
-  test('vectors: the same part in two languages is closer than another part', () async {
-    final v = await ai.embed(['贴片电阻 10K ±1% 0402', 'Chip resistor 10kΩ 1% 0402', '贴片电容 100nF 16V 0402']);
-    expect(v, hasLength(3));
-    expect(_dot(v[0], v[0]), closeTo(1, 1e-3));
-    expect(_dot(v[0], v[1]), greaterThan(_dot(v[0], v[2])));
-  }, skip: skip, timeout: const Timeout(Duration(minutes: 5)));
+  // Every embedding model offered, where it is on disk.
+  for (final m in embeddingModels) {
+    test('vectors (${m.name}): the same part in two languages is closer than another part', () async {
+      final e = LlamaLocalModels(embeddingPath: '$modelDir/${m.file}', languagePath: '', embeddingPrefix: m.prefix);
+      try {
+        final v = await e.embed(['贴片电阻 10K ±1% 0402', 'Chip resistor 10kΩ 1% 0402', '贴片电容 100nF 16V 0402']);
+        expect(v, hasLength(3));
+        expect(_dot(v[0], v[0]), closeTo(1, 1e-3));
+        expect(_dot(v[0], v[1]), greaterThan(_dot(v[0], v[2])));
+      } finally {
+        await e.dispose();
+      }
+    }, skip: has(m) ? null : 'not present', timeout: const Timeout(Duration(minutes: 5)));
+  }
 
   test('structured answer follows the schema', () async {
     final r = await ai.structured(
@@ -66,8 +75,8 @@ void main() {
     await state.refreshModels();
     expect(state.localModelsReady, isTrue);
     Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
-    state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
-    state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+    state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+    state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
     state.runCheckNow();
     for (var i = 0; i < 600 && state.localStatus == LocalStatus.running; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));

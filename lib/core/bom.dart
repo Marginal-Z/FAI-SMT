@@ -40,8 +40,29 @@ String toHalfWidth(String s) {
   return b.toString();
 }
 
-/// A cell value as compared: half-width, trimmed, inner runs of spaces made one.
-String cleanCell(String s) => toHalfWidth(s).replaceAll(RegExp(r'\s+'), ' ').trim();
+/// A cell value as compared: half-width, trimmed, inner runs of spaces made
+/// one. A line break inside a long run of text with no separator before it
+/// is a fixed-width wrap (ERP exports such as T100 break mid-word:
+/// "13x1↵5mm", "沃尔↵玛") and is joined without a space; other breaks
+/// become a space.
+String cleanCell(String s) {
+  if (s.contains('\n') || s.contains('\r')) {
+    final lines = s.split(RegExp(r'\r?\n|\r'));
+    final b = StringBuffer(lines.first);
+    for (var i = 1; i < lines.length; i++) {
+      final prev = lines[i - 1], next = lines[i];
+      // Split inside a word: the same kind of character on both sides
+      // (Chinese anywhere; digits or letters only in long, wrapped lines).
+      final l = prev.isEmpty ? '' : prev[prev.length - 1], r = next.isEmpty ? '' : next[0];
+      final cjk = RegExp(r'[\u3400-\u9fff]');
+      final wrapped = (cjk.hasMatch(l) && cjk.hasMatch(r)) ||
+          (prev.length >= 20 && ((RegExp(r'\d').hasMatch(l) && RegExp(r'\d').hasMatch(r)) || (RegExp(r'[a-z]').hasMatch(l) && RegExp(r'[a-z]').hasMatch(r))));
+      b.write(wrapped ? next : ' $next');
+    }
+    s = b.toString();
+  }
+  return toHalfWidth(s).replaceAll(RegExp(r'\s+'), ' ').trim();
+}
 
 final _cjk = RegExp(r'[⺀-鿿豈-﫿]');
 final _numberCell = RegExp(r'^-?\d+(?:\.\d+)?$');

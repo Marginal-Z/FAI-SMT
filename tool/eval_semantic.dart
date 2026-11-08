@@ -3,6 +3,8 @@
 // model's suggestions. Pairs found must be the true ones.
 //
 //   dart run tool/eval_semantic.dart [sheets]
+//
+// EMBED_MODEL (a .gguf path) and EMBED_PREFIX choose another embedding model.
 import 'dart:io';
 import 'dart:math';
 
@@ -18,7 +20,9 @@ import '../test/support/mutate.dart';
 Future<void> main(List<String> args) async {
   final n = args.isEmpty ? 40 : int.parse(args.first);
   final dir = '${Platform.environment['HOME']}/.cache/smt-fai-dev/models';
-  final ai = LlamaLocalModels(embeddingPath: '$dir/Qwen3-Embedding-0.6B-Q8_0.gguf', languagePath: '');
+  final env = Platform.environment;
+  final ai = LlamaLocalModels(embeddingPath: env['EMBED_MODEL'] ?? '$dir/Qwen3-Embedding-0.6B-Q8_0.gguf', languagePath: '', embeddingPrefix: env['EMBED_PREFIX'] ?? '');
+  final clock = Stopwatch()..start();
   var parts = 0, ruleRight = 0, ruleWrong = 0, semRight = 0, semWrong = 0, unpaired = 0;
   try {
     for (var seed = 0; seed < n; seed++) {
@@ -61,5 +65,5 @@ Future<void> main(List<String> args) async {
   }
   String pct(int x) => '${(x / parts * 100).toStringAsFixed(1)}%';
   stdout.writeln('$parts lines: paired by parameters ${pct(ruleRight)} right / ${pct(ruleWrong)} wrong; '
-      'by the embedding model ${pct(semRight)} right / ${pct(semWrong)} wrong; unpaired ${pct(unpaired)}');
+      'by the embedding model ${pct(semRight)} right / ${pct(semWrong)} wrong; unpaired ${pct(unpaired)}; ${clock.elapsed.inSeconds} s');
 }

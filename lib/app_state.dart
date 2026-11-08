@@ -14,12 +14,15 @@ import 'core/bom_compare.dart';
 import 'core/cloud/full.dart';
 import 'core/cloud/hybrid.dart';
 import 'core/cloud/provider.dart';
+import 'core/history.dart';
 import 'core/local_ai/local_ai.dart';
 import 'core/local_ai/model_store.dart';
 import 'core/local_ai/semantic_match.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
+import 'core/report.dart';
 import 'core/updater.dart';
+import 'l10n/strings.dart';
 import 'services/key_store.dart';
 import 'update_installer.dart';
 import 'version.dart';
@@ -29,9 +32,12 @@ import 'version.dart';
 enum InputKind { single, a, b }
 
 class LoadedFile {
-  LoadedFile(this.name, this.bom, {this.size = 0, this.sheets = 1, this.grids = const [], DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
+  LoadedFile(this.name, this.bom, {this.size = 0, this.sheets = 1, this.grids = const [], this.bytes, DateTime? loadedAt}) : loadedAt = loadedAt ?? DateTime.now();
 
   final String name;
+
+  /// The file as loaded, kept for the check history.
+  final Uint8List? bytes;
   final BomDocument bom;
 
   /// The sheets as read, for a cloud reading of the columns (CLOUD_FULL).
@@ -52,7 +58,7 @@ class UserMessage implements Exception {
 }
 
 /// Pages of the settings screen.
-enum SettingsSection { appearance, ai, localAi, guide, about }
+enum SettingsSection { history, appearance, checking, ai, localAi, guide, about }
 
 enum UpdateStatus { idle, checking, upToDate, available, downloading, installing, failed }
 
@@ -61,7 +67,7 @@ enum AiStatus { idle, running, done, failed }
 enum LocalStatus { idle, running, done, failed }
 
 class AppState extends ChangeNotifier {
-  AppState(this.settings, this.settingsDir, {ModelStore? models, KeyStore? keys}) : models = models ?? ModelStore.forApp(settingsDir), keys = keys ?? SecureKeyStore();
+  AppState(this.settings, this.settingsDir, {ModelStore? models, KeyStore? keys, this.history}) : models = models ?? ModelStore.forApp(settingsDir), keys = keys ?? SecureKeyStore();
 
   AppSettings settings;
   final String settingsDir;
@@ -138,6 +144,25 @@ class AppState extends ChangeNotifier {
 
   void setThemeStyle(ThemeStyle v) {
     settings.themeStyle = v;
+    persist();
+    notifyListeners();
+  }
+
+  /// Switches a field of the check on or off; the next check uses it.
+  void setCompared(String key, bool on) {
+    on ? settings.compareSkip.remove(key) : settings.compareSkip.add(key);
+    persist();
+    notifyListeners();
+  }
+
+  void setReportColumn(String group, bool on) {
+    on ? settings.reportHidden.remove(group) : settings.reportHidden.add(group);
+    persist();
+    notifyListeners();
+  }
+
+  void setReportStatus(String status, bool on) {
+    on ? settings.reportStatuses.add(status) : settings.reportStatuses.remove(status);
     persist();
     notifyListeners();
   }
@@ -260,7 +285,24 @@ class AppState extends ChangeNotifier {
   final modelStatus = <String, ModelStatus>{};
   final _downloads = <String, DownloadCancel>{};
 
-  bool get localModelsReady => localModels.where((m) => m.required).every((m) => modelStatus[m.id]?.state == ModelState.ready);
+  /// The embedding model a check uses: the one chosen, else one already on
+  /// disk (an earlier version's download keeps working), else the default.
+  LocalModelSpec get activeEmbedding {
+    if (settings.embeddingModel.isNotEmpty) return embeddingModel(settings.embeddingModel);
+    return embeddingModels.firstWhere((m) => modelStatus[m.id]?.state == ModelState.ready, orElse: () => embeddingModels.first);
+  }
+
+  bool get localModelsReady => modelStatus[activeEmbedding.id]?.state == ModelState.ready;
+
+  /// Uses [m] for the next checks.
+  void setEmbeddingModel(LocalModelSpec m) {
+    settings.embeddingModel = m.id;
+    final old = _local;
+    _local = null;
+    old?.dispose();
+    persist();
+    notifyListeners();
+  }
 
   Future<void> refreshModels() async {
     for (final m in localModels) {
@@ -323,7 +365,7 @@ class AppState extends ChangeNotifier {
     } on BomReadException catch (e) {
       throw UserMessage('err_${e.code}');
     }
-    final f = LoadedFile(name, bom, size: bytes.length, sheets: grids.length, grids: grids);
+    final f = LoadedFile(name, bom, size: bytes.length, sheets: grids.length, grids: grids, bytes: bytes);
     switch (kind) {
       case InputKind.single:
         single = f;
@@ -373,7 +415,8 @@ class AppState extends ChangeNotifier {
   void runCheckNow() {
     if (single == null) throw UserMessage('msg_need_single');
     if (bomA == null) throw UserMessage('msg_need_a');
-    report = compareBoms(single!.bom, bomA!.bom, bomB?.bom);
+    report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, options: settings.compareOptions);
+    _historyId = HistoryStore.newId(report!.at);
     selected = null;
     ai = null;
     aiStatus = AiStatus.idle;
@@ -466,6 +509,7 @@ class AppState extends ChangeNotifier {
         aName: bomA!.name,
         bName: bomB?.name ?? '',
         privacy: settings.privacy,
+        options: settings.compareOptions,
         cancel: cancel,
         onProgress: (p) {
           cloudRun = p;
@@ -490,7 +534,7 @@ class AppState extends ChangeNotifier {
     report!
       ..mode = settings.checkMode.name
       ..models = [
-        if (localStatus == LocalStatus.done) modelFor(LocalModelRole.embedding).name,
+        if (localStatus == LocalStatus.done) activeEmbedding.name,
         if (settings.checkMode != CheckMode.local && cloudRun != null) '${settings.cloud.kind.name} ${settings.cloud.modelName}',
       ];
     if (report!.complete) {
@@ -505,6 +549,74 @@ class AppState extends ChangeNotifier {
       // Never report a finished check while records are unaccounted for.
       _status('status_incomplete', {'n': report!.uncovered.length});
     }
+    _archive();
+  }
+
+  // ---------------------------------------------------------------- history
+
+  /// Where checks are kept; none in tests that do not ask for it.
+  final HistoryStore? history;
+  List<HistoryEntry> historyEntries = const [];
+  String historyError = '';
+
+  /// Entry of the current check; later stages (local model, cloud, AI)
+  /// replace it rather than adding another.
+  String? _historyId;
+  Future<void> _archiving = Future.value();
+
+  /// Keeps the current result with its input files. A failure is shown in
+  /// the history page, never hidden.
+  Future<void> _archive() {
+    final r = report, id = _historyId, store = history;
+    final s1 = single, a = bomA, b = bomB;
+    if (r == null || id == null || s1 == null || a == null || store == null) return _archiving;
+    final files = [
+      for (final (role, f) in [('A', s1), ('B', a), ('C', b)])
+        if (f != null && f.bytes != null) (role, f.name, f.bytes!),
+    ];
+    final book = exportCompareWorkbook(r, Strings(language).t, ai: ai, singleName: s1.name, aName: a.name, bName: b?.name ?? '');
+    return _archiving = _archiving.then((_) async {
+      try {
+        await store.save(id: id, report: r, files: files, workbook: book, appVersion: appVersion);
+        historyError = '';
+      } catch (e) {
+        historyError = '$e';
+      }
+      await refreshHistory();
+    });
+  }
+
+  Future<void> refreshHistory() async {
+    final store = history;
+    if (store == null) return;
+    try {
+      historyEntries = await store.list();
+    } catch (e) {
+      historyError = '$e';
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteHistory(String id) async {
+    await history?.delete(id);
+    await refreshHistory();
+  }
+
+  /// Loads a past check's stored input files and checks them again.
+  Future<void> reopenHistory(HistoryEntry e) async {
+    final kinds = {'A': InputKind.single, 'B': InputKind.a, 'C': InputKind.b};
+    final loaded = <(InputKind, String, Uint8List)>[];
+    for (final f in e.files) {
+      final bytes = await history?.input(e.id, f);
+      if (bytes == null) throw UserMessage('hist_err_input', {'name': f.name});
+      loaded.add((kinds[f.role]!, f.name, bytes));
+    }
+    single = bomA = bomB = null;
+    for (final (k, name, bytes) in loaded) {
+      load(k, name, bytes);
+    }
+    settingsOpen = false;
+    runCheckNow();
   }
 
   // ------------------------------------------------------------ local AI
@@ -521,7 +633,7 @@ class AppState extends ChangeNotifier {
   LocalModels? _local;
 
   /// Opened on first use and kept for later checks.
-  Future<LocalModels> _localModels() async => _local ??= await LlamaLocalModels.open(models);
+  Future<LocalModels> _localModels() async => _local ??= await LlamaLocalModels.open(models, embedding: activeEmbedding);
 
   Future<void> _runLocal(int run) async {
     localStatus = LocalStatus.running;
@@ -535,7 +647,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       });
       if (run != _checkRun) return;
-      report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, semantic: sug);
+      report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, semantic: sug, options: settings.compareOptions);
       localPaired = sug.length;
       localStatus = LocalStatus.done;
       _checkedStatus();
@@ -629,6 +741,7 @@ class AppState extends ChangeNotifier {
       ai = result;
       aiStatus = AiStatus.done;
       _status('status_ai_done', {'n': result.findings.length});
+      _archive();
     } on CloudException catch (e) {
       if (run != _aiRun) return;
       aiStatus = AiStatus.failed;

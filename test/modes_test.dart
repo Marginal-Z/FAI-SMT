@@ -22,9 +22,9 @@ Future<AppState> _state(FakeLlmServer server, CheckMode mode) async {
   );
   await state.setCloudKey('k');
   Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
-  state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
-  state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
-  state.load(InputKind.b, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+  state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+  state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+  state.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
   return state;
 }
 

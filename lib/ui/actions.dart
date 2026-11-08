@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
+import '../core/history.dart';
 import '../core/report.dart';
 import '../l10n/strings.dart';
 import 'widgets.dart';
@@ -75,9 +76,33 @@ Future<void> exportReport(BuildContext context, AppState state) async {
     singleName: state.single?.name ?? '',
     aName: state.bomA?.name ?? '',
     bName: state.bomB?.name ?? '',
+    options: state.settings.reportOptions,
   );
   if (!context.mounted) return;
   await _save(context, '${state.exportBaseName}_BOM核对.xlsx', bytes, ['xlsx']);
+}
+
+/// Saves the report a past check produced, as it was then.
+Future<void> exportHistoryReport(BuildContext context, AppState state, HistoryEntry e) async {
+  final Uint8List bytes;
+  try {
+    bytes = await state.history!.workbook(e.id);
+  } catch (err) {
+    if (context.mounted) await showError(context, UserMessage('hist_err_report'));
+    return;
+  }
+  if (!context.mounted) return;
+  final base = e.files.isEmpty ? 'BOM' : e.files.first.name.replaceAll(RegExp(r'\.[^.]*$'), '');
+  await _save(context, '${base}_BOM核对_${e.id}.xlsx', bytes, ['xlsx']);
+}
+
+/// Checks a past entry's input files again.
+Future<void> reopenHistory(BuildContext context, AppState state, HistoryEntry e) async {
+  try {
+    await state.reopenHistory(e);
+  } catch (err) {
+    if (context.mounted) await showError(context, err);
+  }
 }
 
 Future<void> _save(BuildContext context, String name, Uint8List bytes, List<String> exts) async {

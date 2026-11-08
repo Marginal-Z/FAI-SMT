@@ -1,6 +1,6 @@
 // Generates the demo BOMs under samples/demo/ used by the guided tour and
-// the screenshots: a single BOM, and an A-BOM and B-BOM that together should
-// match it, with deliberate differences so every result appears.
+// the screenshots: the reference A-BOM, and a B-BOM and C-BOM that together
+// should match it, with deliberate differences so every result appears.
 //
 //   dart run tool/gen_demo.dart
 import 'dart:io';
@@ -40,8 +40,8 @@ const _bom = <Part>[
   ('K1402-LABEL0-001A', '标签', '条码标签 30x10', [], ''),
 ];
 
-/// Parts on the B-BOM (the passives); everything else is on the A-BOM.
-const _onB = {'K1102-1020K0-001A', 'K1102-1022K2-001A', 'K1103-0104K0-001A', 'K1103-0475K0-001A', 'K1107-ESD050-001A', 'K1105-24M000-001A'};
+/// Parts on the C-BOM (the passives); everything else is on the B-BOM.
+const _onC = {'K1102-1020K0-001A', 'K1102-1022K2-001A', 'K1103-0104K0-001A', 'K1103-0475K0-001A', 'K1107-ESD050-001A', 'K1105-24M000-001A'};
 
 void main() {
   final dir = Directory('samples/demo')..createSync(recursive: true);
@@ -74,17 +74,17 @@ void main() {
       sheet.appendRow(['', '', '', '', '', rest.join(','), '']);
     }
   }
-  File('${dir.path}/demo_single_BOM.xlsx').writeAsBytesSync(book.encode());
+  File('${dir.path}/demo_A_BOM.xlsx').writeAsBytesSync(book.encode());
 
-  // ---- A-BOM: English headers, name and spec in one description column,
+  // ---- B-BOM: English headers, name and spec in one description column,
   // the Chinese names worded differently (which still matches).
   final a = XlsxWriter();
-  final sa = a.addSheet('A-BOM');
+  final sa = a.addSheet('B-BOM');
   sa.appendRow([for (final h in ['Item', 'Part Number', 'Description', 'Qty', 'Reference', '品牌', '替代料号']) h]);
   const reworded = {'贴片电阻': '贴片电阻器', '贴片电容': '贴片陶瓷电容', '贴片电感': '功率电感', '贴片MOS': '贴片MOS管'};
   var item = 0;
   for (final p in _bom) {
-    if (_onB.contains(p.$1)) continue;
+    if (_onC.contains(p.$1)) continue;
     var refs = [...p.$4];
     var spec = p.$3;
     var qty = refs.isEmpty ? 1 : refs.length;
@@ -125,16 +125,16 @@ void main() {
   }
   item++;
   sa.appendRow([item, 'K1102-1000R0-009A', '贴片电阻 1K ±1% 0402', 1, 'R99', 'Yageo', '']);
-  File('${dir.path}/demo_A_BOM.xlsx').writeAsBytesSync(a.encode());
+  File('${dir.path}/demo_B_BOM.xlsx').writeAsBytesSync(a.encode());
 
-  // ---- B-BOM: no header row and the columns in another order
+  // ---- C-BOM: no header row and the columns in another order
   // (designators, part number, description, quantity, brand).
   final b = XlsxWriter();
-  final sb = b.addSheet('B');
+  final sb = b.addSheet('C');
   for (final p in _bom) {
-    if (!_onB.contains(p.$1)) continue;
+    if (!_onC.contains(p.$1)) continue;
     sb.appendRow([p.$4.join(','), p.$1, '${p.$2}，${p.$3}', p.$4.length, p.$5]);
   }
-  File('${dir.path}/demo_B_BOM.xlsx').writeAsBytesSync(b.encode());
+  File('${dir.path}/demo_C_BOM.xlsx').writeAsBytesSync(b.encode());
   stdout.writeln('Demo files written to ${dir.path}');
 }

@@ -174,10 +174,11 @@ jobs:
           # SHA-256 before it is packed.
           $models = Join-Path $env:RUNNER_TEMP 'models'
           New-Item -ItemType Directory -Force -Path $models | Out-Null
-          $file = Join-Path $models 'Qwen3-Embedding-0.6B-Q8_0.gguf'
-          Invoke-WebRequest -Uri 'https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf' -OutFile $file
+          # The default matching model (lib/core/local_ai/model_store.dart).
+          $file = Join-Path $models 'granite-embedding-278m-multilingual-Q4_K_M.gguf'
+          Invoke-WebRequest -Uri 'https://huggingface.co/bartowski/granite-embedding-278m-multilingual-GGUF/resolve/main/granite-embedding-278m-multilingual-Q4_K_M.gguf' -OutFile $file
           $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne '06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439') { throw "model hash mismatch: $hash" }
+          if ($hash -ne '48985001cb8a2e05539e0c7b52064efbcae732ff08fd1fe391534d30cbd8d942') { throw "model hash mismatch: $hash" }
           & $iscc "/DAppVersion=$version" "/DAppArch=${{ matrix.arch }}" "/DSourceDir=$src" "/DModelsDir=$models" installer/windows/smt-fai.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem dist

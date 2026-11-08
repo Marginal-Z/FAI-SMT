@@ -15,12 +15,42 @@ String _stamp(DateTime t) {
   return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
 }
 
+/// Column groups of the report table that can be left out; the number,
+/// part number and result are always there.
+const reportColumnGroups = ['source', 'description', 'quantity', 'refs', 'refs_diff', 'others', 'rows', 'basis', 'reasons', 'risk', 'params', 'cloud', 'ai'];
+
+/// What the report holds: column groups left out ([reportColumnGroups]) and
+/// which results are listed (all when empty).
+class ReportOptions {
+  const ReportOptions({this.hidden = const {}, this.statuses = const {}});
+
+  final Set<String> hidden;
+  final Set<CheckStatus> statuses;
+
+  bool shows(String group) => !hidden.contains(group);
+}
+
+class _Col {
+  const _Col(this.group, this.header, this.width, this.value, {this.diff, this.fill});
+
+  final String group;
+  final String header;
+  final double width;
+  final Object? Function(CompareRow r) value;
+
+  /// The field whose difference fills this cell.
+  final String? diff;
+
+  /// Fills the cell when true.
+  final bool Function(CompareRow r)? fill;
+}
+
 /// [t] translates the report's text keys (`rep_*`, `status_*`).
-Uint8List exportCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = ''}) =>
-    buildCompareWorkbook(report, t, ai: ai, singleName: singleName, aName: aName, bName: bName).encode();
+Uint8List exportCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = '', ReportOptions options = const ReportOptions()}) =>
+    buildCompareWorkbook(report, t, ai: ai, singleName: singleName, aName: aName, bName: bName, options: options).encode();
 
 /// The report before encoding, so its cells and fills can be inspected.
-XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = ''}) {
+XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = '', ReportOptions options = const ReportOptions()}) {
   final book = XlsxWriter();
   final sheet = book.addSheet(t('rep_sheet'));
 
@@ -44,91 +74,60 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
   // An incomplete check says so above the table.
   sheet.appendRow([t('rep_complete'), report.complete ? t('rep_complete_yes') : t('rep_complete_no').replaceAll('{n}', '${report.uncovered.length}')]);
   if (!report.complete) sheet.style(sheet.rowCount - 1, 1, const XlsxStyle(bold: true, fill: 'FDE2E1'));
+  if (report.skipped.isNotEmpty) sheet.appendRow([t('rep_skipped'), [for (final k in report.skipped) t('cmpf_$k')].join(', ')]);
+  if (options.statuses.isNotEmpty) sheet.appendRow([t('rep_listed'), [for (final st in options.statuses) t('status_${st.name}')].join(', ')]);
   sheet.appendRow([]);
 
+  String aiNotes(CompareRow r) => ai?.forPart(r.partNo).map((f) => f.message).join('; ') ?? '';
   final others = report.compared.entries.toList();
-  final headers = [
-    '#',
-    t('rep_part_no'),
-    t('rep_result'),
-    t('rep_source'),
-    t('rep_desc_single'),
-    t('rep_desc_merged'),
-    t('rep_qty_single'),
-    t('rep_qty_merged'),
-    t('rep_refs_single'),
-    t('rep_refs_merged'),
-    t('rep_missing'),
-    t('rep_extra'),
-    for (final o in others) ...['${o.value} (${t('rep_single_short')})', '${o.value} (A+B)'],
-    t('rep_src_single'),
-    t('rep_src_merged'),
-    t('rep_basis'),
-    t('rep_reasons'),
-    t('rep_risk'),
-    t('rep_params_single'),
-    t('rep_params_merged'),
-    t('rep_cloud_note'),
-    t('rep_ai'),
-  ];
+  final cols = <_Col>[
+    _Col('', '#', 6, (r) => null),
+    _Col('', t('rep_part_no'), 22, (r) => r.partNo),
+    _Col('', t('rep_result'), 10, (r) => t('status_${r.status.name}')),
+    _Col('source', t('rep_source'), 8, (r) => r.sourceNames.join('+')),
+    _Col('description', t('rep_desc_single'), 36, (r) => r.single?.description ?? '', diff: 'description'),
+    _Col('description', t('rep_desc_merged'), 36, (r) => r.merged?.description ?? '', diff: 'description'),
+    _Col('quantity', t('rep_qty_single'), 8, (r) => formatQuantity(r.single?.quantity), diff: 'quantity'),
+    _Col('quantity', t('rep_qty_merged'), 8, (r) => formatQuantity(r.merged?.quantity), diff: 'quantity'),
+    _Col('refs', t('rep_refs_single'), 30, (r) => r.single?.refs.join(',') ?? '', diff: 'refs'),
+    _Col('refs', t('rep_refs_merged'), 30, (r) => r.merged?.refs.join(',') ?? '', diff: 'refs'),
+    _Col('refs_diff', t('rep_missing'), 18, (r) => r.missingRefs.join(','), fill: (r) => r.missingRefs.isNotEmpty),
+    _Col('refs_diff', t('rep_extra'), 18, (r) => r.extraRefs.join(','), fill: (r) => r.extraRefs.isNotEmpty),
+    for (final o in others) ...[
+      _Col('others', '${o.value} (${t('rep_single_short')})', 18, (r) => r.single?.extra[o.key] ?? '', diff: 'col:${o.key}'),
+      _Col('others', '${o.value} (${t('side_merged')})', 18, (r) => r.merged?.extra[o.key] ?? '', diff: 'col:${o.key}'),
+    ],
+    _Col('rows', t('rep_src_single'), 26, (r) => r.single?.recordIds.join(', ') ?? ''),
+    _Col('rows', t('rep_src_merged'), 26, (r) => r.merged?.recordIds.join(', ') ?? ''),
+    _Col('basis', t('rep_basis'), 26, (r) => [for (final k in r.basis.kinds) t('basis_$k'), if (r.basis.kinds.isNotEmpty) '${(r.basis.confidence * 100).round()}%'].join(' · ')),
+    _Col('reasons', t('rep_reasons'), 26, (r) => [for (final k in r.reasons) t('reason_$k')].join('; ')),
+    _Col('risk', t('rep_risk'), 10, (r) => t('risk_${riskOf(r).name}')),
+    _Col('params', t('rep_params_single'), 26, (r) => normalisedParams(r.single?.description ?? '')),
+    _Col('params', t('rep_params_merged'), 26, (r) => normalisedParams(r.merged?.description ?? '')),
+    _Col('cloud', t('rep_cloud_note'), 26, (r) => r.cloudNote),
+    _Col('ai', t('rep_ai'), 50, aiNotes, fill: (r) => aiNotes(r).isNotEmpty),
+  ].where((c) => c.group.isEmpty || options.shows(c.group)).toList();
+
   final headRow = sheet.rowCount;
-  sheet.appendRow(headers);
-  for (var c = 0; c < headers.length; c++) {
+  sheet.appendRow([for (final c in cols) c.header]);
+  for (var c = 0; c < cols.length; c++) {
     sheet.style(headRow, c, head);
+    sheet.setWidth(c, cols[c].width);
   }
 
   var n = 0;
   for (final r in report.rows) {
+    if (options.statuses.isNotEmpty && !options.statuses.contains(r.status)) continue;
     n++;
     final row = sheet.rowCount;
-    final aiNotes = ai?.forPart(r.partNo).map((f) => f.message).join('; ') ?? '';
-    sheet.appendRow([
-      n,
-      r.partNo,
-      t('status_${r.status.name}'),
-      r.sources.join('+'),
-      r.single?.description ?? '',
-      r.merged?.description ?? '',
-      formatQuantity(r.single?.quantity),
-      formatQuantity(r.merged?.quantity),
-      r.single?.refs.join(',') ?? '',
-      r.merged?.refs.join(',') ?? '',
-      r.missingRefs.join(','),
-      r.extraRefs.join(','),
-      for (final o in others) ...[r.single?.extra[o.key] ?? '', r.merged?.extra[o.key] ?? ''],
-      r.single?.recordIds.join(', ') ?? '',
-      r.merged?.recordIds.join(', ') ?? '',
-      [for (final k in r.basis.kinds) t('basis_$k'), if (r.basis.kinds.isNotEmpty) '${(r.basis.confidence * 100).round()}%'].join(' · '),
-      [for (final k in r.reasons) t('reason_$k')].join('; '),
-      t('risk_${riskOf(r).name}'),
-      normalisedParams(r.single?.description ?? ''),
-      normalisedParams(r.merged?.description ?? ''),
-      r.cloudNote,
-      aiNotes,
-    ]);
+    sheet.appendRow([for (final c in cols) c.header == '#' && c.group.isEmpty ? n : c.value(r)]);
     sheet.style(row, 2, statusFill[r.status]!);
     // Differing fields: both sides of the field are filled.
-    for (final f in r.differences) {
-      final col = switch (f.key) {
-        'description' => 4,
-        'quantity' => 6,
-        'refs' => 8,
-        _ => 12 + 2 * others.indexWhere((o) => 'col:${o.key}' == f.key),
-      };
-      if (col < 4) continue;
-      sheet.style(row, col, diffFill);
-      sheet.style(row, col + 1, diffFill);
+    final differs = {for (final f in r.differences) f.key};
+    for (var c = 0; c < cols.length; c++) {
+      final col = cols[c];
+      if ((col.diff != null && differs.contains(col.diff)) || (col.fill?.call(r) ?? false)) sheet.style(row, c, col.group == 'ai' ? aiFill : diffFill);
     }
-    if (r.missingRefs.isNotEmpty) sheet.style(row, 10, diffFill);
-    if (r.extraRefs.isNotEmpty) sheet.style(row, 11, diffFill);
-    if (aiNotes.isNotEmpty) sheet.style(row, headers.length - 1, aiFill);
-  }
-  const widths = [6.0, 22.0, 10.0, 8.0, 36.0, 36.0, 8.0, 8.0, 30.0, 30.0, 18.0, 18.0];
-  for (var c = 0; c < widths.length; c++) {
-    sheet.setWidth(c, widths[c]);
-  }
-  for (var c = 12; c < headers.length; c++) {
-    sheet.setWidth(c, c == headers.length - 1 ? 50 : (c >= headers.length - 9 ? 26 : 18));
   }
 
   // Summary: counts by result, risk and reason.

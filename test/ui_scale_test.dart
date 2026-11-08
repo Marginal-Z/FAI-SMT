@@ -15,7 +15,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final state = AppState(AppSettings(uiScale: scale), Directory.systemTemp.path);
-      state.load(InputKind.single, 'demo_single_BOM.xlsx', Uint8List.fromList(File('samples/demo/demo_single_BOM.xlsx').readAsBytesSync()));
+      state.load(InputKind.single, 'demo_A_BOM.xlsx', Uint8List.fromList(File('samples/demo/demo_A_BOM.xlsx').readAsBytesSync()));
       await tester.pumpWidget(SmtFaiApp(state: state, touch: true));
       await tester.pumpAndSettle();
       expect(state.single, isNotNull);

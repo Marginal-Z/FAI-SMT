@@ -10,8 +10,10 @@ import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
 import '../core/ai_check.dart';
+import '../core/bom_compare.dart' show CheckStatus, compareFields;
 import '../core/cloud/hybrid.dart' show PrivacyOptions;
 import '../core/cloud/provider.dart';
+import '../core/report.dart' show reportColumnGroups;
 import '../core/local_ai/model_store.dart';
 import '../core/settings.dart';
 import '../core/updater.dart';
@@ -20,6 +22,7 @@ import '../version.dart';
 import 'check_view.dart' show aiText;
 import 'design.dart';
 import 'guide_page.dart';
+import 'history_page.dart';
 import 'lucide.dart';
 import 'theme.dart';
 import 'tour.dart';
@@ -44,7 +47,9 @@ class SettingsScreen extends StatelessWidget {
     final title = s.t(_titles[section]!);
     final content = switch (section) {
       SettingsSection.guide => GuidePage(state: state),
+      SettingsSection.history => HistoryPage(state: state),
       SettingsSection.appearance => _Section(child: _Appearance(state: state)),
+      SettingsSection.checking => _Section(child: _CheckingSettings(state: state)),
       SettingsSection.ai => _Section(child: _AiSettings(key: tourTargets.aiSettings, state: state)),
       SettingsSection.localAi => _Section(child: _LocalAiSettings(state: state)),
       SettingsSection.about => _Section(child: _About(state: state)),
@@ -95,7 +100,9 @@ class SettingsScreen extends StatelessWidget {
 }
 
 const _titles = {
+  SettingsSection.history: 'set_history',
   SettingsSection.appearance: 'set_appearance',
+  SettingsSection.checking: 'set_checking',
   SettingsSection.ai: 'set_ai',
   SettingsSection.localAi: 'set_local',
   SettingsSection.guide: 'set_guide',
@@ -116,7 +123,11 @@ class _SettingsList extends StatelessWidget {
     final phone = isPhoneLayout(context);
     final groups = [
       [
+        (SettingsSection.history, Lucide.history, const Color(0xFF5E6B7A), s.t('set_history_hint'), null),
+      ],
+      [
         (SettingsSection.appearance, Lucide.brush, const Color(0xFF3A6EA5), s.t('set_appearance_hint'), null),
+        (SettingsSection.checking, Lucide.clipboardCheck, const Color(0xFFB0662A), s.t('set_checking_hint'), null),
       ],
       [
         (
@@ -318,6 +329,54 @@ class _Appearance extends StatelessWidget {
           s.t('set_language'),
           Segmented<String>(value: state.language, options: [for (final l in supportedLanguages) (l, languageNames[l]!)], onChanged: state.setLanguage),
         ),
+      ],
+    );
+  }
+}
+
+/// What a check compares and what its report holds.
+class _CheckingSettings extends StatelessWidget {
+  const _CheckingSettings({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final set = state.settings;
+    Widget boxes(List<(String, bool, ValueChanged<bool>)> items) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Wrap(
+        spacing: 24,
+        runSpacing: 6,
+        children: [
+          for (final (label, value, onChanged) in items) SizedBox(width: 230, child: CheckBox(value: value, onChanged: onChanged, label: label)),
+        ],
+      ),
+    );
+    Widget note(String key) => Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 22),
+      child: Text(s.t(key), style: TextStyle(fontSize: 12.5, height: 1.45, color: c.tx3)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Group(
+          title: s.t('chk_fields_title'),
+          child: boxes([for (final k in compareFields) (s.t('cmpf_$k'), !set.compareSkip.contains(k), (v) => state.setCompared(k, v))]),
+        ),
+        note('chk_fields_note'),
+        _Group(
+          title: s.t('chk_report_title'),
+          child: boxes([for (final g in reportColumnGroups) (s.t('repg_$g'), !set.reportHidden.contains(g), (v) => state.setReportColumn(g, v))]),
+        ),
+        note('chk_report_note'),
+        _Group(
+          title: s.t('chk_rows_title'),
+          child: boxes([for (final st in CheckStatus.values) (s.t('status_${st.name}'), set.reportStatuses.contains(st.name), (v) => state.setReportStatus(st.name, v))]),
+        ),
+        note('chk_rows_note'),
       ],
     );
   }
@@ -941,7 +1000,7 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
     final s = Strings.of(context);
     final state = widget.state;
     final ready = state.localModelsReady;
-    final total = localModels.where((m) => m.required).fold<int>(0, (a, m) => a + m.bytes);
+    final active = state.activeEmbedding;
     Widget model(LocalModelSpec m) {
       final st = state.modelStatus[m.id] ?? const ModelStatus(ModelState.missing);
       final busy = st.state == ModelState.downloading || st.state == ModelState.verifying;
@@ -965,15 +1024,28 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(m.name, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(m.name, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
+                          if (m.tier.isNotEmpty) DBadge(text: s.t('tier_${m.tier}'), background: m.tier == 'balanced' ? c.okTint : c.well, color: m.tier == 'balanced' ? c.okTx : c.tx2, height: 22),
+                          if (m.role == LocalModelRole.embedding && m.id == active.id) DBadge(text: s.t('model_in_use'), background: c.blueTint, color: c.blueTx, height: 22),
+                        ],
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                        '${s.t(m.role == LocalModelRole.embedding ? 'model_role_embedding' : 'model_role_language')} · ${_size(m.bytes)} · ${m.license}${m.required ? '' : ' · ${s.t('model_optional')}'}',
+                        '${s.t(m.role == LocalModelRole.embedding ? 'model_role_embedding' : 'model_role_language')} · ${_size(m.bytes)} · ${s.t('model_ram', {'mb': m.ramMb})} · ${m.license}${m.required ? '' : ' · ${s.t('model_optional')}'}',
                         style: TextStyle(fontSize: 12.5, color: c.tx2),
                       ),
                     ],
                   ),
                 ),
+                if (m.role == LocalModelRole.embedding && m.id != active.id && st.state == ModelState.ready) ...[
+                  PillButton(label: s.t('model_use'), icon: Lucide.check, kind: PillKind.soft, height: 34, fontSize: 13, onTap: () => state.setEmbeddingModel(m)),
+                  const SizedBox(width: 6),
+                ],
                 if (busy)
                   PillButton(label: s.t('dlg_cancel'), kind: PillKind.ghost, height: 34, fontSize: 13, onTap: () => state.cancelModelDownload(m))
                 else if (st.state == ModelState.ready && !st.bundled)
@@ -1032,10 +1104,22 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        for (final m in localModels) model(m),
+        const SizedBox(height: 10),
+        Text(s.t('local_lowend'), style: TextStyle(fontSize: 12.5, height: 1.5, color: c.tx2)),
+        const SizedBox(height: 18),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(s.t('local_pick_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
+        ),
+        for (final m in embeddingModels) model(m),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(s.t('local_lang_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
+        ),
+        for (final m in localModels) if (m.role == LocalModelRole.language) model(m),
         const SizedBox(height: 8),
-        Text(s.t('local_note', {'size': _size(total), 'dir': state.models.dir}), style: TextStyle(fontSize: 12, height: 1.5, color: c.tx3)),
+        Text(s.t('local_note', {'dir': state.models.dir}), style: TextStyle(fontSize: 12, height: 1.5, color: c.tx3)),
       ],
     );
   }

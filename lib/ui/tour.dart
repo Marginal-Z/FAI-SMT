@@ -74,9 +74,9 @@ final _steps = <_Step>[
 
 /// The sample files the tour uses when nothing is loaded.
 const _demo = [
-  (InputKind.single, 'demo_single_BOM.xlsx'),
-  (InputKind.a, 'demo_A_BOM.xlsx'),
-  (InputKind.b, 'demo_B_BOM.xlsx'),
+  (InputKind.single, 'demo_A_BOM.xlsx'),
+  (InputKind.a, 'demo_B_BOM.xlsx'),
+  (InputKind.b, 'demo_C_BOM.xlsx'),
 ];
 
 /// Loads the bundled sample files so every page has something to show.

@@ -139,6 +139,7 @@ Future<(CompareReport, CloudRun)> cloudFullCheck(
   int batchSize = 25,
   CloudCancel? cancel,
   void Function(CloudRun)? onProgress,
+  CompareOptions options = const CompareOptions(),
 }) async {
   final run = CloudRun();
   // 1. Columns, by the cloud, for the sheet each file would be read from.
@@ -237,7 +238,7 @@ Future<(CompareReport, CloudRun)> cloudFullCheck(
     if (mine.length != cps.length) contested.add(p.partNo);
     if (mine.isNotEmpty) pairs.add(([p.partNo], [for (final c in mine) rightIds[c]!.partNo]));
   }
-  final base = compareBoms(single, a, b, pairs: pairs);
+  final base = compareBoms(single, a, b, pairs: pairs, options: options);
   final unanswered = [for (final e in leftIds.entries) if (!answers.containsKey(e.key)) e.value];
   final rows = [
     for (final r in base.rows)
@@ -246,7 +247,7 @@ Future<(CompareReport, CloudRun)> cloudFullCheck(
   // Lines nobody answered for make the check incomplete.
   final uncovered = [...base.uncovered, for (final p in unanswered) ...p.recordIds];
   return (
-    CompareReport(rows: rows, compared: base.compared, singleOnlyColumns: base.singleOnlyColumns, mergedOnlyColumns: base.mergedOnlyColumns, at: base.at, uncovered: uncovered),
+    CompareReport(rows: rows, compared: base.compared, singleOnlyColumns: base.singleOnlyColumns, mergedOnlyColumns: base.mergedOnlyColumns, at: base.at, uncovered: uncovered, skipped: base.skipped),
     run,
   );
 }

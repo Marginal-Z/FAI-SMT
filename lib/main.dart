@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'app_state.dart';
+import 'core/history.dart';
 import 'core/settings.dart';
 import 'l10n/strings.dart';
 import 'ui/home.dart';
@@ -16,7 +18,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = (await getApplicationSupportDirectory()).path;
   final settings = await AppSettings.load(dir);
-  final state = AppState(settings, dir);
+  final state = AppState(settings, dir, history: HistoryStore(p.join(dir, 'history')));
   // The API key comes from the system key store.
   await state.loadKeys();
   // First launch: walk the user through the main steps.

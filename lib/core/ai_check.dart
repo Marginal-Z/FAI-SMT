@@ -64,7 +64,7 @@ class AiException implements Exception {
 }
 
 const _system = '''你是电子制造（SMT）BOM 核对专家。用户给出两份 BOM 按料号逐项对比的数据：
-「single」是单 BOM（基准），「merged」是 A-BOM 与 B-BOM 合并后的结果。
+「single」是 A-BOM（基准），「merged」是 B-BOM 与 C-BOM 合并后的结果。
 请逐项检查并找出所有不一致与潜在问题：
 1. 料号缺失或多出（只在一侧出现）。
 2. 用量不一致；用量与位号数量不符。
@@ -72,7 +72,7 @@ const _system = '''你是电子制造（SMT）BOM 核对专家。用户给出两
 4. 物料描述：只比较参数（阻值、容值、电感量、电压、功率、精度、温度系数、封装尺寸、型号等英文与数字）。中文名称多一个字、少一个字或长短不同但参数一致视为一致；参数不同必须指出。参数写法不同但等价（如 10K 与 10KΩ、0.1uF 与 100nF）请说明是否等价。
 5. 其他列（extra）的内容必须完全一致，任何不同都要指出。
 只输出一个 JSON 对象，不要输出其他文字：
-{"summary":"中文总结：整体是否一致、主要问题与建议","findings":[{"partNo":"料号","field":"description|quantity|refs|partNo|其他列名","side":"single|merged|both","severity":"error|warning|info","message":"中文说明","singleValue":"单BOM中的值","mergedValue":"A+B中的值"}]}
+{"summary":"中文总结：整体是否一致、主要问题与建议","findings":[{"partNo":"料号","field":"description|quantity|refs|partNo|其他列名","side":"single|merged|both","severity":"error|warning|info","message":"中文说明","singleValue":"A-BOM 中的值","mergedValue":"B+C 中的值"}]}
 没有问题时 findings 为空数组。''';
 
 String _clip(String s, int n) => s.length <= n ? s : '${s.substring(0, n)}…';

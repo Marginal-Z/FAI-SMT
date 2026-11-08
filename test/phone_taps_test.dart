@@ -16,9 +16,9 @@ Finder _tip(String t) => find.byWidgetPredicate((w) => w is Hoverable && w.toolt
 AppState _loaded({bool check = true}) {
   final state = AppState(AppSettings(tourDone: true), Directory.systemTemp.path);
   Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
-  state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
-  state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
-  state.load(InputKind.b, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+  state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+  state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+  state.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
   if (check) state.runCheckNow();
   return state;
 }
@@ -65,7 +65,7 @@ void main() {
   testWidgets('check page: stat cards, rows, sheet and menus respond', (tester) async {
     final state = _loaded();
     await _phone(tester, state);
-    await _tapText(tester, '不一致');
+    await _tapText(tester, 'NG');
     expect(state.filter, CheckStatus.ng);
     final row = state.visibleRows().first;
     await _tapText(tester, row.partNo);
@@ -75,7 +75,7 @@ void main() {
     if (state.selected != null) state.select(null);
     await tester.pumpAndSettle();
     // The result menu opens and closes.
-    await _tapText(tester, '不一致');
+    await _tapText(tester, 'NG');
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

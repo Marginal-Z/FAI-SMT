@@ -245,7 +245,7 @@ Future<(CompareReport, CloudRun)> hybridCheck(
     rows.add(_withReasons(r, [...r.reasons, if (counterpart == null && same != 'yes') 'cloud_no_counterpart'], note: why));
   }
   return (
-    CompareReport(rows: rows, compared: local.compared, singleOnlyColumns: local.singleOnlyColumns, mergedOnlyColumns: local.mergedOnlyColumns, at: local.at, uncovered: local.uncovered),
+    CompareReport(rows: rows, compared: local.compared, singleOnlyColumns: local.singleOnlyColumns, mergedOnlyColumns: local.mergedOnlyColumns, at: local.at, uncovered: local.uncovered, skipped: local.skipped),
     run,
   );
 }

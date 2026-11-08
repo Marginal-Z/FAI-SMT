@@ -38,19 +38,25 @@ abstract class LocalModels {
 /// The real thing: llama.cpp through llamadart, one engine per model,
 /// loaded on first use (inference runs on llamadart's worker isolate).
 class LlamaLocalModels implements LocalModels {
-  LlamaLocalModels({required this.embeddingPath, required this.languagePath, this.timeout = const Duration(minutes: 3), this.thinking = false, this.languageName});
+  LlamaLocalModels({required this.embeddingPath, required this.languagePath, this.timeout = const Duration(minutes: 3), this.thinking = false, this.languageName, this.embeddingPrefix = ''});
 
-  /// Opens the models [store] holds; throws when one is missing.
-  static Future<LlamaLocalModels> open(ModelStore store) async {
-    final e = await store.status(modelFor(LocalModelRole.embedding));
+  /// Opens the [embedding] model (the default when null) and the language
+  /// model [store] holds; throws when the embedding model is missing.
+  static Future<LlamaLocalModels> open(ModelStore store, {LocalModelSpec? embedding}) async {
+    final spec = embedding ?? embeddingModels.first;
+    final e = await store.status(spec);
     final l = await store.status(modelFor(LocalModelRole.language));
     if (e.state != ModelState.ready) throw LocalAiException('model_missing');
     // The language model is optional; asking it without the file fails.
-    return LlamaLocalModels(embeddingPath: e.path!, languagePath: l.state == ModelState.ready ? l.path! : '');
+    return LlamaLocalModels(embeddingPath: e.path!, languagePath: l.state == ModelState.ready ? l.path! : '', embeddingPrefix: spec.prefix);
   }
 
   final String embeddingPath;
   final String languagePath;
+
+  /// Put before every text embedded, for models trained with one
+  /// ("query: " for E5).
+  final String embeddingPrefix;
   final Duration timeout;
 
   /// Let the language model reason before answering (slower, often better).
@@ -84,7 +90,7 @@ class LlamaLocalModels implements LocalModels {
     final engine = await _embedding();
     try {
       // Long descriptions are cut to what one pass takes.
-      return await engine.embedBatch([for (final t in texts) t.length > 300 ? t.substring(0, 300) : t]).timeout(timeout);
+      return await engine.embedBatch([for (final t in texts) '$embeddingPrefix${t.length > 300 ? t.substring(0, 300) : t}']).timeout(timeout);
     } on TimeoutException {
       engine.cancelGeneration();
       throw LocalAiException('timeout');

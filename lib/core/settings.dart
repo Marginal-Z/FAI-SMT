@@ -6,8 +6,10 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'bom_compare.dart' show CompareOptions, CheckStatus;
 import 'cloud/hybrid.dart' show PrivacyOptions;
 import 'cloud/provider.dart';
+import 'report.dart' show ReportOptions;
 
 enum ThemePref { system, light, dark }
 
@@ -28,11 +30,18 @@ class AppSettings {
     this.tourDone = false,
     this.aiEnabled = false,
     this.localAiEnabled = false,
+    this.embeddingModel = '',
     this.checkMode = CheckMode.local,
     this.privacy = const PrivacyOptions(),
     ProviderConfig? cloud,
     this.legacyApiKey = '',
-  }) : cloud = cloud ?? ProviderConfig();
+    Set<String>? compareSkip,
+    Set<String>? reportHidden,
+    Set<String>? reportStatuses,
+  }) : cloud = cloud ?? ProviderConfig(),
+       compareSkip = compareSkip ?? {},
+       reportHidden = reportHidden ?? {},
+       reportStatuses = reportStatuses ?? {};
 
   String language;
   ThemePref theme;
@@ -53,12 +62,30 @@ class AppSettings {
   /// Use the downloaded local models in the check.
   bool localAiEnabled;
 
+  /// Id of the chosen embedding model; empty picks one that is on disk,
+  /// else the default.
+  String embeddingModel;
+
   CheckMode checkMode;
 
   /// What may be sent to a cloud model.
   PrivacyOptions privacy;
   /// Cloud AI provider; its API key is kept in the secure key store.
   ProviderConfig cloud;
+
+  /// Fields left out of the check (see compareFields).
+  final Set<String> compareSkip;
+
+  /// Report column groups left out, and the results listed (all when empty).
+  final Set<String> reportHidden;
+  final Set<String> reportStatuses;
+
+  CompareOptions get compareOptions => CompareOptions(skip: {...compareSkip});
+
+  ReportOptions get reportOptions => ReportOptions(
+    hidden: {...reportHidden},
+    statuses: {for (final st in CheckStatus.values) if (reportStatuses.contains(st.name)) st},
+  );
 
   /// A key found in an old settings file (2.0 kept it in plain text); moved
   /// to the key store at start-up and never written back.
@@ -73,9 +100,13 @@ class AppSettings {
     'tourDone': tourDone,
     'aiEnabled': aiEnabled,
     'localAiEnabled': localAiEnabled,
+    'embeddingModel': embeddingModel,
     'checkMode': checkMode.name,
     'privacy': privacy.toJson(),
     'cloud': cloud.toJson(),
+    'compareSkip': compareSkip.toList(),
+    'reportHidden': reportHidden.toList(),
+    'reportStatuses': reportStatuses.toList(),
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -87,11 +118,17 @@ class AppSettings {
     tourDone: j['tourDone'] == true,
     aiEnabled: j['aiEnabled'] == true,
     localAiEnabled: j['localAiEnabled'] == true,
+    embeddingModel: j['embeddingModel'] as String? ?? '',
     checkMode: CheckMode.values.firstWhere((m) => m.name == j['checkMode'], orElse: () => CheckMode.local),
     privacy: j['privacy'] is Map ? PrivacyOptions.fromJson((j['privacy'] as Map).cast()) : const PrivacyOptions(),
     cloud: j['cloud'] is Map ? ProviderConfig.fromJson((j['cloud'] as Map).cast()) : _legacyCloud(j['ai']),
     legacyApiKey: j['ai'] is Map ? '${(j['ai'] as Map)['apiKey'] ?? ''}' : '',
+    compareSkip: _strings(j['compareSkip']),
+    reportHidden: _strings(j['reportHidden']),
+    reportStatuses: _strings(j['reportStatuses']),
   );
+
+  static Set<String> _strings(Object? v) => v is List ? {for (final x in v) '$x'} : {};
 
   static Future<AppSettings> load(String dir) async {
     try {

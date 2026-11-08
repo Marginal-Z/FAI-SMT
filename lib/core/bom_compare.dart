@@ -61,7 +61,9 @@ Risk riskOf(CompareRow r) {
     case CheckStatus.ng:
       return r.reasons.any(_highReasons.contains) ? Risk.high : Risk.medium;
     case CheckStatus.unmatched:
-      // A placed part with no counterpart is missing from the build.
+      // A placed part with no counterpart is missing from the build; lines
+      // that never go on a placement list matter little.
+      if (r.reasons.contains('not_on_line') || r.reasons.contains('no_placement')) return Risk.low;
       final p = r.single ?? r.merged;
       return p != null && p.refs.isNotEmpty && !p.dnp ? Risk.high : Risk.medium;
     case CheckStatus.review:
@@ -146,8 +148,11 @@ class CompareRow {
   final List<BomPart> singleParts;
   final List<BomPart> mergedParts;
 
-  /// Which of A / B hold the merged side.
+  /// Which of the two merged files (tags A / B) hold the merged side.
   final List<String> sources;
+
+  /// [sources] as the files are named to the user: B-BOM and C-BOM.
+  List<String> get sourceNames => [for (final s in sources) s == 'A' ? 'B' : 'C'];
   final List<FieldCompare> fields;
 
   /// Designators the first BOM has and the other lacks, and the reverse.
@@ -174,6 +179,21 @@ class CompareRow {
   String get description => single?.description ?? merged?.description ?? '';
 }
 
+/// What the check compares. Skipped fields are still used to pair lines,
+/// but never compared: they make no line NG or REVIEW.
+class CompareOptions {
+  const CompareOptions({this.skip = const {}});
+
+  /// [compareFields] keys; `others` stands for every column without a
+  /// known role.
+  final Set<String> skip;
+
+  bool checks(String key) => !skip.contains(key) && (compareFields.contains(key) || !skip.contains('others'));
+}
+
+/// What a check can compare, in the order offered to the user.
+const compareFields = ['description', 'quantity', 'refs', 'mpn', 'maker', 'alternate', 'dnp', 'level', 'others'];
+
 class CompareReport {
   CompareReport({
     required this.rows,
@@ -182,6 +202,7 @@ class CompareReport {
     required this.mergedOnlyColumns,
     required this.at,
     this.uncovered = const [],
+    this.skipped = const [],
     this.mode = 'local',
     this.models = const [],
   });
@@ -206,6 +227,9 @@ class CompareReport {
   final List<String> uncovered;
 
   bool get complete => uncovered.isEmpty;
+
+  /// Fields the options left out of this check.
+  final List<String> skipped;
 
   int count(CheckStatus s) => rows.where((r) => r.status == s).length;
 
@@ -279,6 +303,10 @@ List<Span> _unmatched(List<(String, int, int)> a, List<(String, int, int)> b) {
 /// letters and digits (model names, codes) exactly; Chinese and other
 /// wording is free.
 FieldCompare compareDescription(String single, String merged, {String header = ''}) {
+  // Text that differs only in spacing is the same text.
+  if (single.replaceAll(RegExp(r'\s+'), '') == merged.replaceAll(RegExp(r'\s+'), '')) {
+    return FieldCompare(key: 'description', header: header, single: single, merged: merged, equal: true);
+  }
   final pc = compareParams(single, merged);
   final pa = extractParams(single), pb = extractParams(merged);
   bool inParam(List<Param> ps, int s, int e) => ps.any((p) => s < p.end && e > p.start);
@@ -468,7 +496,7 @@ typedef SemanticSuggestions = Map<String, (String, double)>;
 /// is a set of part numbers of the first BOM and of the other side that
 /// form one line; everything else is unmatched. Fields are still compared
 /// by the program, and a pairing without firm evidence stays REVIEW.
-CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {SemanticSuggestions semantic = const {}, List<(List<String>, List<String>)>? pairs}) {
+CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {SemanticSuggestions semantic = const {}, List<(List<String>, List<String>)>? pairs, CompareOptions options = const CompareOptions()}) {
   final relabelA = matchColumns(single, a);
   final relabelB = b == null ? const <String, String>{} : matchColumns(single, b);
   final (merged, sources) = mergeBoms(a, b, relabelA: relabelA, relabelB: relabelB);
@@ -664,10 +692,12 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
     final s = _combine(ls), m = _combine(rs);
     final srcs = {for (final q in rs) ...?sources[q.partNo]}.toList();
     final reasons = <String>[];
-    final fields = <FieldCompare>[compareDescription(s.description, m.description, header: descHeader)];
-    if (hasAll(srcs, BomRole.quantity)) fields.add(compareExact('quantity', '', formatQuantity(s.quantity), formatQuantity(m.quantity)));
+    final desc = compareDescription(s.description, m.description, header: descHeader);
+    final descOn = options.checks('description');
+    final fields = <FieldCompare>[if (descOn) desc];
+    if (hasAll(srcs, BomRole.quantity) && options.checks('quantity')) fields.add(compareExact('quantity', '', formatQuantity(s.quantity), formatQuantity(m.quantity)));
     final sRefs = s.refs.toSet(), mRefs = m.refs.toSet();
-    final refsOk = hasAll(srcs, BomRole.refs);
+    final refsOk = hasAll(srcs, BomRole.refs) && options.checks('refs');
     final missing = refsOk ? sortedRefs(sRefs.difference(mRefs)) : const <String>[];
     final extra = refsOk ? sortedRefs(mRefs.difference(sRefs)) : const <String>[];
     if (refsOk) {
@@ -683,14 +713,26 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
     }
     final pnDiffers = ls.map((p) => p.partNo).toSet().difference(rs.map((q) => q.partNo).toSet()).isNotEmpty || ls.length != rs.length;
     final approved = basis.kinds.contains('alternate') || ls.any((p) => rs.any((q) => p.alternates.contains(q.partNo) || q.alternates.contains(p.partNo)));
+    var altNote = false;
     for (final e in compared.entries) {
-      if (!hasOther(srcs, e.key)) continue;
+      if (!hasOther(srcs, e.key) || !options.checks(e.key)) continue;
       // A substitute naturally lists other alternates than the part it
       // replaces.
       if (e.key == 'alternate' && pnDiffers && approved) continue;
       // Fitted flags and levels are compared by meaning below, not by how
       // they are written ("YES" and an empty cell can both mean fitted).
       if (e.key == 'dnp' || e.key == 'level') continue;
+      // Alternates describe relations, not the part: compared as sets
+      // without the line's own number, and a difference is a note.
+      if (e.key == 'alternate') {
+        Set<String> alts(BomPart p, List<BomPart> own) => {
+          for (final x in (p.extra[e.key] ?? '').split(RegExp(r'[,;/、\s]+')))
+            if (x.trim().isNotEmpty && !own.any((o) => o.partNo == x.trim())) x.trim(),
+        };
+        final sa = alts(s, ls), ma = alts(m, rs);
+        if (sa.isNotEmpty && ma.isNotEmpty && (sa.length != ma.length || !sa.containsAll(ma))) altNote = true;
+        continue;
+      }
       fields.add(compareExact('col:${e.key}', e.value, s.extra[e.key] ?? '', m.extra[e.key] ?? ''));
     }
     final moved = <String, String>{
@@ -708,10 +750,10 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
         _ => 'col',
       });
     }
-    final desc = fields.first;
-    if (s.dnp != m.dnp) reasons.add(dnpSure ? 'dnp_differs' : 'dnp_unsure');
-    if (s.level != null && m.level != null && s.level != m.level) reasons.add('level');
-    if (desc.incomplete && desc.equal && (desc.singleSpans.isNotEmpty || desc.mergedSpans.isNotEmpty) && compareParams(s.description, m.description).verdict != ParamVerdict.incomplete) reasons.add('wording_unsure');
+    if (altNote) reasons.add('alt_differs');
+    if (s.dnp != m.dnp && options.checks('dnp')) reasons.add(dnpSure ? 'dnp_differs' : 'dnp_unsure');
+    if (s.level != null && m.level != null && s.level != m.level && options.checks('level')) reasons.add('level');
+    if (descOn && desc.incomplete && desc.equal && (desc.singleSpans.isNotEmpty || desc.mergedSpans.isNotEmpty) && compareParams(s.description, m.description).verdict != ParamVerdict.incomplete) reasons.add('wording_unsure');
     if (ls.length > 1 || rs.length > 1) reasons.add('split');
     if (!basis.firm) reasons.add('weak_match');
     final hard = reasons.any((r) => const ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'dnp_differs', 'level'].contains(r));
@@ -720,10 +762,10 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
       // A conflict is only NG when the pairing itself is certain.
       status = basis.firm ? CheckStatus.ng : CheckStatus.review;
     } else if (pnDiffers) {
-      status = approved && basis.firm && ls.length == 1 && rs.length == 1 && !desc.incomplete ? CheckStatus.substitute : CheckStatus.review;
+      status = approved && basis.firm && ls.length == 1 && rs.length == 1 && !(descOn && desc.incomplete) ? CheckStatus.substitute : CheckStatus.review;
       if (status == CheckStatus.review && !approved) reasons.add('pn_differs');
-    } else if (desc.incomplete || reasons.contains('dnp_unsure') || !basis.firm) {
-      if (desc.incomplete && !reasons.contains('wording_unsure')) reasons.add('param_incomplete');
+    } else if ((descOn && desc.incomplete) || reasons.contains('dnp_unsure') || !basis.firm) {
+      if (descOn && desc.incomplete && !reasons.contains('wording_unsure')) reasons.add('param_incomplete');
       status = CheckStatus.review;
     } else {
       status = CheckStatus.pass;
@@ -748,7 +790,15 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
   // A line without designators or quantity is often a stocked alternate.
   List<String> unmatchedReasons(BomPart? s, BomPart? m) {
     final p = (s ?? m)!;
-    return [s == null ? 'only_merged' : 'only_single', if (p.refs.isEmpty && p.quantity == null) 'no_placement'];
+    // Consumables, packaging, the bare PCB and assembly lines are on a BOM
+    // but never on a placement list.
+    final q = p.quantity;
+    final offLine = const [ItemKind.consumable, ItemKind.packaging, ItemKind.pcb].contains(p.kind) || q == 0 || (q != null && q != q.roundToDouble());
+    return [
+      s == null ? 'only_merged' : 'only_single',
+      if (p.refs.isEmpty && p.quantity == null) 'no_placement',
+      if (offLine) 'not_on_line',
+    ];
   }
 
   CompareRow unmatchedRow(BomPart? s, BomPart? m) => CompareRow(
@@ -798,5 +848,5 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
       for (final rec in d.records)
         if (!cited.contains(rec.id)) rec.id,
   ];
-  return CompareReport(rows: rows, compared: compared, singleOnlyColumns: singleOnly, mergedOnlyColumns: mergedOnly, at: DateTime.now(), uncovered: uncovered);
+  return CompareReport(rows: rows, compared: compared, singleOnlyColumns: singleOnly, mergedOnlyColumns: mergedOnly, at: DateTime.now(), uncovered: uncovered, skipped: [...options.skip]..sort());
 }

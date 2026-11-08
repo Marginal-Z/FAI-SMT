@@ -36,6 +36,7 @@ class Lucide {
     'line 21 4 14 4', 'line 10 4 3 4', 'line 21 12 12 12', 'line 8 12 3 12', 'line 21 20 16 20', 'line 12 20 3 20', //
     'line 14 2 14 6', 'line 8 10 8 14', 'line 16 18 16 22',
   ]);
+  static const history = Lucide(['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5', 'M12 7v5l4 2']);
   static const clipboardCheck = Lucide(['rect 8 2 8 4 1', 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2', 'm9 14 2 2 4-4']);
   static const sheetTop = Lucide(['rect 3 3 18 18 3.5', '*M3 6.5A3.5 3.5 0 0 1 6.5 3h11A3.5 3.5 0 0 1 21 6.5V11H3Z']);
   static const sheetBottom = Lucide(['rect 3 3 18 18 3.5', '*M3 13h18v4.5a3.5 3.5 0 0 1-3.5 3.5h-11A3.5 3.5 0 0 1 3 17.5Z']);

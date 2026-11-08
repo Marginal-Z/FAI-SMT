@@ -19,11 +19,34 @@ enum LocalModelRole {
 }
 
 class LocalModelSpec {
-  const LocalModelSpec({required this.id, required this.role, required this.file, required this.bytes, required this.sha256, required this.urls, required this.name, required this.license, this.required = true});
+  const LocalModelSpec({
+    required this.id,
+    required this.role,
+    required this.file,
+    required this.bytes,
+    required this.sha256,
+    required this.urls,
+    required this.name,
+    required this.license,
+    this.required = true,
+    this.ramMb = 0,
+    this.prefix = '',
+    this.tier = '',
+  });
 
   /// Needed for the local check; optional models can be left out (and are
-  /// not in the offline installer).
+  /// not in the offline installer). Embedding models are alternatives: one
+  /// of them is needed.
   final bool required;
+
+  /// Memory the model takes while running, measured (MB).
+  final int ramMb;
+
+  /// Put before every text embedded, as the model was trained.
+  final String prefix;
+
+  /// `light`, `balanced`, `best` or `large`: how it is presented.
+  final String tier;
 
   final String id;
   final LocalModelRole role;
@@ -43,12 +66,67 @@ class LocalModelSpec {
   }
 }
 
-/// Qwen3 models, Apache-2.0. Hashes measured on the published files; every
-/// mirror serves identical bytes.
+/// Hashes measured on the published files; every mirror serves identical
+/// bytes. The embedding models are alternatives, measured in
+/// docs/architecture/phase-11.md: pairing without part numbers or
+/// designators (440 lines, 4 cores) found 48–51% of the lines with the small
+/// models against 45% with Qwen3-0.6B, none wrong, in a third of the time
+/// and half the memory.
 const localModels = [
+  LocalModelSpec(
+    id: 'granite-embedding-278m-q4km',
+    role: LocalModelRole.embedding,
+    tier: 'balanced',
+    name: 'Granite-Embedding-278M multilingual (Q4_K_M)',
+    license: 'Apache-2.0',
+    file: 'granite-embedding-278m-multilingual-Q4_K_M.gguf',
+    bytes: 218732192,
+    sha256: '48985001cb8a2e05539e0c7b52064efbcae732ff08fd1fe391534d30cbd8d942',
+    ramMb: 340,
+    urls: {
+      'modelscope': 'https://modelscope.cn/models/bartowski/granite-embedding-278m-multilingual-GGUF/resolve/master/granite-embedding-278m-multilingual-Q4_K_M.gguf',
+      'huggingface': 'https://huggingface.co/bartowski/granite-embedding-278m-multilingual-GGUF/resolve/main/granite-embedding-278m-multilingual-Q4_K_M.gguf',
+      'hf-mirror': 'https://hf-mirror.com/bartowski/granite-embedding-278m-multilingual-GGUF/resolve/main/granite-embedding-278m-multilingual-Q4_K_M.gguf',
+    },
+  ),
+  LocalModelSpec(
+    id: 'granite-embedding-107m-q8',
+    role: LocalModelRole.embedding,
+    tier: 'light',
+    name: 'Granite-Embedding-107M multilingual (Q8_0)',
+    license: 'Apache-2.0',
+    file: 'granite-embedding-107m-multilingual-Q8_0.gguf',
+    bytes: 121020096,
+    sha256: '15691dfe830257f569a1e3521977351d16eac18e48e414908dc98ed9b8455e07',
+    ramMb: 260,
+    urls: {
+      'modelscope': 'https://modelscope.cn/models/bartowski/granite-embedding-107m-multilingual-GGUF/resolve/master/granite-embedding-107m-multilingual-Q8_0.gguf',
+      'huggingface': 'https://huggingface.co/bartowski/granite-embedding-107m-multilingual-GGUF/resolve/main/granite-embedding-107m-multilingual-Q8_0.gguf',
+      'hf-mirror': 'https://hf-mirror.com/bartowski/granite-embedding-107m-multilingual-GGUF/resolve/main/granite-embedding-107m-multilingual-Q8_0.gguf',
+    },
+  ),
+  LocalModelSpec(
+    id: 'embeddinggemma-300m-q8',
+    role: LocalModelRole.embedding,
+    tier: 'best',
+    name: 'EmbeddingGemma-300M (Q8_0)',
+    license: 'Gemma',
+    file: 'embeddinggemma-300M-Q8_0.gguf',
+    bytes: 333590944,
+    sha256: 'b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63',
+    ramMb: 360,
+    prefix: 'task: sentence similarity | query: ',
+    urls: {
+      'modelscope': 'https://modelscope.cn/models/ggml-org/embeddinggemma-300M-GGUF/resolve/master/embeddinggemma-300M-Q8_0.gguf',
+      'huggingface': 'https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf',
+      'hf-mirror': 'https://hf-mirror.com/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf',
+    },
+  ),
   LocalModelSpec(
     id: 'qwen3-embedding-0.6b-q8',
     role: LocalModelRole.embedding,
+    tier: 'large',
+    ramMb: 710,
     name: 'Qwen3-Embedding-0.6B (Q8_0)',
     license: 'Apache-2.0',
     file: 'Qwen3-Embedding-0.6B-Q8_0.gguf',
@@ -67,6 +145,7 @@ const localModels = [
   LocalModelSpec(
     id: 'qwen3-4b-q4km',
     required: false,
+    ramMb: 3500,
     role: LocalModelRole.language,
     name: 'Qwen3-4B (Q4_K_M)',
     license: 'Apache-2.0',
@@ -82,6 +161,11 @@ const localModels = [
 ];
 
 LocalModelSpec modelFor(LocalModelRole role) => localModels.firstWhere((m) => m.role == role);
+
+final embeddingModels = [for (final m in localModels) if (m.role == LocalModelRole.embedding) m];
+
+/// The embedding model with [id], else the default (the first).
+LocalModelSpec embeddingModel(String? id) => embeddingModels.firstWhere((m) => m.id == id, orElse: () => embeddingModels.first);
 
 enum ModelState { missing, downloading, verifying, ready, failed }
 

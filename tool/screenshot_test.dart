@@ -14,6 +14,7 @@ import 'package:smt_fai/core/ai_check.dart';
 import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/cloud/provider.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
+import 'package:smt_fai/core/history.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
 
@@ -46,9 +47,9 @@ void main() {
   AppState demoState({String lang = 'zh', bool dark = true, bool check = true, bool ai = false}) {
     final state = AppState(AppSettings(language: lang, theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
     Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
-    state.load(InputKind.single, 'demo_single_BOM.xlsx', read('demo_single_BOM.xlsx'));
-    state.load(InputKind.a, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
-    state.load(InputKind.b, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+    state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+    state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+    state.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
     if (check) state.runCheckNow();
     if (ai) {
       // A sample analysis, as a model would return it.
@@ -56,11 +57,11 @@ void main() {
       state.settings.cloud = ProviderConfig(model: 'gpt-4o-mini');
       state.cloudKey = 'demo';
       state.ai = AiResult(
-        summary: '共 28 个料号：19 个通过，5 个不一致，1 个需复核（HDMI 座料号不同且未登记替代），1 个认可替代料（绿色 LED）。主要问题：K1103-0106K0-001A 电容耐压 6.3V 与 10V 不一致；K1103-0220P0-001A 缺少位号 C21；K1102-1049K9-001A 多出 R32；K1104-2R2M00-001A 用量 3 与位号数 2 不符。建议先确认电容耐压与缺失位号。',
+        summary: '共 28 个料号：19 个 PASS，5 个 NG，1 个需复核（HDMI 座料号不同且未登记替代），1 个认可替代料（绿色 LED）。主要问题：K1103-0106K0-001A 电容耐压 6.3V 与 10V 不一致；K1103-0220P0-001A 缺少位号 C21；K1102-1049K9-001A 多出 R32；K1104-2R2M00-001A 用量 3 与位号数 2 不符。建议先确认电容耐压与缺失位号。',
         findings: [
-          AiFinding(partNo: 'K1103-0106K0-001A', field: 'description', side: 'both', severity: AiSeverity.error, message: '耐压不同：单 BOM 为 6.3V，A+B 为 10V，不是等价写法。', singleValue: '10uF 6.3V X5R 0603', mergedValue: '10uF 10V X5R 0603'),
-          AiFinding(partNo: 'K1103-0220P0-001A', field: 'refs', side: 'merged', severity: AiSeverity.error, message: 'A+B 缺少位号 C21，贴片时会漏件。', singleValue: 'C20,C21', mergedValue: 'C20'),
-          AiFinding(partNo: 'K1104-2R2M00-001A', field: 'quantity', side: 'merged', severity: AiSeverity.warning, message: 'A-BOM 用量 3 与位号 L1、L2 数量不符。', singleValue: '2', mergedValue: '3'),
+          AiFinding(partNo: 'K1103-0106K0-001A', field: 'description', side: 'both', severity: AiSeverity.error, message: '耐压不同：A-BOM 为 6.3V，B+C 为 10V，不是等价写法。', singleValue: '10uF 6.3V X5R 0603', mergedValue: '10uF 10V X5R 0603'),
+          AiFinding(partNo: 'K1103-0220P0-001A', field: 'refs', side: 'merged', severity: AiSeverity.error, message: 'B+C 缺少位号 C21，贴片时会漏件。', singleValue: 'C20,C21', mergedValue: 'C20'),
+          AiFinding(partNo: 'K1104-2R2M00-001A', field: 'quantity', side: 'merged', severity: AiSeverity.warning, message: 'B-BOM 用量 3 与位号 L1、L2 数量不符。', singleValue: '2', mergedValue: '3'),
           AiFinding(partNo: 'K1109-MOS340-001A', field: '品牌', side: 'both', severity: AiSeverity.info, message: 'AOS 与 Alpha&Omega 为同一厂商的不同写法，建议统一。', singleValue: 'AOS', mergedValue: 'Alpha&Omega'),
         ],
         model: 'gpt-4o-mini',
@@ -145,11 +146,52 @@ void main() {
     testWidgets('settings local models ${dark ? 'dark' : 'light'}', (tester) async {
       final s = demoState(dark: dark);
       s.openSettings(SettingsSection.localAi);
-      s.modelStatus[localModels.first.id] = const ModelStatus(ModelState.ready, progress: 1);
-      s.modelStatus[localModels.last.id] = const ModelStatus(ModelState.downloading, progress: 0.42);
+      s.modelStatus[embeddingModels.first.id] = const ModelStatus(ModelState.ready, progress: 1);
+      s.modelStatus[embeddingModels[1].id] = const ModelStatus(ModelState.downloading, progress: 0.42);
       await shot(tester, s, 'settings_local_${dark ? 'dark' : 'light'}');
     });
   }
+
+  testWidgets('settings checking', (tester) async {
+    final s = demoState(dark: false);
+    s.settings.compareSkip.add('others');
+    s.settings.reportStatuses.addAll(['ng', 'review']);
+    s.openSettings(SettingsSection.checking);
+    await shot(tester, s, 'settings_checking_light');
+  });
+
+  testWidgets('history', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('smtfai-shots');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final s = AppState(AppSettings(theme: ThemePref.light, tourDone: true), dir.path, history: HistoryStore('${dir.path}/history'));
+    Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
+    await tester.runAsync(() async {
+      s.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
+      s.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
+      s.runCheckNow();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      s.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
+      s.runCheckNow();
+      for (var i = 0; i < 100 && s.historyEntries.length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    s.openSettings(SettingsSection.history);
+    tester.view.physicalSize = const Size(1440, 1060);
+    tester.view.devicePixelRatio = 1;
+    await tester.runAsync(() => tester.pumpWidget(SmtFaiApp(state: s)));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await tester.tap(find.textContaining('C: demo_C_BOM.xlsx'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    await tester.runAsync(() => precacheImage(const AssetImage('assets/icon/app_icon.png'), tester.element(find.byType(SmtFaiApp))));
+    await tester.pump();
+    await expectLater(find.byType(SmtFaiApp), matchesGoldenFile('screens/history_light.png'));
+  });
 
   testWidgets('settings list', (tester) async {
     final s = demoState(dark: false);

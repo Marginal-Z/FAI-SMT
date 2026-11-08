@@ -26,7 +26,7 @@ import 'widgets.dart';
 Color aiTint(AppColors c) => c.dark ? const Color(0x3326B5B0) : const Color(0xFFDDF3F2);
 Color aiText(AppColors c) => c.dark ? const Color(0xFF7FDCD6) : const Color(0xFF0B6E69);
 
-Color _statusTint(AppColors c, CheckStatus s) => switch (s) {
+Color statusTint(AppColors c, CheckStatus s) => switch (s) {
   CheckStatus.pass => c.okTint,
   CheckStatus.ng => c.ngTint,
   CheckStatus.review => c.warnTint,
@@ -34,7 +34,7 @@ Color _statusTint(AppColors c, CheckStatus s) => switch (s) {
   CheckStatus.substitute => aiTint(c),
 };
 
-Color _statusText(AppColors c, CheckStatus s) => switch (s) {
+Color statusText(AppColors c, CheckStatus s) => switch (s) {
   CheckStatus.pass => c.okTx,
   CheckStatus.ng => c.ngTx,
   CheckStatus.review => c.warnTx,
@@ -193,8 +193,8 @@ class _CheckViewState extends State<CheckView> {
           icon: icon,
           value: report.count(st),
           total: total,
-          tint: _statusTint(c, st),
-          fg: _statusText(c, st),
+          tint: statusTint(c, st),
+          fg: statusText(c, st),
           bar: _statusSolid(c, st),
           selected: !_aiOnly && state.filter == st,
           onTap: () => _setFilter(st),
@@ -237,31 +237,6 @@ class _CheckViewState extends State<CheckView> {
               ],
             ),
           );
-    final wideTop = !phone && MediaQuery.sizeOf(context).width >= 1130;
-    final top = wideTop
-        ? Padding(
-            padding: EdgeInsets.only(bottom: gap),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        KeyedSubtree(key: tourTargets.fileChecks, child: ImportCardsRow(state: state)),
-                        const SizedBox(height: 12),
-                        stats,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(width: 236, child: ImportActions(state: state)),
-                ],
-              ),
-            ),
-          )
-        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [imports, SizedBox(height: gap), stats, SizedBox(height: gap)]);
 
     var visible = state.visibleRows();
     if (_aiOnly) visible = visible.where((r) => aiParts.contains(r.partNo)).toList();
@@ -346,6 +321,37 @@ class _CheckViewState extends State<CheckView> {
             ),
     );
 
+    final wideTop = !phone && MediaQuery.sizeOf(context).width >= 1250;
+    final top = wideTop
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        KeyedSubtree(key: tourTargets.fileChecks, child: ImportCardsRow(state: state)),
+                        const SizedBox(height: 12),
+                        stats,
+                        // The filters sit beside the actions panel, leaving
+                        // no empty band under the cards.
+                        const Spacer(),
+                        const SizedBox(height: 12),
+                        filters,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(width: 236, child: ImportActions(state: state)),
+                ],
+              ),
+            ),
+          )
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [imports, SizedBox(height: gap), stats, SizedBox(height: gap)]);
+
     final aiPanel = _AiPanel(state: state);
     final showAi = state.settings.aiEnabled && state.aiStatus != AiStatus.idle;
 
@@ -424,8 +430,7 @@ class _CheckViewState extends State<CheckView> {
         final children = [
           top,
           if (!side && showAi) ...[aiPanel, const SizedBox(height: 12)],
-          filters,
-          const SizedBox(height: 14),
+          if (!wideTop) ...[filters, const SizedBox(height: 14)],
           short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
           if (!side && selected) ...[const SizedBox(height: 14), SizedBox(height: 380, child: _Detail(state: state))],
           const SizedBox(height: 16),
@@ -496,12 +501,21 @@ class _ColumnsNote extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final compared = [s.t('f_desc'), s.t('f_qty'), s.t('f_refs'), ...report.compared.values];
+    // Fields switched off in the settings are named apart.
+    final on = CompareOptions(skip: report.skipped.toSet());
+    final compared = [
+      for (final (k, label) in [('description', s.t('f_desc')), ('quantity', s.t('f_qty')), ('refs', s.t('f_refs'))])
+        if (on.checks(k)) label,
+      for (final e in report.compared.entries)
+        if (on.checks(e.key)) e.value,
+    ];
     final skipped = [...report.singleOnlyColumns, ...report.mergedOnlyColumns];
+    final off = [for (final k in report.skipped) s.t('cmpf_$k')];
+    final tip = [if (skipped.isNotEmpty) s.t('cols_skipped', {'cols': skipped.join('、')}), if (off.isNotEmpty) s.t('cols_off', {'cols': off.join('、')})].join('\n');
     return Hoverable(
-      tooltip: skipped.isEmpty ? null : s.t('cols_skipped', {'cols': skipped.join('、')}),
+      tooltip: tip.isEmpty ? null : tip,
       builder: (context, hover, _) => Text(
-        s.t('cols_compared', {'cols': compared.join('、')}) + (skipped.isEmpty ? '' : s.t('cols_skipped_short', {'n': skipped.length})),
+        s.t('cols_compared', {'cols': compared.join('、')}) + (skipped.isEmpty ? '' : s.t('cols_skipped_short', {'n': skipped.length})) + (off.isEmpty ? '' : s.t('cols_off_short', {'n': off.length})),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 12.5, color: c.tx3),
@@ -605,10 +619,10 @@ class _StatCard extends StatelessWidget {
 /// Column widths: fixed px, or flex weight with a minimum.
 const _cols = [
   (40.0, 0.0), // #
-  (170.0, 0.0), // part number
-  (280.0, 2.0), // description (single over A+B)
+  (190.0, 0.8), // part number
+  (240.0, 1.6), // description (A over B+C)
   (90.0, 0.0), // quantity
-  (220.0, 1.4), // designators
+  (190.0, 1.1), // designators
   (110.0, 0.0), // other columns
   (96.0, 0.0), // result
 ];
@@ -674,7 +688,7 @@ Widget _sides(BuildContext context, FieldCompare? f, {String? single, String? me
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 30, child: Text('A+B', style: tag)),
+          SizedBox(width: 30, child: Text(Strings.of(context).t('side_merged'), style: tag)),
           Expanded(child: HighlightText(f.merged, f.mergedSpans, color: hl, style: style, maxLines: maxLines)),
         ],
       ),
@@ -744,8 +758,8 @@ class _ResultRow extends StatelessWidget {
       onTap: () => state.select(selected ? null : row),
       cursor: SystemMouseCursors.basic,
       builder: (context, hover, _) => Container(
-        margin: const EdgeInsets.only(top: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        margin: const EdgeInsets.only(top: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
           color: selected
               ? c.rowSel
@@ -760,8 +774,9 @@ class _ResultRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(row.partNo, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.tx)),
-              if (row.sources.isNotEmpty) Text(row.sources.join(' + '), style: TextStyle(fontSize: 11, color: c.tx3)),
+              // Long numbers wrap rather than being cut off.
+              Text(row.partNo, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.tx)),
+              if (row.sources.isNotEmpty) Text(row.sourceNames.join(' + '), style: TextStyle(fontSize: 11, color: c.tx3)),
             ],
           ),
           cell(_sides(context, desc, single: row.single?.description, merged: row.merged?.description), diff: desc != null && !desc.equal),
@@ -797,7 +812,7 @@ class _ResultRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
-              DBadge(text: statusLabel(s, row.status), background: _statusTint(c, row.status), color: _statusText(c, row.status)),
+              DBadge(text: statusLabel(s, row.status), background: statusTint(c, row.status), color: statusText(c, row.status)),
             ],
           ),
         ]),
@@ -842,7 +857,7 @@ class _RowCard extends StatelessWidget {
                   child: Text(row.partNo, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.tx)),
                 ),
                 if (ai) ...[LucideIcon(Lucide.sparkles, size: 14, color: aiText(c), stroke: 2.2), const SizedBox(width: 6)],
-                DBadge(text: statusLabel(s, row.status), background: _statusTint(c, row.status), color: _statusText(c, row.status)),
+                DBadge(text: statusLabel(s, row.status), background: statusTint(c, row.status), color: statusText(c, row.status)),
               ],
             ),
             const SizedBox(height: 6),
@@ -900,7 +915,7 @@ class _Detail extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 52, child: Text('A+B', style: TextStyle(fontSize: 11.5, color: c.tx3))),
+              SizedBox(width: 52, child: Text(s.t('side_merged'), style: TextStyle(fontSize: 11.5, color: c.tx3))),
               Expanded(child: HighlightText(b, sb, color: hl, style: TextStyle(fontSize: 13, height: 1.4, color: c.tx))),
             ],
           ),
@@ -913,7 +928,7 @@ class _Detail extends StatelessWidget {
           Expanded(
             child: Text(row.partNo, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: c.tx)),
           ),
-          DBadge(text: statusLabel(s, row.status), background: _statusTint(c, row.status), color: _statusText(c, row.status)),
+          DBadge(text: statusLabel(s, row.status), background: statusTint(c, row.status), color: statusText(c, row.status)),
           const SizedBox(width: 8),
           GlassButton(icon: Lucide.x, size: 30, iconSize: 14, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
         ],
@@ -944,17 +959,17 @@ class _Detail extends StatelessWidget {
       if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty || row.cloudNote.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: row.status == CheckStatus.pass ? c.well : _statusTint(c, row.status), borderRadius: c.r(12)),
+          decoration: BoxDecoration(color: row.status == CheckStatus.pass ? c.well : statusTint(c, row.status), borderRadius: c.r(12)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (row.basis.kinds.isNotEmpty)
                 Text(
                   s.t('match_by', {'by': row.basis.kinds.map((k) => s.t('basis_$k')).join(' + '), 'c': (row.basis.confidence * 100).round()}),
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: row.status == CheckStatus.pass ? c.tx2 : _statusText(c, row.status)),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: row.status == CheckStatus.pass ? c.tx2 : statusText(c, row.status)),
                 ),
               if (row.otherPartNo.isNotEmpty) Text(s.t('match_other_pn', {'pn': row.otherPartNo}), style: TextStyle(fontSize: 12.5, color: c.tx2)),
-              for (final r in row.reasons) Text('• ${s.t('reason_$r')}', style: TextStyle(fontSize: 13, height: 1.45, color: _statusText(c, row.status))),
+              for (final r in row.reasons) Text('• ${s.t('reason_$r')}', style: TextStyle(fontSize: 13, height: 1.45, color: statusText(c, row.status))),
               if (row.cloudNote.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(s.t('cloud_note', {'n': row.cloudNote}), style: TextStyle(fontSize: 12.5, height: 1.45, color: aiText(c))),
@@ -1064,7 +1079,7 @@ class _FindingCard extends StatelessWidget {
             if (f.singleValue.isNotEmpty || f.mergedValue.isNotEmpty) ...[
               const SizedBox(height: 6),
               if (f.singleValue.isNotEmpty) Text('${s.t('side_single_long')}: ${f.singleValue}', style: TextStyle(fontSize: 12, color: c.tx2)),
-              if (f.mergedValue.isNotEmpty) Text('A+B: ${f.mergedValue}', style: TextStyle(fontSize: 12, color: c.tx2)),
+              if (f.mergedValue.isNotEmpty) Text('${s.t('side_merged')}: ${f.mergedValue}', style: TextStyle(fontSize: 12, color: c.tx2)),
             ],
           ],
         ),

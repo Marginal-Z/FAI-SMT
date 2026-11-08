@@ -10,6 +10,7 @@ import 'package:smt_fai/core/bom.dart';
 import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/classify.dart';
 import 'package:smt_fai/core/cloud/provider.dart';
+import 'package:smt_fai/core/history.dart';
 import 'package:smt_fai/core/params.dart';
 import 'package:smt_fai/core/refdes.dart';
 import 'package:smt_fai/core/report.dart';
@@ -133,6 +134,21 @@ void main() {
       expect(k2.rows, [4, 5]);
       expect(d.parts.firstWhere((p) => p.partNo == 'K3').quantity, 1);
     });
+    test('fixed-width wraps inside a word are joined', () {
+      expect(cleanCell('贴片铝电解电容 470uF 16V ±20% 105℃ 13x1\n5mm'), '贴片铝电解电容 470uF 16V ±20% 105℃ 13x15mm');
+      expect(cleanCell('IPC 电池摄像机 沃尔\n玛 客供'), 'IPC 电池摄像机 沃尔玛 客供');
+      expect(cleanCell('Resistor 10K\n0402'), 'Resistor 10K 0402');
+      expect(cleanCell('R1,\nR2'), 'R1, R2');
+    });
+    test('alternates listing the line itself, or none, are not a difference', () {
+      final station = readBom([Grid('S', [['料号', '关联料号', '物料描述', '数量', '位号'], ['K1', 'K1', '电阻 10K 0402', '2', 'R1,R2'], ['K2', 'K2,K9', '电容 1uF 0402', '1', 'C1']])], id: 'S');
+      final bom = readBom([Grid('B', [['料号', '替代料', '物料描述', '用量', '位号'], ['K1', '', '电阻 10K 0402', '2', 'R1,R2'], ['K2', 'K8', '电容 1uF 0402', '1', 'C1'], ['P1', '', '锡膏 SAC305', '0', '']])], id: 'A');
+      final r = compareBoms(station, bom, null);
+      expect(r.count(CheckStatus.pass), 2);
+      expect(r.count(CheckStatus.ng), 0);
+      expect(r.rows.firstWhere((x) => x.partNo == 'K2').reasons, contains('alt_differs'));
+      expect(r.rows.firstWhere((x) => x.partNo == 'P1').reasons, contains('not_on_line'));
+    });
     test('quoted CSV fields may hold line breaks', () {
       final text = 'PN,Description,Qty,Designator\nK1,"Resistor 10K\n0402",3,"R1,\nR2,R3"\nK2,Cap 1uF 0402,1,C1\n';
       final grids = readTableBytes(Uint8List.fromList(utf8.encode(text)), 'x.csv');
@@ -173,11 +189,11 @@ void main() {
 
   group('unified model', () {
     test('records cite file, sheet and Excel row; continuation rows included', () {
-      final d = readBom(readTableBytes(File('samples/demo/demo_single_BOM.xlsx').readAsBytesSync(), 'x.xlsx'), file: 'demo_single_BOM.xlsx', id: 'S');
+      final d = readBom(readTableBytes(File('samples/demo/demo_A_BOM.xlsx').readAsBytesSync(), 'x.xlsx'), file: 'demo_A_BOM.xlsx', id: 'S');
       // Title on row 1, header on row 2: the first part is on Excel row 3.
       expect(d.headerRow + 1, 2);
       final first = d.records.first;
-      expect(first.source, const SourceRef('demo_single_BOM.xlsx', 'BOM', 3));
+      expect(first.source, const SourceRef('demo_A_BOM.xlsx', 'BOM', 3));
       expect(first.id, 'S:BOM!3');
       expect(first.cells, hasLength(greaterThanOrEqualTo(7)));
       // Eight resistors: five designators on the part row, three on the next.
@@ -200,7 +216,7 @@ void main() {
       expect(k3.quantity, 2);
     });
     test('columns carry confidence and what they were recognised from', () {
-      final d = demo('demo_B_BOM.xlsx');
+      final d = demo('demo_C_BOM.xlsx');
       final refs = d.column(BomRole.refs)!;
       expect(refs.header, isEmpty);
       expect(refs.evidence, 'content');
@@ -329,7 +345,7 @@ void main() {
 
   group('comparing', () {
     late CompareReport r;
-    setUpAll(() => r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx', id: 'A'), demo('demo_B_BOM.xlsx', id: 'B')));
+    setUpAll(() => r = compareBoms(demo('demo_A_BOM.xlsx'), demo('demo_B_BOM.xlsx', id: 'A'), demo('demo_C_BOM.xlsx', id: 'B')));
     CompareRow row(String pn) => r.rows.firstWhere((x) => x.partNo == pn);
 
     test('A and B are merged and compared with the single BOM', () {
@@ -390,7 +406,7 @@ void main() {
 
   group('report and AI', () {
     test('Excel report: both sides, differing cells filled', () {
-      final r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx', id: 'A'), demo('demo_B_BOM.xlsx', id: 'B'));
+      final r = compareBoms(demo('demo_A_BOM.xlsx'), demo('demo_B_BOM.xlsx', id: 'A'), demo('demo_C_BOM.xlsx', id: 'B'));
       final ai = AiResult(
         summary: 's',
         findings: [AiFinding(partNo: 'K1103-0106K0-001A', field: 'description', side: 'both', severity: AiSeverity.error, message: '电压不同')],
@@ -419,7 +435,7 @@ void main() {
       // Every row cites its source records.
       final srcCol = [for (var c = 0; c <= last; c++) c].firstWhere((c) => sheet.value(header, c) == t('rep_src_single'));
       expect(sheet.value(diff, srcCol), startsWith('S:BOM!'));
-      expect(sheet.value(diff, srcCol + 1), startsWith('A:A-BOM!'));
+      expect(sheet.value(diff, srcCol + 1), startsWith('A:B-BOM!'));
       // The file reads back with the same values.
       final grids = readTableBytes(book.encode(), 'r.xlsx');
       expect(grids.map((g) => g.name), [t('rep_sheet'), t('rep_summary_sheet'), t('rep_ai_sheet')]);
@@ -428,7 +444,7 @@ void main() {
       expect(grids.first.cell(header, srcCol), t('rep_src_single'));
     });
     test('report: risk, normalised parameters, mode and a summary sheet', () {
-      final r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx', id: 'A'), demo('demo_B_BOM.xlsx', id: 'B'));
+      final r = compareBoms(demo('demo_A_BOM.xlsx'), demo('demo_B_BOM.xlsx', id: 'A'), demo('demo_C_BOM.xlsx', id: 'B'));
       final t = Strings('zh').t;
       final book = buildCompareWorkbook(r, t);
       final sheet = book.sheets.first;
@@ -442,6 +458,69 @@ void main() {
       final sum = book.sheets.firstWhere((x) => x.name == t('rep_summary_sheet'));
       expect(sum.value(1, 1), r.count(CheckStatus.pass));
       expect(riskOf(r.rows.firstWhere((x) => x.partNo == 'K1106-LED0G0-001A')), Risk.low);
+    });
+    test('fields switched off are not compared; the report holds what is chosen', () {
+      List<List<String>> sheet(String qty) => [['料号', '物料描述', '用量', '位号'], ['K1', '电阻 10K 0402', qty, 'R1,R2'], ['K2', '电容 1uF 0402', '1', 'C1']];
+      final a = readBom([Grid('A', sheet('2'))], id: 'S'), b = readBom([Grid('B', sheet('3'))], id: 'A');
+      expect(compareBoms(a, b, null).count(CheckStatus.ng), 1);
+      final off = compareBoms(a, b, null, options: const CompareOptions(skip: {'quantity'}));
+      expect(off.count(CheckStatus.ng), 0);
+      expect(off.skipped, ['quantity']);
+      // Other columns are switched off together.
+      expect(const CompareOptions(skip: {'others'}).checks('站位'), isFalse);
+      expect(const CompareOptions(skip: {'others'}).checks('mpn'), isTrue);
+      final t = Strings('zh').t;
+      final r = compareBoms(a, b, null);
+      final book = buildCompareWorkbook(r, t, options: const ReportOptions(hidden: {'params', 'rows'}, statuses: {CheckStatus.ng}));
+      final sh = book.sheets.first;
+      final header = [for (var i = 0; i < sh.rowCount; i++) i].firstWhere((i) => sh.value(i, 0) == '#');
+      final heads = [for (var c = 0; sh.value(header, c) != null; c++) sh.value(header, c)];
+      expect(heads, isNot(contains(t('rep_params_single'))));
+      expect(heads, isNot(contains(t('rep_src_single'))));
+      expect(heads, contains(t('rep_qty_single')));
+      expect([for (var i = header + 1; i < sh.rowCount; i++) sh.value(i, 1)], ['K1']);
+      final qty = heads.indexOf(t('rep_qty_single'));
+      expect(sh.styleAt(header + 1, qty)!.fill, 'FFE3A3');
+      // Settings keep the choices.
+      final set = AppSettings.fromJson(AppSettings(compareSkip: {'refs'}, reportHidden: {'ai'}, reportStatuses: {'ng'}).toJson());
+      expect(set.compareOptions.checks('refs'), isFalse);
+      expect(set.reportOptions.shows('ai'), isFalse);
+      expect(set.reportOptions.statuses, {CheckStatus.ng});
+    });
+    test('check history keeps files, hashes, lines and the report', () async {
+      final dir = Directory.systemTemp.createTempSync('smtfai-history');
+      try {
+        final store = HistoryStore(dir.path);
+        final a = demo('demo_A_BOM.xlsx'), b = demo('demo_B_BOM.xlsx', id: 'A');
+        final r = compareBoms(a, b, null);
+        final bytes = Uint8List.fromList([1, 2, 3]);
+        final id = HistoryStore.newId(DateTime(2026, 11, 8, 9, 5, 7, 12));
+        expect(id, '20261108-090507-012');
+        await store.save(id: id, report: r, files: [('A', 'a.xlsx', bytes), ('B', 'b.xlsx', bytes)], workbook: buildCompareWorkbook(r, Strings('zh').t).encode(), appVersion: '3.1.0');
+        // Saving again under the same id replaces the entry.
+        await store.save(id: id, report: r, files: [('A', 'a.xlsx', bytes), ('B', 'b.xlsx', bytes)], workbook: Uint8List(0));
+        final list = await store.list();
+        expect(list, hasLength(1));
+        final e = list.single;
+        expect(e.counts['ng'], r.count(CheckStatus.ng));
+        expect(e.files.first.sha256, hasLength(64));
+        expect(e.appVersion, '');
+        expect(await store.input(e.id, e.files.first), bytes);
+        final lines = await store.lines(e.id);
+        expect(lines.map((l) => l.partNo), [for (final x in r.rows) x.partNo]);
+        final ng = r.rows.firstWhere((x) => x.status == CheckStatus.ng);
+        final found = await store.search(ng.partNo.toLowerCase());
+        expect(found.single.$2.map((l) => l.partNo), contains(ng.partNo));
+        expect(await store.search('b.xlsx'), hasLength(1));
+        expect(await store.search('nothing-like-this'), isEmpty);
+        // A changed copy is refused.
+        File('${dir.path}/$id/${e.files.first.stored}').writeAsBytesSync([9]);
+        expect(await store.input(e.id, e.files.first), isNull);
+        await store.delete(id);
+        expect(await store.list(), isEmpty);
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
     });
     test('parameters are shown in a normalised form', () {
       expect(normalisedParams('贴片电阻 4K7 1/16W ±1% 0402'), '4.7 kΩ · 62.5 mW · 1 % · 0402');
@@ -470,7 +549,7 @@ void main() {
       expect(() => extractJson('no json here'), throwsA(isA<AiException>()));
     });
     test('AI request carries the comparison', () {
-      final r = compareBoms(demo('demo_single_BOM.xlsx'), demo('demo_A_BOM.xlsx'), null);
+      final r = compareBoms(demo('demo_A_BOM.xlsx'), demo('demo_B_BOM.xlsx'), null);
       final text = comparisonJson(r);
       expect(text, contains('K1103-0106K0-001A'));
       expect(text, contains('localResult'));
@@ -506,7 +585,7 @@ void main() {
     test('every code shown to the user is translated', () {
       final codes = [
         for (final d in CheckStatus.values) ...['status_${d.name}'],
-        for (final k in ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'param_incomplete', 'pn_differs', 'weak_match', 'split', 'dnp_differs', 'dnp_unsure', 'only_single', 'only_merged', 'no_placement', 'wording_unsure', 'level', 'cloud_missing', 'cloud_same', 'cloud_different', 'cloud_unsure', 'cloud_no_counterpart', 'cloud_conflict', 'cloud_says_ng', 'cloud_contradicted']) 'reason_$k',
+        for (final k in ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'param_incomplete', 'pn_differs', 'weak_match', 'split', 'dnp_differs', 'dnp_unsure', 'only_single', 'only_merged', 'no_placement', 'not_on_line', 'alt_differs', 'wording_unsure', 'level', 'cloud_missing', 'cloud_same', 'cloud_different', 'cloud_unsure', 'cloud_no_counterpart', 'cloud_conflict', 'cloud_says_ng', 'cloud_contradicted']) 'reason_$k',
         for (final k in ['partNo', 'refs', 'mpn', 'alternate', 'params', 'semantic', 'cloud']) 'basis_$k',
         for (final m in ['local', 'hybrid', 'cloudFull']) ...['mode_$m', 'mode_${m}_hint'],
         for (final s in AiSeverity.values) 'ai_sev_${s.name}',
