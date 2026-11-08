@@ -255,6 +255,8 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          # Packages only; the evaluation report stays with the build.
+          pattern: SMT-FAI-*
           merge-multiple: true
       - uses: softprops/action-gh-release@v3
         with:
