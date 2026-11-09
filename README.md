@@ -75,7 +75,7 @@ SMT-FAI 用于 SMT 产线的 BOM 核对。导入作为基准的 A-BOM，再导�
 
 | 平台 | 系统要求 | 安装包 |
 | --- | --- | --- |
-| Windows | Windows 10 / 11，x64 或 ARM64 | `SMT-FAI-<版本>-windows-x64-setup.exe`（推荐）、`-arm64-setup.exe`；自带向量模型包 `-full-setup.exe`（约 650 MB，不含必需语言模型）；或 zip 绿色版 |
+| Windows | Windows 10 / 11，x64 或 ARM64 | `SMT-FAI-<版本>-windows-x64-setup.exe`（推荐）、`-arm64-setup.exe`；自带向量模型包 `-full-setup.exe`（不含必需语言模型）；或 zip 绿色版 |
 | Android | Android 7.0 及以上 | `SMT-FAI-<版本>-android-universal.apk`；或对应架构的 APK |
 | Linux | Debian / Ubuntu 及衍生版，x64 或 ARM64 | `SMT-FAI-<版本>-linux-x64.deb`、`-arm64.deb`；或 tar.gz |
 
