@@ -202,7 +202,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+            ~/.m2/repository/org/jetbrains/kotlin/kotlin-compiler-embeddable
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock', 'tool/kotlin_compiler_checksums.json') }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -220,6 +221,10 @@ jobs:
           if [ -z "$KEYSTORE" ]; then echo "::error::Android signing secrets are missing"; exit 1; fi
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.p12"
           printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$RUNNER_TEMP/release.p12" "$PASSWORD" "$ALIAS" "$PASSWORD" > android/key.properties
+      # Flutter's included Gradle build uses 2.2.21; the app uses 2.4.0.
+      # Keep their versions unchanged and let Gradle verify/reuse local bytes.
+      - name: Prefetch verified Kotlin compiler artifacts
+        run: python3 tool/prefetch_kotlin.py 2.2.21 2.4.0
       # One version code for every APK (no per-ABI offset), so moving between
       # the universal and per-ABI packages is never a downgrade.
       - name: Per-ABI APKs (armeabi-v7a, arm64-v8a, x86_64)
