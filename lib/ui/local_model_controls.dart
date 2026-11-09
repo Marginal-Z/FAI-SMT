@@ -26,14 +26,17 @@ class LocalModelControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = Strings.of(context);
     final c = AppTheme.of(context);
-    final on = state.settings.localAiEnabled;
+    final required = state.localAnalysisRequired;
+    final on = required || state.settings.localAiEnabled;
     final cloudOnly = state.settings.checkMode == CheckMode.cloudFull;
     final canToggle =
-        !state.localBusy && !cloudOnly && (state.localModelsReady || on);
+        !required && !state.localBusy && !cloudOnly && (state.localModelsReady || on);
     final hint = state.localBusy
         ? 'local_wait'
         : cloudOnly
         ? 'local_state_cloudOnly'
+        : required
+        ? (state.localAnalysisReady ? 'local_analysis_required_hint' : 'local_analysis_missing')
         : !state.localModelsReady
         ? 'local_selected_unavailable'
         : state.report != null
@@ -42,7 +45,7 @@ class LocalModelControls extends StatelessWidget {
 
     final toggle = _ModelToggle(
       value: on,
-      label: s.t('local_use'),
+      label: s.t(required ? 'local_analysis_required' : 'local_use'),
       onTap: canToggle ? () => state.setLocalAiEnabled(!on) : null,
     );
     final note = Text(
@@ -60,24 +63,24 @@ class LocalModelControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          s.t('local_pick_title'),
+          s.t(required ? 'local_analysis_model' : 'local_pick_title'),
           style: TextStyle(fontSize: 12, color: c.tx2),
         ),
         const SizedBox(height: 4),
         DropdownSelect<String>(
           key: const ValueKey('local-model-choice'),
-          value: state.activeEmbedding.id,
+          value: required ? state.localAnalysisModel.id : state.activeEmbedding.id,
           width: double.infinity,
           flat: true,
           optionMaxLines: 3,
           options: [
-            for (final m in embeddingModels)
+            for (final m in required ? [state.localAnalysisModel] : embeddingModels)
               (
                 m.id,
                 '${m.name} · ${s.t(_statusKey(state.modelStatus[m.id]?.state))}',
               ),
           ],
-          onChanged: state.localBusy
+          onChanged: required || state.localBusy
               ? null
               : (id) => state.setEmbeddingModel(embeddingModel(id)),
         ),

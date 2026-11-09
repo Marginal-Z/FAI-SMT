@@ -1,4 +1,4 @@
-/// A snapshot of actual embedding use for one check, preserved in its report.
+/// Actual language analysis or embedding use, preserved with the report.
 class LocalModelUsage {
   const LocalModelUsage({
     this.state = 'disabled',
@@ -7,6 +7,10 @@ class LocalModelUsage {
     this.paired = 0,
     this.millis = 0,
     this.error = '',
+    this.kind = 'embedding',
+    this.rows = 0,
+    this.total = 0,
+    this.calls = 0,
   });
   final String state;
   final String model;
@@ -14,6 +18,10 @@ class LocalModelUsage {
   final int paired;
   final int millis;
   final String error;
+  final String kind;
+  final int rows;
+  final int total;
+  final int calls;
   Map<String, dynamic> toJson() => {
     'state': state,
     'model': model,
@@ -21,6 +29,7 @@ class LocalModelUsage {
     'paired': paired,
     'millis': millis,
     'error': error,
+    'kind': kind, 'rows': rows, 'total': total, 'calls': calls,
   };
   factory LocalModelUsage.fromJson(Map<String, dynamic> j) => LocalModelUsage(
     state: '${j['state'] ?? 'unknown'}',
@@ -29,5 +38,9 @@ class LocalModelUsage {
     paired: (j['paired'] as num?)?.toInt() ?? 0,
     millis: (j['millis'] as num?)?.toInt() ?? 0,
     error: '${j['error'] ?? ''}',
+    kind: '${j['kind'] ?? 'embedding'}',
+    rows: (j['rows'] as num?)?.toInt() ?? 0,
+    total: (j['total'] as num?)?.toInt() ?? 0,
+    calls: (j['calls'] as num?)?.toInt() ?? 0,
   );
 }

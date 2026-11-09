@@ -10,24 +10,28 @@ import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/history.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
+import 'package:smt_fai/core/local_ai/model_store.dart';
+import 'support/local_models.dart';
 
 void main() {
   testWidgets('a check is kept, listed and loaded again', (tester) async {
     final dir = Directory.systemTemp.createTempSync('smtfai-hview');
     addTearDown(() => dir.deleteSync(recursive: true));
-    final state = AppState(AppSettings(tourDone: true, language: 'zh'), dir.path, history: HistoryStore('${dir.path}/history'));
+    final state = (await tester.runAsync(() async => AppState(AppSettings(tourDone: true, language: 'zh'), dir.path, history: HistoryStore('${dir.path}/history'), localModelsFactory: (_, _) async => FakeLocalModels())))!;
+    state.modelStatus[state.localAnalysisModel.id] = const ModelStatus(ModelState.ready);
     Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
     state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
     state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
     // Writing the entry is real file work, outside the test clock.
     await tester.runAsync(() async {
       state.runCheckNow();
-      for (var i = 0; i < 100 && state.historyEntries.isEmpty; i++) {
+      await settleLocal(state);
+      for (var i = 0; i < 300 && state.historyEntries.isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     });
     final ng = state.report!.count(CheckStatus.ng);
-    expect(state.historyEntries, hasLength(1));
+    expect(state.historyEntries, hasLength(1), reason: '${state.historyError} / ${state.localErrorDetail}');
     expect(state.historyEntries.single.counts['ng'], ng);
     expect(state.historyEntries.single.files.map((f) => f.role), ['A', 'B']);
 
@@ -47,6 +51,7 @@ void main() {
     expect(find.text('重新载入并核对'), findsOneWidget);
     state.unload(InputKind.single);
     await tester.runAsync(() => state.reopenHistory(state.historyEntries.single));
+    await tester.runAsync(() => settleLocal(state));
     await tester.pump();
     expect(state.single?.name, 'demo_A_BOM.xlsx');
     expect(state.report!.count(CheckStatus.ng), ng);

@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
 import 'package:smt_fai/core/bom.dart';
+import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/table_reader.dart';
@@ -18,7 +19,8 @@ void main() {
       BomDocument doc(String id) => readBom([Grid('s', [['料号', '描述', '用量', '位号'], ['P1001', 'LED red 0603', '1', 'D1']])], id: id);
       s.single = LoadedFile('A.csv', doc('S'));
       s.bomA = LoadedFile('B.csv', doc('A'));
-      s.runCheckNow();
+      // A fixed comparison fixture tests layout, not model inference.
+      s.report = compareBoms(s.single!.bom, s.bomA!.bom, null);
       tester.view.physicalSize = Size(width, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -40,7 +42,7 @@ void main() {
       s.openSettings(SettingsSection.localAi);
       await tester.pumpAndSettle();
       expect(find.text('运行推理自检'), findsOneWidget);
-      expect(find.textContaining('当前核对流程不调用可选语言模型'), findsOneWidget);
+      expect(find.textContaining('本地模式使用语言模型逐项分析全部物料'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

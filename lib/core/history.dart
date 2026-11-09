@@ -92,7 +92,7 @@ class HistoryEntry {
 
 /// A result line as kept for searching and reading back.
 class HistoryLine {
-  const HistoryLine({required this.partNo, required this.status, required this.reasons, this.otherPartNo = '', this.description = ''});
+  const HistoryLine({required this.partNo, required this.status, required this.reasons, this.otherPartNo = '', this.description = '', this.localNote = ''});
 
   final String partNo;
 
@@ -101,8 +101,9 @@ class HistoryLine {
   final CheckStatus status;
   final List<String> reasons;
   final String description;
+  final String localNote;
 
-  Map<String, dynamic> toJson() => {'p': partNo, if (otherPartNo.isNotEmpty) 'o': otherPartNo, 's': status.name, 'r': reasons, 'd': description};
+  Map<String, dynamic> toJson() => {'p': partNo, if (otherPartNo.isNotEmpty) 'o': otherPartNo, 's': status.name, 'r': reasons, 'd': description, if (localNote.isNotEmpty) 'localNote': localNote};
 
   factory HistoryLine.fromJson(Map<String, dynamic> j) => HistoryLine(
     partNo: '${j['p']}',
@@ -110,6 +111,7 @@ class HistoryLine {
     status: CheckStatus.values.firstWhere((s) => s.name == j['s'], orElse: () => CheckStatus.review),
     reasons: [for (final r in (j['r'] as List? ?? const [])) '$r'],
     description: '${j['d'] ?? ''}',
+    localNote: '${j['localNote'] ?? ''}',
   );
 
   factory HistoryLine.of(CompareRow r) {
@@ -120,6 +122,7 @@ class HistoryLine {
       status: r.status,
       reasons: r.reasons,
       description: r.single?.description ?? r.merged?.description ?? '',
+      localNote: r.localNote,
     );
   }
 

@@ -2,11 +2,11 @@
 // set SMT_FAI_MODELS to their folder, or keep them in
 // ~/.cache/smt-fai-dev/models.
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
-import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/core/local_ai/local_ai.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
@@ -23,7 +23,7 @@ double _dot(List<double> a, List<double> b) {
 
 void main() {
   bool has(LocalModelSpec m) => File('$modelDir/${m.file}').existsSync();
-  final present = has(embeddingModels.first) && has(modelFor(LocalModelRole.language));
+  final present = has(modelFor(LocalModelRole.language));
   final skip = present ? null : 'local models not present';
   late LlamaLocalModels ai;
 
@@ -68,24 +68,40 @@ void main() {
     // that the reply keeps to the schema.
     expect(['resistor', 'capacitor', 'inductor', 'other'], contains(r['kind']));
     expect(r.keys, ['kind']);
+    await ai.dispose();
   }, skip: skip, timeout: const Timeout(Duration(minutes: 5)));
 
   test('the check uses the local model and stays complete', () async {
     final state = AppState(AppSettings(localAiEnabled: true), Directory.systemTemp.path, models: ModelStore('${Directory.systemTemp.path}/smt-fai-test-models', bundledDir: modelDir));
     await state.refreshModels();
-    expect(state.localModelsReady, isTrue);
+    expect(state.localAnalysisReady, isTrue);
     Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
     state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
     state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
     state.runCheckNow();
-    for (var i = 0; i < 600 && state.localStatus == LocalStatus.running; i++) {
+    expect(state.report, isNull);
+    for (var i = 0; i < 6000 && state.localBusy; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    expect(state.localStatus, LocalStatus.done);
+    expect(state.localStatus, LocalStatus.done, reason: state.localErrorDetail);
     expect(state.report!.complete, isTrue);
-    // A model suggestion never makes a line PASS.
-    expect(state.report!.rows.where((r) => r.basis.kinds.contains('semantic')).every((r) => r.status != CheckStatus.pass), isTrue);
-  }, skip: skip, timeout: const Timeout(Duration(minutes: 5)));
+    expect(state.report!.localModel.kind, 'analysis');
+    expect(state.report!.localModel.rows, state.report!.rows.length);
+    expect(state.report!.rows.every((r) => r.localNote.isNotEmpty), isTrue);
+    final capture = Platform.environment['SMT_FAI_CAPTURE'];
+    if (capture != null) {
+      File(capture).writeAsStringSync(jsonEncode({
+        'model': state.report!.localModel.toJson(),
+        'rows': [for (final r in state.report!.rows) {
+          'partNo': r.partNo, 'status': r.status.name, 'reasons': r.reasons,
+          'note': r.localNote,
+        }],
+      }));
+    }
+    // This is native inference evidence, separate from the mock/UI tests.
+    // ignore: avoid_print
+    print('REAL_BOM rows=${state.localRows} calls=${state.localCalls} ms=${state.localMillis}');
+  }, skip: skip, timeout: const Timeout(Duration(minutes: 12)));
 
   test('a missing model is an error, not a silent fallback', () async {
     final missing = LlamaLocalModels(embeddingPath: '/nonexistent/e.gguf', languagePath: '/nonexistent/l.gguf');

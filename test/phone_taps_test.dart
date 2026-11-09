@@ -14,12 +14,12 @@ import 'package:smt_fai/ui/widgets.dart';
 Finder _tip(String t) => find.byWidgetPredicate((w) => w is Hoverable && w.tooltip == t);
 
 AppState _loaded({bool check = true}) {
-  final state = AppState(AppSettings(tourDone: true), Directory.systemTemp.path);
+  final state = AppState(AppSettings(tourDone: true, checkMode: CheckMode.hybrid), Directory.systemTemp.path);
   Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
   state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
   state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
   state.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
-  if (check) state.runCheckNow();
+  if (check) state.report = compareBoms(state.single!.bom, state.bomA!.bom, state.bomB?.bom);
   return state;
 }
 

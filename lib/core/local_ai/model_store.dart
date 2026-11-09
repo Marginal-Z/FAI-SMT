@@ -34,9 +34,8 @@ class LocalModelSpec {
     this.tier = '',
   });
 
-  /// Needed for the local check; optional models can be left out (and are
-  /// not in the offline installer). Embedding models are alternatives: one
-  /// of them is needed.
+  /// A model required for its role. Whole-BOM local analysis needs the language
+  /// model; hybrid embedding models are alternatives for candidate matching.
   final bool required;
 
   /// Memory the model takes while running, measured (MB).
@@ -140,11 +139,11 @@ const localModels = [
   ),
   // Chosen over Qwen3-1.7B by benchmark (docs/architecture/phase-3.md):
   // column roles 79% vs 34%, item kinds 73% vs 63%, at similar speed.
-  // Optional: measured worse than the program at reading columns
-  // (docs/architecture/phase-3.md), so no default check uses it.
+  // Required for whole-BOM local language analysis; embeddings alone cannot
+  // generate per-item decisions.
   LocalModelSpec(
     id: 'qwen3-4b-q4km',
-    required: false,
+    required: true,
     ramMb: 3500,
     role: LocalModelRole.language,
     name: 'Qwen3-4B (Q4_K_M)',

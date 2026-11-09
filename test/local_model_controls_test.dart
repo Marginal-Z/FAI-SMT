@@ -9,7 +9,7 @@ import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
 import 'package:smt_fai/ui/widgets.dart';
 
-// File persistence is covered by local_usage_test; keep widget clocks isolated
+// File persistence is covered by local_required_test; keep widget clocks isolated
 // from real filesystem I/O while exercising the actual controls and state.
 class ControlsState extends AppState {
   ControlsState(super.settings, super.settingsDir);
@@ -24,7 +24,7 @@ void main() {
     ) async {
       final dir = Directory.systemTemp.createTempSync('model-controls-');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final s = ControlsState(AppSettings(tourDone: true), dir.path);
+      final s = ControlsState(AppSettings(tourDone: true, checkMode: CheckMode.hybrid), dir.path);
       for (final m in embeddingModels.take(2)) {
         s.modelStatus[m.id] = const ModelStatus(ModelState.ready);
       }

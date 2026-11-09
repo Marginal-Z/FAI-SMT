@@ -17,6 +17,7 @@ import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/history.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
+import '../test/support/local_models.dart';
 
 Future<void> _font(String family, List<String> files) async {
   final loader = FontLoader(family);
@@ -45,12 +46,13 @@ void main() {
   });
 
   AppState demoState({String lang = 'zh', bool dark = true, bool check = true, bool ai = false}) {
-    final state = AppState(AppSettings(language: lang, theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
+    // Static HYBRID view fixtures, not evidence of local model inference.
+    final state = AppState(AppSettings(checkMode: CheckMode.hybrid, language: lang, theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
     Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
     state.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
     state.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
     state.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
-    if (check) state.runCheckNow();
+    if (check) state.report = compareBoms(state.single!.bom, state.bomA!.bom, state.bomB?.bom)..mode = 'hybrid';
     if (ai) {
       // A sample analysis, as a model would return it.
       state.settings.aiEnabled = true;
@@ -163,15 +165,19 @@ void main() {
   testWidgets('history', (tester) async {
     final dir = Directory.systemTemp.createTempSync('smtfai-shots');
     addTearDown(() => dir.deleteSync(recursive: true));
-    final s = AppState(AppSettings(theme: ThemePref.light, tourDone: true), dir.path, history: HistoryStore('${dir.path}/history'));
+    final s = (await tester.runAsync(() async => AppState(AppSettings(theme: ThemePref.light, tourDone: true), dir.path,
+      history: HistoryStore('${dir.path}/history'), localModelsFactory: (_, _) async => FakeLocalModels())))!;
+    s.modelStatus[s.localAnalysisModel.id] = const ModelStatus(ModelState.ready);
     Uint8List read(String n) => Uint8List.fromList(File('samples/demo/$n').readAsBytesSync());
     await tester.runAsync(() async {
       s.load(InputKind.single, 'demo_A_BOM.xlsx', read('demo_A_BOM.xlsx'));
       s.load(InputKind.a, 'demo_B_BOM.xlsx', read('demo_B_BOM.xlsx'));
       s.runCheckNow();
+      await settleLocal(s);
       await Future<void>.delayed(const Duration(milliseconds: 300));
       s.load(InputKind.b, 'demo_C_BOM.xlsx', read('demo_C_BOM.xlsx'));
       s.runCheckNow();
+      await settleLocal(s);
       for (var i = 0; i < 100 && s.historyEntries.length < 2; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }

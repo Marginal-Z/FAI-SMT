@@ -37,14 +37,12 @@ class ImportBar extends StatelessWidget {
         builder: (context, box) {
           const gap = 12.0;
           if (box.maxWidth >= 1080) {
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(child: ImportCardsRow(state: state)),
                   if (actions) ...[const SizedBox(width: gap), SizedBox(width: 220, child: actionsCard)],
                 ],
-              ),
             );
           }
           if (box.maxWidth >= 640) {
@@ -183,54 +181,27 @@ class _ImportCardState extends State<_ImportCard> {
     final state = widget.state;
     final f = widget.file;
     final issues = f?.bom.warnings.length ?? 0;
+    final touch = Metrics.of(context).touch;
 
     Widget iconButton(Lucide icon, String tip, VoidCallback onTap) => Hoverable(
       onTap: onTap,
       tooltip: tip,
       builder: (context, hover, _) => Container(
-        width: 30,
-        height: 30,
+        width: touch ? 44 : 30,
+        height: touch ? 44 : 30,
         alignment: Alignment.center,
         decoration: BoxDecoration(color: hover ? c.hover : null, shape: BoxShape.circle),
         child: LucideIcon(icon, size: 15, color: c.tx2),
       ),
     );
 
-    final status = f == null
-        ? Text(
-            dropSupported ? s.t('in_drop_or_click') : s.t('well_tap'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.blueTx),
-          )
-        : Hoverable(
-            tooltip: _details(s, f.bom),
-            cursor: SystemMouseCursors.help,
-            builder: (context, hover, _) => Row(
-            children: [
-              LucideIcon(issues == 0 ? Lucide.check : Lucide.alert, size: 13, color: issues == 0 ? c.okTx : c.warnTx, stroke: 2.6),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  [
-                    issues == 0 ? s.t('chk_passed') : s.t('in_issues', {'n': issues}),
-                    s.t('card_count_bom', {'n': f.bom.parts.length}),
-                    s.t('card_cols', {'n': f.bom.columns.where((c) => c.role != BomRole.serial).length}),
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: issues == 0 ? c.okTx : c.warnTx),
-                ),
-              ),
-            ],
-          ),
-          );
-
     final card = Hoverable(
       onTap: f == null ? () => importFile(context, state, widget.kind) : null,
       builder: (context, hover, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        key: ValueKey('import-card-${widget.kind.name}'),
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: EdgeInsets.fromLTRB(10, touch ? 0.5 : 6, 6, touch ? 0.5 : 6),
         decoration: BoxDecoration(
           color: _dragging || (hover && f == null) ? Color.alphaBlend(c.blueTint, c.card) : c.card,
           borderRadius: c.r(22),
@@ -242,9 +213,9 @@ class _ImportCardState extends State<_ImportCard> {
             Hoverable(
               tooltip: widget.help,
               cursor: SystemMouseCursors.help,
-              builder: (context, hover, _) => GradientTile(icon: widget.icon, colors: widget.colors, glow: widget.glow, size: 42, radius: 13, iconSize: 20),
+              builder: (context, hover, _) => GradientTile(icon: widget.icon, colors: widget.colors, glow: widget.glow, size: 28, radius: 9, iconSize: 15),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +228,7 @@ class _ImportCardState extends State<_ImportCard> {
                           widget.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: c.tx),
+                          style: TextStyle(fontSize: 13, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: c.tx),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -271,15 +242,20 @@ class _ImportCardState extends State<_ImportCard> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(
+                  const SizedBox(height: 2),
+                  Row(children: [Expanded(child: Text(
                     f?.name ?? s.t('well_formats'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: c.tx2),
-                  ),
-                  const SizedBox(height: 3),
-                  status,
+                    style: TextStyle(fontSize: 11.5, height: 1.2, color: c.tx2),
+                  )),
+                  if (f != null) ...[
+                    const SizedBox(width: 6),
+                    Hoverable(tooltip: '${f.name}\n${_details(s, f.bom)}', builder: (context, hover, _) =>
+                      Text(issues == 0 ? s.t('file_read_count', {'n': f.bom.parts.length}) : s.t('in_issues', {'n': issues}),
+                        style: TextStyle(fontSize: 11.5, height: 1.2, color: issues == 0 ? c.tx3 : c.warnTx))),
+                  ],
+                  ]),
                 ],
               ),
             ),
@@ -336,7 +312,7 @@ class ImportActions extends StatelessWidget {
       iconSize: 15,
       padding: EdgeInsets.fromLTRB(16, 0, compact ? 16 : 10, 0),
       trailing: compact ? null : const KeyHint('F5'),
-      onTap: ready ? () => runCheck(context, state) : null,
+      onTap: ready && !state.localBusy && !state.cloudRunning ? () => runCheck(context, state) : null,
     );
     final export = PillButton(
       key: compact ? null : tourTargets.checkExport,
@@ -348,7 +324,7 @@ class ImportActions extends StatelessWidget {
       iconSize: 15,
       color: c.blueTx,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      onTap: state.report == null ? null : () => exportReport(context, state),
+      onTap: state.canExportReport ? () => exportReport(context, state) : null,
     );
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 16),
@@ -368,7 +344,7 @@ class ImportActions extends StatelessWidget {
                     icon: Lucide.download,
                     size: 40,
                     tooltip: s.t('btn_export_excel'),
-                    onTap: state.report == null ? null : () => exportReport(context, state),
+                    onTap: state.canExportReport ? () => exportReport(context, state) : null,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -377,8 +353,7 @@ class ImportActions extends StatelessWidget {
             ),
                 const SizedBox(height: 10),
                 ModeSelector(state: state),
-                const SizedBox(height: 10),
-                AiSwitch(state: state),
+                if (!state.localAnalysisRequired) ...[const SizedBox(height: 10), AiSwitch(state: state)],
               ],
             )
           : Column(
@@ -388,8 +363,7 @@ class ImportActions extends StatelessWidget {
                 run,
                 const SizedBox(height: 10),
                 ModeSelector(state: state),
-                const SizedBox(height: 10),
-                AiSwitch(state: state),
+                if (!state.localAnalysisRequired) ...[const SizedBox(height: 10), AiSwitch(state: state)],
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -412,7 +386,8 @@ class LocalModelIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = Strings.of(context);
     final c = AppTheme.of(context);
-    final usage = state.report?.localModel;
+    final usage = state.report?.localModel ??
+        (state.localAnalysisRequired && state.localStatus != LocalStatus.idle ? state.currentLocalUsage : null);
     final status = usage?.state ?? 'idle';
     final color = status == 'failed' || status == 'unavailable'
         ? c.warnTx
@@ -420,6 +395,7 @@ class LocalModelIndicator extends StatelessWidget {
         ? c.okTx
         : c.tx2;
     return Container(
+      key: tourTargets.localModels,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: c.card,
@@ -447,7 +423,7 @@ class LocalModelIndicator extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  s.t('local_state_$status'),
+                  s.t(usage.kind == 'analysis' && (status == 'unavailable' || status == 'failed') ? 'local_analysis_no_result' : 'local_state_$status'),
                   style: TextStyle(fontSize: 12, height: 1.4, color: color),
                 ),
                 if (usage.model.isNotEmpty)
@@ -457,8 +433,9 @@ class LocalModelIndicator extends StatelessWidget {
                   ),
                 if (status == 'done')
                   Text(
-                    s.t('local_usage_counts', {
-                      'n': usage.texts,
+                    s.t(usage.kind == 'analysis' ? 'local_analysis_counts' : 'local_usage_counts', {
+                      'n': usage.kind == 'analysis' ? usage.rows : usage.texts,
+                      'all': usage.total, 'b': usage.calls,
                       'p': usage.paired,
                       'ms': usage.millis,
                     }),
@@ -509,6 +486,7 @@ class ModeSelector extends StatelessWidget {
             value: mode,
             options: [for (final m in CheckMode.values) (m, s.t('mode_${m.name}'))],
             onChanged: (m) {
+              if (state.localBusy || state.cloudRunning) return;
               state.setCheckMode(m);
               if (m != CheckMode.local && !state.cloudReady) state.openSettings(SettingsSection.ai);
             },

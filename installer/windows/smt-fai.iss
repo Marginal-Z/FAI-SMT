@@ -61,7 +61,7 @@ Type: filesandordirs; Name: "{app}\data"
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 #ifdef ModelsDir
-; Full offline installer: the local model next to the program, used as is.
+; Embedding model bundle; required Qwen3 language analysis downloads separately.
 Source: "{#ModelsDir}\*.gguf"; DestDir: "{app}\models"; Flags: ignoreversion nocompression
 #endif
 

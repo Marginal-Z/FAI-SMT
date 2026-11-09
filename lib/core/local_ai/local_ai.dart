@@ -35,9 +35,13 @@ abstract class LocalModels {
   Future<void> dispose();
 }
 
-/// The real thing: llama.cpp through llamadart, one engine per model,
-/// loaded on first use (inference runs on llamadart's worker isolate).
-class LlamaLocalModels implements LocalModels {
+/// Optional preparation hook so the app can distinguish loading from analysis.
+abstract interface class LocalAnalysisPreparation {
+  Future<void> prepareAnalysis();
+}
+
+/// llama.cpp through llamadart, one engine per model, on a worker isolate.
+class LlamaLocalModels implements LocalModels, LocalAnalysisPreparation {
   LlamaLocalModels({required this.embeddingPath, required this.languagePath, this.timeout = const Duration(minutes: 3), this.thinking = false, this.languageName, this.embeddingPrefix = ''});
 
   /// Opens the [embedding] model (the default when null) and the language
@@ -52,6 +56,15 @@ class LlamaLocalModels implements LocalModels {
     if (await ModelStore.hashFile(e.path!) != spec.sha256) throw LocalAiException('model_hash');
     // The language model is optional; asking it without the file fails.
     return LlamaLocalModels(embeddingPath: e.path!, languagePath: l.state == ModelState.ready ? l.path! : '', embeddingPrefix: spec.prefix);
+  }
+
+  /// Analysis needs the language model, independently of optional embeddings.
+  static Future<LlamaLocalModels> openAnalysis(ModelStore store) async {
+    final spec = modelFor(LocalModelRole.language);
+    final status = await store.status(spec);
+    if (status.state != ModelState.ready || status.path == null) throw LocalAiException('model_missing');
+    if (await ModelStore.hashFile(status.path!) != spec.sha256) throw LocalAiException('model_hash');
+    return LlamaLocalModels(embeddingPath: '', languagePath: status.path!, languageName: spec.name);
   }
 
   final String embeddingPath;
@@ -92,7 +105,9 @@ class LlamaLocalModels implements LocalModels {
     }
   }
 
-  Future<LlamaEngine> _language() async => _lang ??= await (_langLoading ??= _load(languagePath, const ModelParams(contextSize: 4096)));
+  Future<LlamaEngine> _language() async => _lang ??= await (_langLoading ??= _load(languagePath, const ModelParams(contextSize: 8192)));
+  @override
+  Future<void> prepareAnalysis() async { await _language(); }
 
   @override
   Future<List<List<double>>> embed(List<String> texts) async {
@@ -116,24 +131,39 @@ class LlamaLocalModels implements LocalModels {
     final engine = await _language();
     final output = LlamaStructuredOutput<Map<String, dynamic>>.jsonSchema(schema: schema, decoder: (j) => j);
     try {
-      return await engine
-          .createStructuredJson(
-            [
+      final messages = [
               LlamaChatMessage.fromText(role: LlamaChatRole.system, text: system),
               LlamaChatMessage.fromText(role: LlamaChatRole.user, text: user),
-            ],
-            output: output,
-            params: GenerationParams(maxTokens: thinking ? maxTokens + 1500 : maxTokens, temp: 0),
-            enableThinking: thinking,
-          )
-          .timeout(timeout);
+      ];
+      final limit = thinking ? maxTokens + 1500 : maxTokens;
+      return await (() async {
+        final template = await engine.chatTemplate(messages, responseFormat: output.responseFormat, enableThinking: thinking);
+        final tokens = template.tokenCount ?? (await engine.tokenize(template.prompt, addSpecial: false)).length;
+        if (tokens + limit + 32 > 8192) throw LocalAiException('context_limit');
+        final text = StringBuffer();
+        String? finish;
+        await for (final chunk in engine.create(messages, responseFormat: output.responseFormat,
+          params: GenerationParams(maxTokens: limit, temp: 0), enableThinking: thinking)) {
+          for (final choice in chunk.choices) {
+            if (choice.delta.content != null) text.write(choice.delta.content);
+            finish = choice.finishReason ?? finish;
+          }
+        }
+        if (finish == 'length') throw LocalAiException('truncated');
+        if (finish != 'stop') throw LocalAiException('bad_output');
+        return output.parse(text.toString());
+      })().timeout(timeout);
     } on TimeoutException {
       engine.cancelGeneration();
       throw LocalAiException('timeout');
+    } on LocalAiException {
+      rethrow;
     } catch (e) {
       throw LocalAiException('bad_output', '$e');
     }
   }
+
+  void cancel() { _embed?.cancelGeneration(); _lang?.cancelGeneration(); }
 
   @override
   Future<void> dispose() async {

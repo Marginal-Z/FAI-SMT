@@ -25,6 +25,7 @@ class TourTargets {
   final runButton = GlobalKey(debugLabel: 'tour-run');
   final aiSwitch = GlobalKey(debugLabel: 'tour-ai-switch');
   final modeSelector = GlobalKey(debugLabel: 'tour-mode');
+  final localModels = GlobalKey(debugLabel: 'tour-local-models');
   final checkCards = GlobalKey(debugLabel: 'tour-check-cards');
   final checkFilters = GlobalKey(debugLabel: 'tour-check-filters');
   final checkTable = GlobalKey(debugLabel: 'tour-check-table');
@@ -61,7 +62,7 @@ final _steps = <_Step>[
   _Step('a', _check, () => tourTargets.aCard),
   _Step('b', _check, () => tourTargets.bCard),
   _Step('run', _check, () => tourTargets.runButton),
-  _Step('ai_switch', _check, () => tourTargets.aiSwitch),
+  _Step('local_model', _check, () => tourTargets.localModels),
   _Step('check_cards', _check, () => tourTargets.checkCards),
   _Step('check_filters', _check, () => tourTargets.checkFilters),
   _Step('check_table', _check, () => tourTargets.checkTable),

@@ -138,6 +138,7 @@ class CompareRow {
     this.basis = const MatchBasis([], 0),
     this.reasons = const [],
     this.cloudNote = '',
+    this.localNote = '',
   });
 
   /// Part number of the first BOM's side, else of the other.
@@ -173,6 +174,7 @@ class CompareRow {
 
   /// What the cloud model said about the line (HYBRID / CLOUD_FULL).
   final String cloudNote;
+  final String localNote;
 
   /// The other side's part number(s) when they differ from [partNo].
   String get otherPartNo => mergedParts.map((p) => p.partNo).where((p) => p != partNo).join(' + ');

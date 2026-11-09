@@ -159,7 +159,18 @@ class _CheckViewState extends State<CheckView> {
     if (report == null) {
       final hint = DCard(
         radius: 24,
-        child: state.cloudRunning
+        child: state.localAnalysisRequired && state.localStatus == LocalStatus.running
+            ? Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const Spinner(size: 28), const SizedBox(height: 12),
+                Text(s.t(state.localLoading ? 'status_local_required_loading' : 'status_local_required_running'), textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: c.tx)),
+                const SizedBox(height: 8),
+                Text(s.t('local_analysis_counts', {'n': state.localRows, 'all': state.localTotal, 'b': state.localCalls, 'ms': state.localMillis}), style: TextStyle(fontSize: 12.5, color: c.tx2)),
+                const SizedBox(height: 12), TrackBar(value: state.localProgress, color: c.blue), const SizedBox(height: 12),
+                PillButton(label: s.t('dlg_cancel'), kind: PillKind.soft, onTap: state.cancelLocalAnalysis),
+              ]))
+            : state.localAnalysisRequired && state.localStatus == LocalStatus.failed
+            ? EmptyState(icon: Lucide.alert, text: '${s.t('local_analysis_no_result')}\n${s.t(state.localError)}')
+            : state.cloudRunning
             ? EmptyState(icon: Lucide.sparkles, text: s.t('cloud_full_running', {'done': state.cloudRun?.batchesDone ?? 0, 'all': state.cloudRun?.batches ?? 0}))
             : state.cloudError.isNotEmpty
             ? EmptyState(icon: Lucide.alert, text: '${s.t(state.cloudError)}\n${s.t('cloud_full_failed')}')
@@ -168,16 +179,18 @@ class _CheckViewState extends State<CheckView> {
       if (phone) {
         return ListView(
           padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + 12),
-          children: [imports, const SizedBox(height: 12), models, const SizedBox(height: 14), SizedBox(height: 260, child: hint)],
+          children: [imports, const SizedBox(height: 12), models, const SizedBox(height: 12), DirectionReminderPanel(state: state), const SizedBox(height: 14), SizedBox(height: 280, child: hint)],
         );
       }
-      return Padding(
-        padding: pad,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [imports, const SizedBox(height: 12), models, const SizedBox(height: 16), Expanded(child: hint), const SizedBox(height: 16)],
-        ),
-      );
+      return Padding(padding: pad, child: LayoutBuilder(builder: (context, box) {
+        final short = box.maxHeight < 700;
+        final body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          imports, const SizedBox(height: 12), models, const SizedBox(height: 12),
+          DirectionReminderPanel(state: state), const SizedBox(height: 16),
+          short ? SizedBox(height: 280, child: hint) : Expanded(child: hint), const SizedBox(height: 16),
+        ]);
+        return short ? SingleChildScrollView(child: body) : body;
+      }));
     }
     if (_search.text != state.search) _search.text = state.search;
 
@@ -203,15 +216,19 @@ class _CheckViewState extends State<CheckView> {
           onTap: () => _setFilter(st),
         ),
       _StatCard(
-        label: s.t('ai_findings'),
+        label: s.t(state.localAnalysisRequired ? 'local_analysis_stat' : 'ai_findings'),
         icon: Lucide.sparkles,
-        value: state.ai?.findings.length ?? 0,
+        value: state.localAnalysisRequired ? report.localModel.rows : state.ai?.findings.length ?? 0,
         tint: aiTint(c),
         fg: aiText(c),
         bar: aiText(c),
         selected: _aiOnly,
-        dim: state.ai == null,
+        dim: state.localAnalysisRequired ? report.localModel.state != 'done' : state.ai == null,
         onTap: () {
+          if (state.localAnalysisRequired) {
+            state.setFilter(null); state.setReasonFilter(null); state.setRiskFilter(null);
+            return;
+          }
           if (state.ai == null) return;
           state.setFilter(null);
           setState(() => _aiOnly = !_aiOnly);
@@ -362,7 +379,7 @@ class _CheckViewState extends State<CheckView> {
     final aiPanel = _AiPanel(state: state);
     final showAi = state.settings.aiEnabled && state.aiStatus != AiStatus.idle;
 
-    if (phone) return _phonePage(context, [top, models, const SizedBox(height: 12), if (showAi) ...[aiPanel, const SizedBox(height: 12)], filters, const SizedBox(height: 12)], visible, pad);
+    if (phone) return _phonePage(context, [top, models, const SizedBox(height: 12), DirectionReminderPanel(state: state), const SizedBox(height: 12), if (showAi) ...[aiPanel, const SizedBox(height: 12)], filters, const SizedBox(height: 12)], visible, pad);
 
     final table = visible.isEmpty
         ? DCard(
@@ -438,6 +455,8 @@ class _CheckViewState extends State<CheckView> {
           top,
           models,
           const SizedBox(height: 12),
+          DirectionReminderPanel(state: state),
+          const SizedBox(height: 12),
           if (!side && showAi) ...[aiPanel, const SizedBox(height: 12)],
           if (!wideTop) ...[filters, const SizedBox(height: 14)],
           short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
@@ -496,6 +515,85 @@ class _CheckViewState extends State<CheckView> {
             child: SizedBox(height: math.min(460.0, MediaQuery.sizeOf(context).height * 0.6), child: _Detail(state: state)),
           ),
       ],
+    );
+  }
+}
+
+/// Independent assembly reminders, separate from the comparison verdicts.
+class DirectionReminderPanel extends StatefulWidget {
+  const DirectionReminderPanel({super.key, required this.state});
+  final AppState state;
+  @override
+  State<DirectionReminderPanel> createState() => _DirectionReminderPanelState();
+}
+
+class _DirectionReminderPanelState extends State<DirectionReminderPanel> {
+  bool _expanded = false;
+  CompareReport? _report;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    final report = state.report;
+    if (!identical(_report, report)) { _expanded = false; _report = report; }
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final rows = report?.rows.where((r) => r.orientation.isNotEmpty).toList() ?? <CompareRow>[];
+    final counts = <String, int>{};
+    final refs = <String>{};
+    for (final row in rows) {
+      for (final h in row.orientation) {
+        counts.update(h.code, (n) => n + 1, ifAbsent: () => 1);
+        refs.addAll(h.refs);
+      }
+    }
+    return DCard(
+      key: const ValueKey('direction-reminders-panel'),
+      padding: const EdgeInsets.all(12),
+      radius: 18,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Wrap(spacing: 12, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          Text(s.t('orientation_title'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.tx)),
+          if (report != null) Text(s.t('direction_panel_counts', {'n': rows.length, 'refs': refs.length}), style: TextStyle(fontSize: 12.5, color: c.warnTx)),
+          if (rows.isNotEmpty) ...[
+            PillButton(label: s.t(state.reasonFilter == 'orientation' ? 'direction_show_all' : 'direction_filter'), kind: PillKind.soft, height: 34, fontSize: 12,
+              onTap: () {
+                final off = state.reasonFilter == 'orientation';
+                if (!off) { state.setFilter(null); state.setRiskFilter(null); state.setSearch(''); }
+                state.setReasonFilter(off ? null : 'orientation');
+              }),
+            PillButton(label: s.t(_expanded ? 'direction_collapse' : 'direction_expand'), kind: PillKind.ghost, height: 34, fontSize: 12,
+              onTap: () => setState(() => _expanded = !_expanded)),
+          ],
+        ]),
+        if (counts.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 6, children: [for (final e in counts.entries)
+            DBadge(text: '${s.t('orientation_short_${e.key}')} · ${e.value}', background: c.warnTint, color: c.warnTx)]),
+        ],
+        const SizedBox(height: 6),
+        Text(s.t(report == null ? 'direction_waiting' : rows.isEmpty ? 'direction_no_items' : 'orientation_scope'), style: TextStyle(fontSize: 12, height: 1.4, color: c.tx2)),
+        if (_expanded && rows.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SizedBox(height: math.min(220, rows.length * 60.0), child: ListView.builder(
+            primary: false, itemCount: rows.length,
+            itemBuilder: (context, i) {
+              final row = rows[i];
+              final hints = row.orientation;
+              return Hoverable(onTap: () => state.select(row), builder: (context, hover, _) => Container(
+                constraints: const BoxConstraints(minHeight: 54),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(color: hover ? c.hover : c.well, borderRadius: c.r(10)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text('${row.partNo} · ${hints.map((h) => s.t('orientation_short_${h.code}')).join(' / ')}', maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.warnTx)),
+                  Text(hints.expand((h) => h.refs).toSet().join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.tx2)),
+                ]),
+              ));
+            },
+          )),
+        ],
+      ]),
     );
   }
 }
@@ -1088,7 +1186,7 @@ class _Detail extends StatelessWidget {
         ),
         const SizedBox(height: 10),
       ],
-      if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty || row.cloudNote.isNotEmpty) ...[
+      if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty || row.cloudNote.isNotEmpty || row.localNote.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(color: row.status == CheckStatus.pass ? c.well : statusTint(c, row.status), borderRadius: c.r(12)),
@@ -1102,6 +1200,10 @@ class _Detail extends StatelessWidget {
                 ),
               if (row.otherPartNo.isNotEmpty) Text(s.t('match_other_pn', {'pn': row.otherPartNo}), style: TextStyle(fontSize: 12.5, color: c.tx2)),
               for (final r in row.reasons) Text('• ${s.t('reason_$r')}', style: TextStyle(fontSize: 13, height: 1.45, color: statusText(c, row.status))),
+              if (row.localNote.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(s.t('local_note_result', {'n': row.localNote}), style: TextStyle(fontSize: 12.5, height: 1.45, color: aiText(c))),
+              ],
               if (row.cloudNote.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(s.t('cloud_note', {'n': row.cloudNote}), style: TextStyle(fontSize: 12.5, height: 1.45, color: aiText(c))),

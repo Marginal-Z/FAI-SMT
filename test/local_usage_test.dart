@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:smt_fai/core/cloud/provider.dart';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +12,30 @@ import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/local_ai/semantic_match.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/services/key_store.dart';
+
+// Optional embedding behavior now belongs to HYBRID; local mode's
+// mandatory language-model gate is exercised by local_required_test.dart.
+class EmbeddingState extends AppState {
+  EmbeddingState(super.settings, super.settingsDir, {super.models, super.keys, super.localModelsFactory}) {
+    settings.checkMode = CheckMode.hybrid;
+  }
+  @override
+  bool get cloudReady => true;
+  @override
+  CloudProvider get cloudProvider => CandidateCloud();
+}
+
+class CandidateCloud implements CloudProvider {
+  @override
+  String get name => 'test';
+  @override
+  String get model => 'candidate-test';
+  @override
+  Future<CloudReply> ask({required String system, required String user, required Map<String, dynamic> schema, int maxTokens = 4096, CloudCancel? cancel}) async {
+    final items = jsonDecode(user) as List;
+    return CloudReply({'answers': [for (final it in items) {'id': (it as Map)['id'], 'same': 'unsure', 'reason': 'Review'}]}, Usage(requests: 1), model);
+  }
+}
 
 class FakeModels implements LocalModels {
   int calls = 0;
@@ -86,7 +112,7 @@ void main() {
   });
   tearDown(() => dir.deleteSync(recursive: true));
   AppState state({bool enabled = true, bool ready = true, bool same = false}) {
-    final s = AppState(
+    final s = EmbeddingState(
       AppSettings(localAiEnabled: enabled),
       dir.path,
       localModelsFactory: (_, _) async => fake,
@@ -100,7 +126,7 @@ void main() {
   }
   test('startup restores enabled model availability without opening settings', () async {
     final s = state(same: true);
-    final reopened = AppState(AppSettings.fromJson(s.settings.toJson()), dir.path, models: ReadyStore(dir.path), keys: MemoryKeyStore());
+    final reopened = EmbeddingState(AppSettings.fromJson(s.settings.toJson()), dir.path, models: ReadyStore(dir.path), keys: MemoryKeyStore());
     expect(reopened.localModelsReady, isFalse);
     await reopened.initialize();
     expect(reopened.settings.localAiEnabled, isTrue);
@@ -143,7 +169,7 @@ void main() {
     expect(s.localStatus, LocalStatus.done);
     expect(s.report!.localModel.texts, 2);
     expect(s.report!.localModel.paired, 1);
-    expect(s.report!.models, [s.activeEmbedding.name]);
+    expect(s.report!.models, [s.activeEmbedding.name, '${s.settings.cloud.kind.name} ${s.settings.cloud.modelName}']);
     expect(s.report!.rows.single.status, CheckStatus.review);
     expect(s.report!.complete, isTrue);
   });
@@ -156,7 +182,7 @@ void main() {
       expect(s.localStatus, LocalStatus.failed);
       expect(s.report!.localModel.state, 'failed');
       expect(s.report!.count(CheckStatus.unmatched), 2);
-      expect(s.report!.models, isEmpty);
+      expect(s.report!.models, isNot(contains(s.activeEmbedding.name)));
     },
   );
   test(
@@ -182,12 +208,12 @@ void main() {
     expect(fake.calls, 1);
     expect(s.localTestKey, 'local_test_ok');
     expect(s.report!.localModel.state, 'notNeeded');
-    expect(s.report!.models, isEmpty);
+    expect(s.report!.models, isNot(contains(s.activeEmbedding.name)));
   });
   test('model selection changes the next engine and preserves recorded usage', () async {
     final opened = <String>[];
     final second = FakeModels();
-    final s = AppState(AppSettings(localAiEnabled: true), dir.path,
+    final s = EmbeddingState(AppSettings(localAiEnabled: true), dir.path,
       localModelsFactory: (_, spec) async {
         opened.add(spec.id);
         return opened.length == 1 ? fake : second;

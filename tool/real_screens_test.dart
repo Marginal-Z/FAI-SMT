@@ -39,7 +39,8 @@ void main() {
   });
 
   AppState realState({bool dark = false}) {
-    final state = AppState(AppSettings(theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
+    // Real source files, static HYBRID view fixtures; no AI inference claim.
+    final state = AppState(AppSettings(checkMode: CheckMode.hybrid, theme: dark ? ThemePref.dark : ThemePref.light, tourDone: true), Directory.systemTemp.path);
     void load(InputKind k, String dir, [String suffix = '']) {
       final f = Directory('samples/$dir').listSync().whereType<File>().firstWhere((f) => f.path.endsWith('$suffix.xlsx'));
       state.load(k, f.uri.pathSegments.last, f.readAsBytesSync());
@@ -48,7 +49,7 @@ void main() {
     load(InputKind.single, 'BOM');
     load(InputKind.a, 'station', '-A');
     load(InputKind.b, 'station', '-B');
-    state.runCheckNow();
+    state.report = compareBoms(state.single!.bom, state.bomA!.bom, state.bomB?.bom)..mode = 'hybrid';
     return state;
   }
 

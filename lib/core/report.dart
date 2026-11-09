@@ -18,7 +18,7 @@ String _stamp(DateTime t) {
 /// Column groups of the report table that can be left out; the number,
 /// part number and result are always there.
 const reportColumnGroups = ['source', 'description', 'quantity', 'refs', 'refs_diff', 'others', 'rows', 'basis', 'reasons', 'risk', 'params',
-  'orientation', 'cloud', 'ai'];
+  'orientation', 'local_ai', 'cloud', 'ai'];
 
 /// What the report holds: column groups left out ([reportColumnGroups]) and
 /// which results are listed (all when empty).
@@ -77,7 +77,9 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
     t('local_usage_title'),
     t('local_state_${usage.state}'),
     usage.model,
-    t('local_usage_counts').replaceAll('{n}', '${usage.texts}').replaceAll('{p}', '${usage.paired}').replaceAll('{ms}', '${usage.millis}'),
+    usage.kind == 'analysis'
+      ? t('local_analysis_counts').replaceAll('{n}', '${usage.rows}').replaceAll('{all}', '${usage.total}').replaceAll('{b}', '${usage.calls}').replaceAll('{ms}', '${usage.millis}')
+      : t('local_usage_counts').replaceAll('{n}', '${usage.texts}').replaceAll('{p}', '${usage.paired}').replaceAll('{ms}', '${usage.millis}'),
     if (usage.error.isNotEmpty) t(usage.error),
   ]);
   // An incomplete check says so above the table.
@@ -137,6 +139,7 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
           .join('\n'),
       fill: (r) => r.orientation.isNotEmpty,
     ),
+    _Col('local_ai', t('rep_local_note'), 30, (r) => r.localNote),
     _Col('cloud', t('rep_cloud_note'), 26, (r) => r.cloudNote),
     _Col('ai', t('rep_ai'), 50, aiNotes, fill: (r) => aiNotes(r).isNotEmpty),
   ].where((c) => c.group.isEmpty || options.shows(c.group)).toList();

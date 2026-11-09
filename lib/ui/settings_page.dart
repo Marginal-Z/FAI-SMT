@@ -142,7 +142,7 @@ class _SettingsList extends StatelessWidget {
           SettingsSection.localAi,
           Lucide.cpu,
           const Color(0xFF2F7D4F),
-          state.localModelsReady ? s.t('set_local_hint_ready') : s.t('set_local_hint'),
+          state.activeLocalReady ? s.t('set_local_hint_ready') : s.t('set_local_hint'),
           null,
         ),
       ],
@@ -1000,7 +1000,7 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final state = widget.state;
-    final ready = state.localModelsReady;
+    final ready = state.activeLocalReady;
     final active = state.activeEmbedding;
     Widget model(LocalModelSpec m) {
       final st = state.modelStatus[m.id] ?? const ModelStatus(ModelState.missing);
@@ -1033,6 +1033,7 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
                           Text(m.name, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
                           if (m.tier.isNotEmpty) DBadge(text: s.t('tier_${m.tier}'), background: m.tier == 'balanced' ? c.okTint : c.well, color: m.tier == 'balanced' ? c.okTx : c.tx2, height: 22),
                           if (m.role == LocalModelRole.embedding && m.id == active.id) DBadge(text: s.t('model_in_use'), background: c.blueTint, color: c.blueTx, height: 22),
+                          if (m.role == LocalModelRole.language && state.localAnalysisRequired) DBadge(text: s.t('model_in_use'), background: c.blueTint, color: c.blueTx, height: 22),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -1121,15 +1122,15 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
         const SizedBox(height: 18),
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(s.t('local_pick_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
-        ),
-        for (final m in embeddingModels) model(m),
-        const SizedBox(height: 10),
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(s.t('local_lang_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
         ),
         for (final m in localModels) if (m.role == LocalModelRole.language) model(m),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(s.t('local_embedding_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx2)),
+        ),
+        for (final m in embeddingModels) model(m),
         const SizedBox(height: 8),
         Text(s.t('local_note', {'dir': state.models.dir}), style: TextStyle(fontSize: 12, height: 1.5, color: c.tx3)),
       ],

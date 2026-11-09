@@ -65,7 +65,7 @@ void runCheck(BuildContext context, AppState state) {
 Future<void> exportReport(BuildContext context, AppState state) async {
   final s = Strings.of(context);
   final report = state.report;
-  if (report == null) {
+  if (report == null || !state.canExportReport) {
     await showError(context, UserMessage('msg_need_check'));
     return;
   }

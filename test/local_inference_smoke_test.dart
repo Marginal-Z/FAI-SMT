@@ -1,35 +1,48 @@
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
 import 'package:smt_fai/core/bom.dart';
-import 'package:smt_fai/core/bom_compare.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/settings.dart';
+import 'package:smt_fai/core/table_reader.dart';
 
 void main() {
   final modelDir = Platform.environment['SMT_FAI_MODELS'];
-  test('real GGUF self-test and BOM inference leave verifiable evidence', () async {
-    final dir = Directory.systemTemp.createTempSync('real-model-');
+  final language = modelFor(LocalModelRole.language);
+  final present = modelDir != null && File('$modelDir/${language.file}').existsSync();
+  test('real language GGUF is required before local results can be published', () async {
+    final dir = Directory.systemTemp.createTempSync('real-language-');
     addTearDown(() => dir.deleteSync(recursive: true));
-    final spec = embeddingModels.firstWhere((m) => m.id == 'granite-embedding-107m-q8');
-    final s = AppState(AppSettings(localAiEnabled: true, embeddingModel: spec.id), dir.path, models: ModelStore('${dir.path}/models', bundledDir: modelDir));
-    await s.refreshModels();
-    expect(s.localModelsReady, isTrue);
-    await s.testLocalModel();
-    expect(s.localTestKey, 'local_test_ok', reason: s.localTestDetail);
-    BomDocument doc(String id) => BomDocument(id: id, file: '$id.csv', sheet: 's', headerRow: 0,
-      columns: [BomColumn(0, 'PN', BomRole.partNo), BomColumn(1, 'Description', BomRole.description)], warnings: [],
-      records: [BomRecord(id: '$id:1', sources: [SourceRef('$id.csv', 's', 2)], cells: [], partNo: '${id}1001', description: '贴片电阻', quantity: null, refs: [], extra: {}, kind: ItemKind.resistor)]);
-    s.single = LoadedFile('S.csv', doc('S'));
-    s.bomA = LoadedFile('A.csv', doc('A'));
-    s.runCheckNow();
-    for (var i = 0; i < 1800 && s.localBusy; i++) { await Future<void>.delayed(const Duration(milliseconds: 100)); }
-    expect(s.localStatus, LocalStatus.done, reason: s.localError);
-    expect(s.report!.localModel.texts, 2);
-    expect(s.report!.localModel.paired, 1);
-    expect(s.report!.rows.single.status, CheckStatus.review);
-    expect(s.report!.models, [spec.name]);
+    // No localModelsFactory: this test loads the actual GGUF/native engine.
+    final state = AppState(AppSettings(localAiEnabled: false), dir.path,
+      models: ModelStore('${dir.path}/models', bundledDir: modelDir));
+    await state.refreshModels();
+    expect(state.localAnalysisReady, isTrue);
+    await state.testLocalModel();
+    expect(state.localTestKey, 'local_test_ok', reason: state.localTestDetail);
+    BomDocument doc(String id) => readBom([Grid('s', [
+      ['料号', '描述', '用量', '位号'],
+      ['P1001', 'LED red 0603', '1', 'D1'],
+      ['P1002', 'Chip resistor 10k 0603', '1', 'R1'],
+    ])], id: id);
+    state.single = LoadedFile('A.csv', doc('S'));
+    state.bomA = LoadedFile('B.csv', doc('A'));
+    state.runCheckNow();
+    expect(state.report, isNull);
+    expect(state.canExportReport, isFalse);
+    for (var i = 0; i < 3000 && state.localBusy; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(state.localStatus, LocalStatus.done, reason: state.localErrorDetail);
+    expect(state.report!.localModel.kind, 'analysis');
+    expect(state.report!.localModel.rows, 2);
+    expect(state.report!.localModel.total, 2);
+    expect(state.report!.localModel.calls, greaterThan(0));
+    expect(state.report!.rows.every((r) => r.localNote.isNotEmpty), isTrue);
+    expect(state.canExportReport, isTrue);
+    expect(state.report!.models, [language.name]);
     // ignore: avoid_print
-    print('REAL_INFERENCE model=${spec.id} selfTestMs=${s.localTestMillis} checkMs=${s.localMillis} texts=${s.localTexts} paired=${s.localPaired}');
-  }, skip: modelDir == null ? 'Set SMT_FAI_MODELS to run actual GGUF inference' : false, timeout: const Timeout(Duration(minutes: 5)));
+    print('REAL_LANGUAGE model=${language.id} selfTestMs=${state.localTestMillis} analysisMs=${state.localMillis} rows=${state.localRows} calls=${state.localCalls}');
+  }, skip: present ? false : 'Set SMT_FAI_MODELS to a directory containing the language GGUF', timeout: const Timeout(Duration(minutes: 6)));
 }

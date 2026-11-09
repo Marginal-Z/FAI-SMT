@@ -19,6 +19,7 @@ import 'core/local_ai/local_ai.dart';
 import 'core/local_ai/model_store.dart';
 import 'core/local_ai/semantic_match.dart';
 import 'core/local_ai/usage.dart';
+import 'core/local_ai/local_review.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/report.dart';
@@ -318,6 +319,13 @@ class AppState extends ChangeNotifier {
   }
 
   bool get localModelsReady => modelStatus[activeEmbedding.id]?.state == ModelState.ready;
+  LocalModelSpec get localAnalysisModel => modelFor(LocalModelRole.language);
+  bool get localAnalysisReady => modelStatus[localAnalysisModel.id]?.state == ModelState.ready;
+  bool get localAnalysisRequired => settings.checkMode == CheckMode.local;
+  bool get activeLocalReady => localAnalysisRequired ? localAnalysisReady : localModelsReady;
+  bool get canExportReport => report != null && (!localAnalysisRequired ||
+      (report!.complete && report!.localModel.kind == 'analysis' && report!.localModel.state == 'done' &&
+       report!.localModel.rows == report!.rows.length && report!.localModel.total == report!.rows.length));
 
   /// Uses [m] for the next checks.
   Future<void> setEmbeddingModel(LocalModelSpec m) async {
@@ -372,12 +380,17 @@ class AppState extends ChangeNotifier {
     final old = _local;
     _local = null;
     await old?.dispose();
+    if (m.role == LocalModelRole.language) {
+      final oldAnalysis = _analysis;
+      _analysis = null;
+      await oldAnalysis?.dispose();
+    }
     await models.delete(m);
     await refreshModels();
   }
 
   void setLocalAiEnabled(bool v) {
-    if (localBusy) return;
+    if (localBusy || localAnalysisRequired) return;
     settings.localAiEnabled = v;
     persist();
     notifyListeners();
@@ -440,15 +453,19 @@ class AppState extends ChangeNotifier {
 
   void _reset() {
     _checkRun++;
+    if (_analysis case final LlamaLocalModels model) model.cancel();
     _cloudCancel?.cancel();
     _aiCancel?.cancel();
     cloudRunning = false;
     cloudRun = null;
     cloudError = '';
     localStatus = LocalStatus.idle;
+    localRows = localTotal = localCalls = 0;
     localProgress = 0;
     localPaired = localTexts = localMillis = 0;
     localError = '';
+    localErrorDetail = '';
+    localLoading = false;
     _historyId = null;
     report = null;
     selected = null;
@@ -460,7 +477,7 @@ class AppState extends ChangeNotifier {
 
   // ------------------------------------------------------------------ check
 
-  /// Local check; the AI check follows when it is switched on.
+  /// Local mode publishes only after every row has a language-model decision.
   void runCheckNow() {
     if (single == null) throw UserMessage('msg_need_single');
     if (bomA == null) throw UserMessage('msg_need_a');
@@ -476,6 +493,27 @@ class AppState extends ChangeNotifier {
     cloudRun = null;
     cloudError = '';
     final run = ++_checkRun;
+    if (settings.checkMode == CheckMode.local) {
+      report = null;
+      _historyId = null;
+      selected = null;
+      ai = null;
+      aiStatus = AiStatus.idle;
+      localKind = 'analysis';
+      localTexts = localPaired = localMillis = localRows = localTotal = localCalls = 0;
+      localProgress = 0;
+      localModelName = localAnalysisModel.name;
+      localError = '';
+      localErrorDetail = '';
+      if (!localAnalysisReady) {
+        localStatus = LocalStatus.unavailable;
+        _status('local_analysis_missing');
+        notifyListeners();
+        throw UserMessage('local_analysis_missing');
+      }
+      _runRequiredLocal(run);
+      return;
+    }
     report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, options: settings.compareOptions);
     _historyId = HistoryStore.newId(report!.at);
     selected = null;
@@ -496,6 +534,8 @@ class AppState extends ChangeNotifier {
         ? LocalStatus.running
         : LocalStatus.notNeeded;
     localProgress = 0;
+    localKind = 'embedding';
+    localRows = localTotal = localCalls = 0;
     localPaired = localTexts = localMillis = 0;
     localModelName = activeEmbedding.name;
     localError = '';
@@ -526,6 +566,8 @@ class AppState extends ChangeNotifier {
   }
 
   void setCheckMode(CheckMode m) {
+    if (localBusy || cloudRunning) return;
+    if (m != settings.checkMode) _reset();
     settings.checkMode = m;
     persist();
     notifyListeners();
@@ -558,6 +600,7 @@ class AppState extends ChangeNotifier {
     });
     if (run != _checkRun) return;
     report = r;
+    report!.pending = false;
     report!.localModel = localUsage;
     cloudRun = cr;
     cloudRunning = false;
@@ -618,14 +661,7 @@ class AppState extends ChangeNotifier {
         if (localStatus == LocalStatus.done && localTexts > 0) localModelName,
         if (settings.checkMode != CheckMode.local && cloudRun != null) '${settings.cloud.kind.name} ${settings.cloud.modelName}',
       ];
-    report!.localModel = LocalModelUsage(
-      state: localStatus.name,
-      model: localModelName,
-      texts: localTexts,
-      paired: localPaired,
-      millis: localMillis,
-      error: localError,
-    );
+    report!.localModel = currentLocalUsage;
     if (report!.pending) {
       _status(
         localStatus == LocalStatus.running
@@ -643,11 +679,20 @@ class AppState extends ChangeNotifier {
         'sub': report!.count(CheckStatus.substitute),
       });
     } else {
-      // Never report a finished check while records are unaccounted for.
       _status('status_incomplete', {'n': report!.uncovered.length});
     }
     _archive();
   }
+
+  LocalModelUsage get currentLocalUsage => LocalModelUsage(
+      state: localStatus.name,
+      model: localModelName,
+      texts: localTexts,
+      paired: localPaired,
+      millis: localMillis,
+      error: localError,
+      kind: localKind, rows: localRows, total: localTotal, calls: localCalls,
+    );
 
   // ---------------------------------------------------------------- history
 
@@ -719,10 +764,14 @@ class AppState extends ChangeNotifier {
   // ------------------------------------------------------------ local AI
 
   LocalStatus localStatus = LocalStatus.idle;
+  String localKind = 'embedding';
+  int localRows = 0, localTotal = 0, localCalls = 0;
+  bool localLoading = false;
 
   /// Share of descriptions the local model has read (0–1).
   double localProgress = 0;
   String localError = '';
+  String localErrorDetail = '';
 
   /// Lines the local model paired in the last check.
   int localPaired = 0;
@@ -738,25 +787,35 @@ class AppState extends ChangeNotifier {
   int localTestMillis = 0;
   int _checkRun = 0;
   LocalModels? _local;
+  LocalModels? _analysis;
 
   /// Opened on first use and kept for later checks.
   Future<LocalModels> _localModels() async => _local ??= await (localModelsFactory?.call(models, activeEmbedding) ??
           LlamaLocalModels.open(models, embedding: activeEmbedding));
+  Future<LocalModels> _analysisModels() async => _analysis ??= await (localModelsFactory?.call(models, localAnalysisModel) ??
+      LlamaLocalModels.openAnalysis(models));
 
   /// A separate real embedding call; success never claims a BOM used it.
   Future<void> testLocalModel() async {
-    if (localBusy || !localModelsReady) return;
+    if (localBusy || !activeLocalReady) return;
     localTesting = true;
     localTestKey = 'local_test_running';
     localTestDetail = '';
     notifyListeners();
     final watch = Stopwatch()..start();
     try {
-      final ai = await _localModels();
-      checkedVectors(
+      if (localAnalysisRequired) {
+        final model = await _analysisModels();
+        final reply = await model.structured(system: 'Return JSON {"ok":true}.', user: '确认能生成 JSON。',
+          schema: const {'type': 'object', 'properties': {'ok': {'type': 'boolean'}}, 'required': ['ok'], 'additionalProperties': false}, maxTokens: 64);
+        if (reply['ok'] != true) throw LocalAiException('bad_output');
+      } else {
+        final ai = await _localModels();
+        checkedVectors(
         await ai.embed(['贴片电阻 10K 0402', 'Chip resistor 10kΩ 0402']),
         2,
       );
+      }
       localTestKey = 'local_test_ok';
     } catch (e) {
       localTestKey = 'local_test_failed';
@@ -764,11 +823,79 @@ class AppState extends ChangeNotifier {
       final old = _local;
       _local = null;
       await old?.dispose();
+      final oldAnalysis = _analysis;
+      _analysis = null;
+      await oldAnalysis?.dispose();
     } finally {
       localTestMillis = watch.elapsedMilliseconds;
       localTesting = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _runRequiredLocal(int run) async {
+    _localBusy = true;
+    localLoading = true;
+    localStatus = LocalStatus.running;
+    _status('status_local_required_running');
+    notifyListeners();
+    final watch = Stopwatch()..start();
+    try {
+      final draft = compareBoms(single!.bom, bomA!.bom, bomB?.bom, options: settings.compareOptions);
+      localTotal = draft.rows.length;
+      notifyListeners();
+      final model = await _analysisModels();
+      if (run != _checkRun) return;
+      if (model case LocalAnalysisPreparation preparation) await preparation.prepareAnalysis();
+      if (run != _checkRun) return;
+      localLoading = false;
+      notifyListeners();
+      final result = await reviewLocally(draft, model, cancelled: () => run != _checkRun,
+        onProgress: (done, total, calls) {
+          if (run != _checkRun) return;
+          localRows = localTexts = done;
+          localTotal = total;
+          localCalls = calls;
+          localMillis = watch.elapsedMilliseconds;
+          localProgress = total == 0 ? 0 : done / total;
+          notifyListeners();
+        });
+      if (run != _checkRun) return;
+      report = result.report;
+      _historyId = HistoryStore.newId(report!.at);
+      localRows = localTexts = result.rows;
+      localCalls = result.calls;
+      localMillis = watch.elapsedMilliseconds;
+      localStatus = LocalStatus.done;
+      _checkedStatus();
+    } catch (e) {
+      if (run != _checkRun) return;
+      report = null;
+      localStatus = LocalStatus.failed;
+      localMillis = watch.elapsedMilliseconds;
+      localError = e is LocalAiException ? 'local_err_${e.code}' : 'local_err_inference_failed';
+      localErrorDetail = '$e';
+      _status('status_local_required_failed', {'e': Strings(language).t(localError)});
+      final old = _analysis;
+      _analysis = null;
+      await old?.dispose();
+    } finally {
+      localLoading = false;
+      _localBusy = false;
+      notifyListeners();
+    }
+  }
+
+  void cancelLocalAnalysis() {
+    if (!_localBusy || localKind != 'analysis') return;
+    _checkRun++;
+    localLoading = false;
+    if (_analysis case final LlamaLocalModels model) model.cancel();
+    report = null;
+    localStatus = LocalStatus.idle;
+    localError = 'local_err_cancelled';
+    _status('local_analysis_cancelled');
+    notifyListeners();
   }
 
   Future<void> _runLocal(int run) async {
@@ -820,7 +947,7 @@ class AppState extends ChangeNotifier {
     settings.aiEnabled = v;
     persist();
     notifyListeners();
-    if (v && report != null && ai == null && aiStatus != AiStatus.running && cloudReady) runAi();
+    if (!localAnalysisRequired && v && report != null && ai == null && aiStatus != AiStatus.running && cloudReady) runAi();
   }
 
   // ----------------------------------------------------------------- cloud
@@ -880,6 +1007,7 @@ class AppState extends ChangeNotifier {
   /// Sends the comparison to the configured model; a newer run or a reload
   /// discards an older answer.
   Future<void> runAi() async {
+    if (localAnalysisRequired) return;
     final r = report;
     if (r == null) return;
     final run = ++_aiRun;
