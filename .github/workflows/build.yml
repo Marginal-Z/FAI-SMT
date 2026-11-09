@@ -196,6 +196,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -216,11 +223,11 @@ jobs:
       # One version code for every APK (no per-ABI offset), so moving between
       # the universal and per-ABI packages is never a downgrade.
       - name: Per-ABI APKs (armeabi-v7a, arm64-v8a, x86_64)
-        run: flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true
+        run: bash tool/ci_retry.sh flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true
       - name: Universal APK
-        run: flutter build apk --release
+        run: bash tool/ci_retry.sh flutter build apk --release
       - name: App bundle
-        run: flutter build appbundle --release
+        run: bash tool/ci_retry.sh flutter build appbundle --release
       - name: Check signing certificate
         run: |
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
