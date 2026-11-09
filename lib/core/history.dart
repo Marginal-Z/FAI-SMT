@@ -12,6 +12,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'bom_compare.dart';
+import 'local_ai/usage.dart';
 
 /// One input file of a check: `A`, `B` or `C` as the files are named to the
 /// user.
@@ -42,6 +43,7 @@ class HistoryEntry {
     required this.skipped,
     required this.complete,
     required this.appVersion,
+    this.localModel = const LocalModelUsage(state: 'unknown'),
   });
 
   final String id;
@@ -55,6 +57,7 @@ class HistoryEntry {
   final List<String> skipped;
   final bool complete;
   final String appVersion;
+  final LocalModelUsage localModel;
 
   int get lines => counts.values.fold(0, (a, b) => a + b);
 
@@ -68,6 +71,7 @@ class HistoryEntry {
     'skipped': skipped,
     'complete': complete,
     'appVersion': appVersion,
+    'localModel': localModel.toJson(),
   };
 
   factory HistoryEntry.fromJson(Map<String, dynamic> j) => HistoryEntry(
@@ -80,6 +84,9 @@ class HistoryEntry {
     skipped: [for (final m in (j['skipped'] as List? ?? const [])) '$m'],
     complete: j['complete'] != false,
     appVersion: '${j['appVersion'] ?? ''}',
+    localModel: j['localModel'] is Map
+        ? LocalModelUsage.fromJson((j['localModel'] as Map).cast())
+        : const LocalModelUsage(state: 'unknown'),
   );
 }
 
@@ -160,6 +167,7 @@ class HistoryStore {
       skipped: report.skipped,
       complete: report.complete,
       appVersion: appVersion,
+      localModel: report.localModel,
     );
     await File(p.join(folder.path, 'report.xlsx')).writeAsBytes(workbook, flush: true);
     await File(p.join(folder.path, 'lines.json')).writeAsString(jsonEncode([for (final r in report.rows) HistoryLine.of(r).toJson()]));

@@ -1,0 +1,17 @@
+Baseline: d7bdcafdd4d36ccff39bfeaa6b42017f7c738163
+Branch: review/bom-rules-model-orientation
+Baseline tests: 88 passed, 8 skipped
+Initial 12 regressions on baseline: 1 passed, 11 failed
+Final tests: 122 passed, 7 skipped
+
+REAL_INFERENCE model=granite-embedding-107m-q8 selfTestMs=3444 checkMs=15 texts=2 paired=1
+
+Analyzing 3 items...                                            
+No issues found! (ran in 53.9s)
+
+Building Linux application...                                   
+✓ Built build/linux/x64/release/bundle/smt_fai
+
+Linux native smoke: 12 seconds, exit 124 from timeout; Impeller initialized; no unhandled exception.
+No Secret Service in isolated test session; Linux key persistence not verified.
+Linux executable SHA-256: 3a3ac22d6faa2bad8f57fbeb5c2210485d02386a37f2d1aeab50de86273f8c1b

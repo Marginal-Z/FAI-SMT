@@ -47,6 +47,9 @@ class LlamaLocalModels implements LocalModels {
     final e = await store.status(spec);
     final l = await store.status(modelFor(LocalModelRole.language));
     if (e.state != ModelState.ready) throw LocalAiException('model_missing');
+    // A bundled file was previously accepted by size alone. Check the
+    // exact bytes once on opening, before any native model load.
+    if (await ModelStore.hashFile(e.path!) != spec.sha256) throw LocalAiException('model_hash');
     // The language model is optional; asking it without the file fails.
     return LlamaLocalModels(embeddingPath: e.path!, languagePath: l.state == ModelState.ready ? l.path! : '', embeddingPrefix: spec.prefix);
   }
@@ -80,7 +83,14 @@ class LlamaLocalModels implements LocalModels {
     }
   }
 
-  Future<LlamaEngine> _embedding() async => _embed ??= await (_embedLoading ??= _load(embeddingPath, const ModelParams(contextSize: 512)));
+  Future<LlamaEngine> _embedding() async {
+    try {
+      return _embed ??= await (_embedLoading ??= _load(embeddingPath, const ModelParams(contextSize: 512)));
+    } catch (_) {
+      _embedLoading = null;
+      rethrow;
+    }
+  }
 
   Future<LlamaEngine> _language() async => _lang ??= await (_langLoading ??= _load(languagePath, const ModelParams(contextSize: 4096)));
 

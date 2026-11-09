@@ -1,3 +1,3 @@
 /// Application version; must match `version:` in pubspec.yaml (a unit test
 /// checks this) because the updater compares it with release tags.
-const appVersion = '3.1.0';
+const appVersion = '3.2.0';

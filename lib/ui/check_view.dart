@@ -67,7 +67,9 @@ String fieldLabel(Strings s, FieldCompare f) => switch (f.key) {
   'description' => s.t('f_desc'),
   'quantity' => s.t('f_qty'),
   'refs' => s.t('f_refs'),
-  _ => f.header.isEmpty ? f.key.substring(4) : f.header,
+  _ => f.key.startsWith('input:')
+        ? '${s.t('input_integrity')} ${f.header}'
+        : f.header.isEmpty ? f.key.substring(4) : f.header,
 };
 
 /// [text] with the [spans] on a coloured background.
@@ -281,7 +283,11 @@ class _CheckViewState extends State<CheckView> {
     final reasonSelect = DropdownSelect<String?>(
       value: state.reasonFilter,
       width: 190,
-      options: [(null, s.t('reason_all')), for (final e in reasons) (e.key, '${s.t('reason_${e.key}')} (${e.value})')],
+      options: [(null, s.t('reason_all')),
+        (
+          'orientation',
+          '${s.t('orientation_title')} (${report.rows.where((r) => r.orientation.isNotEmpty).length})',
+        ), for (final e in reasons) (e.key, '${s.t('reason_${e.key}')} (${e.value})')],
       onChanged: state.setReasonFilter,
     );
     final columnsNote = _ColumnsNote(report: report);
@@ -777,6 +783,11 @@ class _ResultRow extends StatelessWidget {
               // Long numbers wrap rather than being cut off.
               Text(row.partNo, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.tx)),
               if (row.sources.isNotEmpty) Text(row.sourceNames.join(' + '), style: TextStyle(fontSize: 11, color: c.tx3)),
+              if (row.orientation.isNotEmpty)
+                Text(
+                  s.t('orientation_title'),
+                  style: TextStyle(fontSize: 11.5, color: c.warnTx),
+                ),
             ],
           ),
           cell(_sides(context, desc, single: row.single?.description, merged: row.merged?.description), diff: desc != null && !desc.equal),
@@ -868,6 +879,11 @@ class _RowCard extends StatelessWidget {
             ],
             const SizedBox(height: 6),
             _refChips(context, row, max: 8),
+            if (row.orientation.isNotEmpty)
+              Text(
+                s.t('orientation_title'),
+                style: TextStyle(fontSize: 12, color: c.warnTx),
+              ),
           ],
         ),
       ),
@@ -956,6 +972,51 @@ class _Detail extends StatelessWidget {
       ],
       const SizedBox(height: 12),
       // What the line was matched by, and why it is not PASS.
+      if (row.orientation.isNotEmpty) ...[
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: c.warnTint, borderRadius: c.r(12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                s.t('orientation_title'),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: c.warnTx,
+                ),
+              ),
+              Text(
+                s.t('orientation_scope'),
+                style: TextStyle(fontSize: 12, height: 1.4, color: c.tx2),
+              ),
+              for (final h in row.orientation) ...[
+                const SizedBox(height: 6),
+                Text(
+                  s.t('orientation_${h.code}'),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: c.warnTx,
+                  ),
+                ),
+                Text(
+                  h.evidence,
+                  style: TextStyle(fontSize: 12, height: 1.4, color: c.tx2),
+                ),
+                Text(
+                  h.refs.isEmpty
+                      ? s.t('orientation_no_refs')
+                      : h.refs.join(', '),
+                  style: TextStyle(fontSize: 12, color: c.tx),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
       if (row.basis.kinds.isNotEmpty || row.reasons.isNotEmpty || row.cloudNote.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.all(10),

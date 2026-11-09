@@ -1079,7 +1079,8 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Hoverable(
-          onTap: ready ? () => state.setLocalAiEnabled(!state.settings.localAiEnabled) : null,
+          onTap: ready && !state.localBusy
+              ? () => state.setLocalAiEnabled(!state.settings.localAiEnabled) : null,
           cursor: ready ? SystemMouseCursors.click : SystemMouseCursors.basic,
           builder: (context, hover, _) => Container(
             padding: const EdgeInsets.all(14),
@@ -1105,7 +1106,37 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
           ),
         ),
         const SizedBox(height: 10),
-        Text(s.t('local_lowend'), style: TextStyle(fontSize: 12.5, height: 1.5, color: c.tx2)),
+        Text(s.t('local_lowend'), style: TextStyle(fontSize: 12.5, height: 1.5, color: c.tx2),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            PillButton(
+              label: s.t('local_test'),
+              icon: Lucide.cpu,
+              kind: PillKind.soft,
+              height: 38,
+              onTap: ready && !state.localBusy ? state.testLocalModel : null,
+            ),
+            if (state.localTestKey.isNotEmpty)
+              Text(
+                s.t(state.localTestKey, {'ms': state.localTestMillis}),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: state.localTestKey == 'local_test_failed'
+                      ? c.ngTx
+                      : c.tx2,
+                ),
+              ),
+          ],
+        ),
+        if (state.localTestDetail.isNotEmpty)
+          Text(
+            state.localTestDetail,
+            style: TextStyle(fontSize: 12, color: c.ngTx)),
         const SizedBox(height: 18),
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 8),

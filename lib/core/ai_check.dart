@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'bom.dart';
 import 'bom_compare.dart';
 import 'cloud/provider.dart';
+import 'cloud/hybrid.dart' show PrivacyOptions;
 
 enum AiSeverity { error, warning, info }
 
@@ -79,35 +80,37 @@ String _clip(String s, int n) => s.length <= n ? s : '${s.substring(0, n)}…';
 
 /// The comparison as compact JSON for the prompt. Large BOMs send the
 /// differing rows in full and only the part numbers of matching rows.
-String comparisonJson(CompareReport report) {
+String comparisonJson(CompareReport report, {PrivacyOptions privacy = const PrivacyOptions(otherColumns: true), Map<String, String>? aliases}) {
+  final names = aliases ?? <String, String>{};
+  String name(String pn) => privacy.partNumbers ? pn : names.putIfAbsent(pn, () => 'P${names.length + 1}');
   Map<String, dynamic> side(BomPart? p) => p == null
       ? {}
       : {
           'records': p.recordIds,
           'description': _clip(p.description, 160),
           'quantity': formatQuantity(p.quantity),
-          'refs': p.refs.join(','),
-          if (p.extra.values.any((v) => v.isNotEmpty)) 'extra': {for (final e in p.extra.entries) if (e.value.isNotEmpty) report.compared[e.key] ?? e.key: e.value},
+          if (privacy.designators) 'refs': p.refs.join(',') else 'designatorCount': p.refs.length,
+          if (privacy.otherColumns && p.extra.values.any((v) => v.isNotEmpty)) 'extra': {for (final e in p.extra.entries) if (e.value.isNotEmpty) report.compared[e.key] ?? e.key: e.value},
         };
   final big = report.rows.length > 400;
   return jsonEncode({
-    'columnsCompared': report.compared.values.toList(),
-    'columnsOnlyInSingle': report.singleOnlyColumns,
-    'columnsOnlyInMerged': report.mergedOnlyColumns,
+    if (privacy.otherColumns) 'columnsCompared': report.compared.values.toList(),
+    if (privacy.otherColumns) 'columnsOnlyInSingle': report.singleOnlyColumns,
+    if (privacy.otherColumns) 'columnsOnlyInMerged': report.mergedOnlyColumns,
     'rows': [
       for (final r in report.rows)
         if (!big || r.status != CheckStatus.pass)
           {
-            'partNo': r.partNo,
+            'partNo': name(r.partNo),
             'localResult': r.status.name,
             if (r.reasons.isNotEmpty) 'localReasons': r.reasons,
             if (r.basis.kinds.isNotEmpty) 'matchedBy': r.basis.kinds,
-            if (r.differences.isNotEmpty) 'localDifferences': [for (final f in r.differences) f.key.startsWith('col:') ? f.header : f.key],
+            if (r.differences.isNotEmpty) 'localDifferences': [for (final f in r.differences) if (privacy.otherColumns || !f.key.startsWith('col:') && !f.key.startsWith('input:')) f.key.startsWith('col:') ? f.header : f.key],
             'single': side(r.single),
             'merged': side(r.merged),
           },
     ],
-    if (big) 'matchingPartNumbers': [for (final r in report.rows) if (r.status == CheckStatus.pass) r.partNo],
+    if (big) 'matchingPartNumbers': [for (final r in report.rows) if (r.status == CheckStatus.pass) name(r.partNo)],
   });
 }
 
@@ -149,12 +152,15 @@ const _schema = {
 
 /// The analysis of a finished check, from [provider]. Findings that name a
 /// part not in the check are dropped: nothing invented reaches the screen.
-Future<AiResult> runAiCheck(CloudProvider provider, CompareReport report, {CloudCancel? cancel}) async {
-  final reply = await provider.ask(system: _system, user: comparisonJson(report), schema: _schema, maxTokens: 8192, cancel: cancel);
+Future<AiResult> runAiCheck(CloudProvider provider, CompareReport report, {CloudCancel? cancel, PrivacyOptions privacy = const PrivacyOptions()}) async {
+  final aliases = <String, String>{};
+  final payload = comparisonJson(report, privacy: privacy, aliases: aliases);
+  final originals = {for (final e in aliases.entries) e.value: e.key};
+  final reply = await provider.ask(system: _system, user: payload, schema: _schema, maxTokens: 8192, cancel: cancel);
   final known = {for (final r in report.rows) ...[r.partNo, ...r.singleParts.map((p) => p.partNo), ...r.mergedParts.map((p) => p.partNo)]};
   final findings = [
     for (final f in (reply.json['findings'] as List? ?? const []))
-      if (f is Map) AiFinding.fromJson(f.cast<String, dynamic>()),
+      if (f is Map) AiFinding.fromJson({...f.cast<String, dynamic>(), 'partNo': originals['${f['partNo']}'] ?? f['partNo']}),
   ];
   return AiResult(
     summary: '${reply.json['summary'] ?? ''}'.trim(),

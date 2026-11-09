@@ -376,6 +376,8 @@ class ImportActions extends StatelessWidget {
             ),
                 const SizedBox(height: 10),
                 ModeSelector(state: state),
+                const SizedBox(height: 8),
+                LocalModelIndicator(state: state),
                 const SizedBox(height: 10),
                 AiSwitch(state: state),
               ],
@@ -387,6 +389,8 @@ class ImportActions extends StatelessWidget {
                 run,
                 const SizedBox(height: 10),
                 ModeSelector(state: state),
+                const SizedBox(height: 8),
+                LocalModelIndicator(state: state),
                 const SizedBox(height: 10),
                 AiSwitch(state: state),
                 const SizedBox(height: 10),
@@ -406,6 +410,81 @@ class ImportActions extends StatelessWidget {
 /// Check mode: local, hybrid or cloud; the cloud modes need an API (they
 /// open the AI settings until one is set). While the cloud works, its
 /// progress and a cancel button.
+class LocalModelIndicator extends StatelessWidget {
+  const LocalModelIndicator({super.key, required this.state});
+  final AppState state;
+  @override
+  Widget build(BuildContext context) {
+    final s = Strings.of(context);
+    final c = AppTheme.of(context);
+    final usage = state.report?.localModel;
+    final status =
+        usage?.state ??
+        (state.settings.checkMode == CheckMode.cloudFull
+            ? 'cloudOnly'
+            : !state.settings.localAiEnabled
+            ? 'disabled'
+            : !state.localModelsReady
+            ? 'unavailable'
+            : 'idle');
+    final color = status == 'failed' || status == 'unavailable'
+        ? c.warnTx
+        : status == 'done'
+        ? c.okTx
+        : c.tx2;
+    return Hoverable(
+      onTap: () => state.openSettings(SettingsSection.localAi),
+      tooltip:
+          '${usage?.model ?? state.activeEmbedding.name}\n${s.t('local_usage_hint')}',
+      builder: (context, hover, _) => Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: hover ? c.hover : c.well,
+          borderRadius: c.r(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              s.t('local_usage_title'),
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: c.tx,
+              ),
+            ),
+            Text(
+              s.t('local_state_$status'),
+              style: TextStyle(fontSize: 12, height: 1.4, color: color),
+            ),
+            if (status == 'running')
+              TrackBar(
+                value: state.localProgress.clamp(0.0, 1.0),
+                color: c.blue,
+                height: 3,
+              ),
+            if (status == 'done')
+              Text(
+                s.t('local_usage_counts', {
+                  'n': usage!.texts,
+                  'p': usage.paired,
+                  'ms': usage.millis,
+                }),
+                style: TextStyle(fontSize: 11.5, color: color),
+              ),
+            if (status == 'failed')
+              Text(
+                s.t(usage!.error),
+                style: TextStyle(fontSize: 11.5, color: color),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ModeSelector extends StatelessWidget {
   const ModeSelector({super.key, required this.state});
 

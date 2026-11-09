@@ -5,6 +5,177 @@ const supportedLanguages = ['zh', 'en', 'th'];
 
 /// key -> [zh, en, th]. Templates use `{name}` placeholders.
 const Map<String, List<String>> _t = {
+  'local_err_model_hash': ['模型文件 SHA-256 校验失败，请重新下载', 'Model SHA-256 mismatch; download it again', 'SHA-256 ของโมเดลไม่ตรง โปรดดาวน์โหลดใหม่'],
+  'local_state_unknown': ['旧记录未保存模型调用证据', 'Older record has no local inference evidence', 'บันทึกเก่าไม่มีหลักฐานการเรียกโมเดล'],
+  'local_err_model_missing': ['模型文件未就绪，请检查模型下载状态', 'Model file unavailable; check its download status', 'ไฟล์โมเดลไม่พร้อม โปรดตรวจสถานะดาวน์โหลด'],
+  'local_err_load_failed': ['模型加载失败，可运行推理自检查看详情', 'Model loading failed; run the inference test for details', 'โหลดโมเดลไม่ได้ ทดสอบการอนุมานเพื่อดูรายละเอียด'],
+  'local_err_inference_failed': ['本地推理失败，当前显示规则结果', 'Local inference failed; rule results are shown', 'อนุมานในเครื่องล้มเหลว แสดงผลตามกฎ'],
+  'local_err_timeout': ['本地推理超时，当前显示规则结果', 'Local inference timed out; rule results are shown', 'อนุมานในเครื่องหมดเวลา แสดงผลตามกฎ'],
+  'local_err_bad_output': ['模型返回的向量无效，未用于配对', 'Invalid model vectors; not used for pairing', 'เวกเตอร์โมเดลไม่ถูกต้อง ไม่ใช้จับคู่'],
+  'input_integrity': ['输入数据冲突', 'Input data conflicts', 'ข้อมูลนำเข้าขัดแย้ง'],
+  'reason_input_conflict': [
+    '同一料号的来源行描述、属性或贴装标记冲突，请检查原始行',
+    'Source rows of this part disagree in specification, attributes or fitted flag; inspect the source rows',
+    'แถวต้นทางของรหัสนี้มีสเปก คุณสมบัติ หรือสถานะติดตั้งขัดแย้งกัน',
+  ],
+  'reason_duplicate_refs': [
+    '输入中存在重复位号（含跨料号或 B+C 重复）',
+    'Duplicate designators in the inputs (including across parts or B+C)',
+    'ตำแหน่งซ้ำในข้อมูลนำเข้า รวมข้ามรหัสหรือ B+C',
+  ],
+  'reason_qty_invalid': [
+    '来源行用量为空或格式无法确认',
+    'A source quantity is missing or cannot be parsed reliably',
+    'จำนวนในแถวต้นทางว่างหรืออ่านค่าไม่ได้',
+  ],
+  'reason_qty_refs': [
+    '输入用量与位号数量不符，请确认单位用量及位号完整性',
+    'Input quantity differs from the designator count; confirm usage units and complete designators',
+    'จำนวนไม่ตรงกับจำนวนตำแหน่ง โปรดยืนยันหน่วยและตำแหน่ง',
+  ],
+  'reason_field_unavailable': [
+    '一侧缺少要求核对的用量或位号列',
+    'One side lacks a requested quantity or designator column',
+    'ด้านหนึ่งไม่มีคอลัมน์จำนวนหรือตำแหน่งที่ต้องตรวจ',
+  ],
+  'rep_pending': [
+    '核对仍在进行，此结果尚未完成',
+    'Check in progress; this result is not final',
+    'กำลังตรวจ ผลยังไม่สมบูรณ์',
+  ],
+  'orientation_title': ['方向核对提醒', 'Orientation reminders', 'เตือนตรวจทิศทาง'],
+  'repc_orientation': ['方向核对提醒', 'Orientation reminders', 'เตือนตรวจทิศทาง'],
+  'orientation_scope': [
+    '请对照元件规格书、PCB 丝印及首件实物人工核对；BOM 一致不代表方向已确认。',
+    'Check the datasheet, PCB markings and first assembly manually. Matching BOMs do not confirm placement orientation.',
+    'ตรวจคู่มือชิ้นส่วน สกรีน PCB และชิ้นงานแรกด้วยตนเอง BOM ตรงกันไม่ได้ยืนยันทิศทาง',
+  ],
+  'orientation_no_refs': [
+    '未提供位号：先确认对应的贴装位置',
+    'No designators supplied: identify the placement locations first',
+    'ไม่มีตำแหน่ง โปรดยืนยันจุดติดตั้งก่อน',
+  ],
+  'orientation_diode': [
+    '二极管 / LED：核对 A/K 极性、器件标记与 PCB 丝印；不要仅凭外形或文字方向判断。',
+    'Diode / LED: verify anode/cathode and device marks against the PCB; use the part datasheet.',
+    'ไดโอด / LED: ตรวจ A/K และเครื่องหมายเทียบ PCB ตามคู่มือชิ้นส่วน',
+  ],
+  'orientation_bidirectional': [
+    '双向保护器件：先确认是否为双向及其引脚定义，按具体规格书确认方向要求。',
+    'Bidirectional protection: confirm the exact bidirectional part and pinout before deciding orientation requirements.',
+    'อุปกรณ์ป้องกันสองทิศทาง: ยืนยันรุ่นและขาก่อนตัดสินข้อกำหนดทิศทาง',
+  ],
+  'orientation_polar_cap': [
+    '有极性电容：核对正负极与本型号的极性标记；钽与铝电解的标记含义不能混用。',
+    'Polar capacitor: verify +/− and the exact part marking; tantalum and aluminum electrolytic marks differ.',
+    'ตัวเก็บประจุมีขั้ว: ตรวจ +/− ตามรุ่น เครื่องหมายแทนทาลัมและอะลูมิเนียมต่างกัน',
+  ],
+  'orientation_cap_unknown': [
+    '电容类型不明：先确认是否为电解、钽或其他有极性型号，再决定是否核对正负极。',
+    'Capacitor type unspecified: confirm whether it is electrolytic, tantalum or otherwise polarized before checking polarity.',
+    'ชนิดตัวเก็บประจุไม่ชัดเจน โปรดยืนยันว่ามีขั้วหรือไม่',
+  ],
+  'orientation_pin1': [
+    'IC / 多引脚器件：核对 Pin 1、圆点 / 缺口及引脚排列；晶体管需核对 G/S/D 或 B/C/E。',
+    'IC / multi-pin device: verify Pin 1, dot/notch and pinout; verify G/S/D or B/C/E for transistors.',
+    'IC / หลายขา: ตรวจขา 1 จุด/รอยบาก และผังขา ทรานซิสเตอร์ตรวจ G/S/D หรือ B/C/E',
+  ],
+  'orientation_mechanical': [
+    '连接器 / 非对称器件：核对 Pin 1、缺口 / 卡扣、开口及接触面方向。',
+    'Connector / asymmetric device: check Pin 1, key/latch, opening and contact direction.',
+    'คอนเน็กเตอร์ / ชิ้นส่วนไม่สมมาตร: ตรวจขา 1 ร่อง ล็อก ช่องเปิดและหน้าสัมผัส',
+  ],
+  'orientation_supply': [
+    '电池 / 蜂鸣器：按具体型号核对正负端及引脚定义。',
+    'Battery / buzzer: verify polarity and pin definitions for the exact part.',
+    'แบตเตอรี่ / บัซเซอร์: ตรวจขั้วและผังขาตามรุ่น',
+  ],
+  'orientation_crystal': [
+    '晶体 / 振荡器：有源或多引脚型号需核对 Pin 1、VCC/GND/OUT；两脚无源晶体按规格书确认。',
+    'Crystal / oscillator: check Pin 1 and VCC/GND/OUT for active or multi-pin parts; confirm two-pin passive parts with the datasheet.',
+    'คริสตัล / ออสซิลเลเตอร์: ตรวจขา 1 และ VCC/GND/OUT ตามคู่มือรุ่นนั้น',
+  ],
+  'orientation_unknown': [
+    '元件类别无法确认：人工确认是否有极性、Pin 1 或机械方向要求。',
+    'Unidentified component: manually confirm polarity, Pin 1 or mechanical orientation requirements.',
+    'ไม่ทราบประเภทชิ้นส่วน: ยืนยันขั้ว ขา 1 และข้อกำหนดทิศทางด้วยตนเอง',
+  ],
+  'local_usage_title': [
+    '本地模型 · 本次核对',
+    'Local model · this check',
+    'โมเดลในเครื่อง · การตรวจครั้งนี้',
+  ],
+  'local_usage_hint': [
+    '开启开关只表示允许使用；只有有双侧未匹配项时才推理。推理自检与本次核对独立。',
+    'The switch permits use; inference runs only with unmatched lines on both sides. The self-test is separate from this check.',
+    'สวิตช์อนุญาตให้ใช้ โมเดลทำงานเมื่อมีรายการไม่มีคู่ทั้งสองด้าน การทดสอบแยกจากการตรวจ',
+  ],
+  'local_state_idle': [
+    '已开启，等待核对',
+    'Enabled, waiting for a check',
+    'เปิดแล้ว รอการตรวจ',
+  ],
+  'local_state_disabled': [
+    '未启用，本次仅规则核对',
+    'Disabled; rules only',
+    'ไม่ได้เปิด ใช้กฎเท่านั้น',
+  ],
+  'local_state_unavailable': [
+    '已开启，但所选模型未就绪；本次仅规则核对',
+    'Enabled, but the selected model is unavailable; rules only',
+    'เปิดแล้ว แต่โมเดลที่เลือกไม่พร้อม ใช้กฎเท่านั้น',
+  ],
+  'local_state_notNeeded': [
+    '本次无需推理：规则已配对，或仅一侧有未匹配项',
+    'No inference needed: rules paired the lines, or only one side has unmatched lines',
+    'ไม่ต้องอนุมาน กฎจับคู่แล้วหรือมีรายการไม่มีคู่ด้านเดียว',
+  ],
+  'local_state_cloudOnly': [
+    '云端模式，本次未调用本地模型',
+    'Cloud mode; local model not called',
+    'โหมดคลาวด์ ไม่ได้เรียกโมเดลในเครื่อง',
+  ],
+  'local_state_running': [
+    '正在进行真实本地推理…',
+    'Running local inference…',
+    'กำลังอนุมานในเครื่อง…',
+  ],
+  'local_state_done': [
+    '本次已实际调用本地模型',
+    'Local model was called in this check',
+    'เรียกโมเดลในเครื่องแล้วในการตรวจนี้',
+  ],
+  'local_state_failed': [
+    '推理失败，保留规则结果',
+    'Inference failed; rule results retained',
+    'อนุมานล้มเหลว เก็บผลตามกฎ',
+  ],
+  'local_usage_counts': [
+    '处理 {n} 条 · 建议 {p} 对 · {ms} ms',
+    '{n} texts · {p} proposed pairs · {ms} ms',
+    '{n} ข้อความ · เสนอ {p} คู่ · {ms} ms',
+  ],
+  'local_test': ['运行推理自检', 'Test local inference', 'ทดสอบการอนุมานในเครื่อง'],
+  'local_test_running': [
+    '正在加载并推理…',
+    'Loading and running inference…',
+    'กำลังโหลดและอนุมาน…',
+  ],
+  'local_test_ok': [
+    '真实推理成功：2 条向量 · {ms} ms',
+    'Inference succeeded: 2 vectors · {ms} ms',
+    'อนุมานสำเร็จ: 2 เวกเตอร์ · {ms} ms',
+  ],
+  'local_test_failed': [
+    '本地推理自检失败',
+    'Local inference test failed',
+    'ทดสอบการอนุมานในเครื่องล้มเหลว',
+  ],
+  'local_wait': [
+    '本地模型仍在处理上一项任务，请等待推理结束后重试。',
+    'The local model is still finishing its previous task; retry after it finishes.',
+    'โมเดลยังประมวลผลงานก่อนหน้า โปรดรอแล้วลองใหม่',
+  ],
   // General
   'about_changelog': ['更新日志', 'Release notes', 'บันทึกการเปลี่ยนแปลง'],
   'about_config': ['配置文件位置', 'Settings file', 'ไฟล์การตั้งค่า'],
@@ -149,14 +320,18 @@ const Map<String, List<String>> _t = {
   'set_local_hint': ['未下载 · 离线运行的本地 AI', 'Not downloaded · offline local AI', 'ยังไม่ได้ดาวน์โหลด · AI ในเครื่องแบบออฟไลน์'],
   'set_local_hint_ready': ['已就绪 · 离线运行', 'Ready · runs offline', 'พร้อม · ทำงานออฟไลน์'],
   'local_use': ['核对时使用本地模型', 'Use the local models in checks', 'ใช้โมเดลในเครื่องขณะตรวจ'],
-  'local_use_hint': ['完全离线，不需要 API Key；本地模型辅助识别列与物料，程序校验其结果', 'Fully offline, no API key; the local models help read columns and items, and the program checks what they say', 'ออฟไลน์ทั้งหมด ไม่ต้องใช้ API key โมเดลช่วยอ่านคอลัมน์และรายการ โปรแกรมตรวจสอบผลอีกครั้ง'],
+  'local_use_hint': [
+    '完全离线：仅在双侧均有未匹配物料时调用向量模型，建议一律需复核；当前核对流程不调用可选语言模型。',
+    'Offline: embedding runs only when both sides have unmatched items; proposals always need review. The optional language model is not called by the current check pipeline.',
+    'ออฟไลน์: ใช้เวกเตอร์เมื่อทั้งสองด้านมีรายการไม่มีคู่ ข้อเสนอให้ตรวจซ้ำ โมเดลภาษาไม่ถูกเรียกในขั้นตอนตรวจปัจจุบัน',
+  ],
   'local_need_models': ['先下载下面的模型', 'Download the models below first', 'ดาวน์โหลดโมเดลด้านล่างก่อน'],
   'local_note': ['模型保存在 {dir}；下载支持断点续传，会依次尝试多个镜像，并在使用前校验 SHA-256。离线安装包自带模型时无需下载。', 'Models are kept in {dir}; downloads resume, try several mirrors and are checked against their SHA-256 before use. The offline installer ships a model, so nothing needs downloading.', 'โมเดลเก็บไว้ที่ {dir} ดาวน์โหลดต่อได้ ลองหลายมิเรอร์ และตรวจ SHA-256 ก่อนใช้ ตัวติดตั้งออฟไลน์มีโมเดลมาให้แล้ว'],
   'local_lowend': ['电脑配置低也能用：不开启本地模型时，程序规则照常完整核对；本地模型只为规则配不上的物料推荐候选（结果一律为需复核）。内存 4 GB 左右的电脑选「轻量」即可。', 'Low-end computers are fine: without a local model the program checks everything by its rules; the model only proposes counterparts for lines the rules could not pair (always REVIEW). With about 4 GB of memory, choose Light.', 'เครื่องสเปกต่ำก็ใช้ได้: ไม่เปิดโมเดล โปรแกรมก็ตรวจครบตามกฎ โมเดลแค่เสนอคู่ให้รายการที่จับคู่ไม่ได้ (ผลเป็นตรวจซ้ำเสมอ) หน่วยความจำราว 4 GB เลือกแบบเบา'],
   'local_pick_title': ['匹配模型（选择一个）', 'Matching model (choose one)', 'โมเดลจับคู่ (เลือกหนึ่ง)'],
   'local_lang_title': ['语言模型（可选）', 'Language model (optional)', 'โมเดลภาษา (ไม่บังคับ)'],
   'model_use': ['使用此模型', 'Use this model', 'ใช้โมเดลนี้'],
-  'model_in_use': ['使用中', 'In use', 'กำลังใช้'],
+  'model_in_use': ['已选择', 'Selected', 'เลือกแล้ว'],
   'model_ram': ['约需内存 {mb} MB', 'about {mb} MB of memory', 'ใช้หน่วยความจำราว {mb} MB'],
   'tier_balanced': ['推荐', 'Recommended', 'แนะนำ'],
   'tier_light': ['轻量 · 最快', 'Light · fastest', 'เบา · เร็วที่สุด'],

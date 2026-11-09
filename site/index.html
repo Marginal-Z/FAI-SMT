@@ -260,7 +260,7 @@ footer a:hover{color:var(--tx)}
       <a class="btn primary" href="#download" id="heroDl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg><span>免费下载</span></a>
       <a class="btn ghost" href="#tutorial">查看使用教程</a>
     </div>
-    <div class="meta rv"><span id="verLine">最新版本 v3.1.0</span> · Windows · Android · Linux · 本地核对不联网</div>
+    <div class="meta rv"><span id="verLine">最新版本 v3.2.0</span> · Windows · Android · Linux · 本地核对不上传 BOM</div>
     <div class="hero-shot rv">
       <div class="shot"><img class="only-light" src="assets/check.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面" fetchpriority="high"><img class="only-dark" src="assets/check-dark.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面（深色）" loading="lazy"></div>
     </div>
@@ -298,12 +298,13 @@ footer a:hover{color:var(--tx)}
     <div class="feature rev rv">
       <div class="text">
         <div class="tile t-orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></div>
-        <h3>描述只比参数，其余一字不差</h3>
-        <p>物料描述只比较英文与数字组成的参数：中文名称多一个字、少一个字或一长一短都算一致。用量、位号和其他列必须百分之百相同。</p>
+        <h3>核对参数与关键特征，保留每项证据</h3>
+        <p>数值与单位按含义比较，颜色、极性及电容类型等已知区别不能忽略。重复料号逐条检查来源记录，重复位号、缺列和无效用量明确提示。</p>
         <ul class="checks">
           <li>差异单元格填色，不同的字符加粗高亮</li>
           <li>位号列出 B+C 缺少、多出以及挂在其他料号下的</li>
           <li>名称不同或无表头的列按内容自动配对比较</li>
+          <li>方向提醒列出需人工核对极性、Pin 1 或机械方向的元件与位号</li>
         </ul>
       </div>
       <div class="shot"><img src="assets/check-dark.webp" width="1440" height="900" alt="BOM 核对（深色模式）" loading="lazy"></div>
@@ -385,7 +386,7 @@ footer a:hover{color:var(--tx)}
           <h3>核对规则</h3>
           <table class="spec">
             <tr><th>项目</th><th>规则</th></tr>
-            <tr><td><b>物料描述</b></td><td>只比较英文字母与数字组成的参数（区分大小写、顺序不限）；中文名称多一个字、少一个字或长短不同都视为一致。</td></tr>
+            <tr><td><b>物料描述</b></td><td>参数按数值或编码核对，通用名称允许不同写法；已知颜色、极性及电容类型等区别参与比较，信息不足时需复核。</td></tr>
             <tr><td><b>用量 · 位号</b></td><td>必须完全相同。</td></tr>
             <tr><td><b>其他列</b></td><td>两边都有的列逐字比较；只有一边有的列不比较，并在筛选栏旁列出。</td></tr>
             <tr><td><b>配对</b></td><td>依次按相同料号、共有位号（支持拆分 / 合并）、相同厂商料号、登记的替代料号、类别与参数，以及本地语义模型的建议。</td></tr>
@@ -401,6 +402,8 @@ footer a:hover{color:var(--tx)}
             <li>表格中不一致的单元格填色，不同的字符加粗高亮；位号标出 B+C 缺少（缺）和多出（多）的。</li>
             <li>点击一行，右侧逐列对比 A-BOM 与 B+C 的值，并显示来源行号。</li>
             <li>按料号、位号或描述搜索，按结果筛选。</li>
+            <li>选择原因筛选中的 <b>方向核对提醒</b>，查看依据及位号；仍需人工对照规格书、PCB 丝印与首件实物。</li>
+            <li>核对页显示本次本地模型是否实际调用；在 <b>设置 → 本地模型</b> 运行推理自检，核实加载与向量推理。</li>
             <li>每次核对自动保存到 <b>核对记录</b>（右上角时钟图标）：原始文件副本、SHA-256、结果与当时的报告，可按文件名、料号或描述长期查询追溯。</li>
             <li>在 <b>设置 → 核对与输出</b> 选择参与核对的字段、报告包含的列和报告列出的结果。</li>
           </ol>
@@ -478,7 +481,7 @@ footer a:hover{color:var(--tx)}
         </div>
       </div>
     </div>
-    <p class="ver" id="verInfo">当前版本 <b>v1.6.0</b> · <a href="https://github.com/Marginal-Z/FAI-SMT/releases/latest">更新说明与全部安装包</a></p>
+    <p class="ver" id="verInfo">当前版本 <b>v3.2.0</b> · <a href="https://github.com/Marginal-Z/FAI-SMT/releases/latest">更新说明与全部安装包</a></p>
   </div>
 </section>
 
@@ -491,7 +494,7 @@ footer a:hover{color:var(--tx)}
     <div class="faq">
       <details class="rv"><summary>文件会上传到服务器吗？</summary><p>本地核对不会：BOM 只在本机读取和处理，报告保存在你选择的位置。只有打开 AI 核对时，核对数据才会发送到你在设置中配置的 AI 接口。软件另外只在检查更新时访问 GitHub Releases。</p></details>
       <details class="rv"><summary>表头名称和我们的不一样，能识别吗？</summary><p>可以。料号、描述、用量、位号按单元格内容识别，表头写法不同甚至没有表头都能读取。鼠标停在导入卡片的状态上，可以看到每一列被识别成了什么。</p></details>
-      <details class="rv"><summary>描述只差几个中文字，为什么还显示差异？</summary><p>说明英文或数字参数不同，包括大小写（如 10K 与 10k）。不同的字符会加粗高亮。中文部分本身不参与比较。</p></details>
+      <details class="rv"><summary>描述只差几个中文字，为什么还显示差异？</summary><p>通用名称允许不同写法，但红/绿、有/无极性、陶瓷/电解等已知区别会参与核对；参数按数值或编码比较。信息不足会提示需复核，详情保留依据。</p></details>
       <details class="rv"><summary>AI 核对支持哪些模型？</summary><p>任意 OpenAI 兼容接口（OpenAI、DeepSeek、通义千问、Kimi、智谱、Ollama、vLLM 等）和 Anthropic。在「设置 → AI 核对」中填写地址、Key 和模型，点「测试连接」确认。</p></details>
       <details class="rv"><summary>Android 提示「签名不一致」或「与现有软件包冲突」？</summary><p>1.3.0 及更早版本使用的是临时调试签名。从 1.4.0 起所有 APK 使用同一正式签名，请先卸载旧版本再安装一次，之后的版本都可以直接覆盖升级。</p></details>
       <details class="rv"><summary>Windows 安装时出现 SmartScreen 提示？</summary><p>安装程序暂未进行商业代码签名，首次运行可能提示「Windows 已保护你的电脑」。点击「更多信息 → 仍要运行」即可。安装包均由公开的 GitHub Actions 构建。</p></details>
@@ -522,7 +525,7 @@ footer a:hover{color:var(--tx)}
 
 <script>
 (function(){
-  var REPO='Marginal-Z/FAI-SMT', FALLBACK='3.1.0';
+  var REPO='Marginal-Z/FAI-SMT', FALLBACK='3.2.0';
   document.getElementById('yr').textContent=new Date().getFullYear();
 
   // Theme toggle (remembered per browser).

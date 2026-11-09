@@ -16,6 +16,9 @@ import 'classify.dart';
 import 'knowledge.dart';
 import 'params.dart';
 import 'refdes.dart';
+import 'orientation.dart';
+import 'local_ai/usage.dart';
+import 'description_traits.dart';
 
 /// Result of one line.
 enum CheckStatus {
@@ -50,7 +53,7 @@ enum Risk {
   none,
 }
 
-const _highReasons = {'param_conflict', 'qty', 'refs', 'dnp_differs', 'level', 'desc_text'};
+const _highReasons = {'param_conflict', 'qty', 'refs', 'dnp_differs', 'level', 'desc_text', 'input_conflict', 'duplicate_refs'};
 
 Risk riskOf(CompareRow r) {
   switch (r.status) {
@@ -177,6 +180,10 @@ class CompareRow {
   FieldCompare? field(String key) => fields.where((f) => f.key == key).firstOrNull;
   Iterable<FieldCompare> get differences => fields.where((f) => !f.equal);
   String get description => single?.description ?? merged?.description ?? '';
+  late final List<OrientationHint> orientation = orientationHints([
+    ...singleParts.isEmpty ? [?single] : singleParts,
+    ...mergedParts.isEmpty ? [?merged] : mergedParts,
+  ]);
 }
 
 /// What the check compares. Skipped fields are still used to pair lines,
@@ -205,6 +212,7 @@ class CompareReport {
     this.skipped = const [],
     this.mode = 'local',
     this.models = const [],
+    this.localModel = const LocalModelUsage(),
   });
 
   final List<CompareRow> rows;
@@ -213,6 +221,8 @@ class CompareReport {
   /// took part, for the report.
   String mode;
   List<String> models;
+  LocalModelUsage localModel;
+  bool pending = false;
 
   /// Other columns compared: label → header.
   final Map<String, String> compared;
@@ -226,7 +236,7 @@ class CompareReport {
   /// empty; anything else is a fault and the check is not complete.
   final List<String> uncovered;
 
-  bool get complete => uncovered.isEmpty;
+  bool get complete => uncovered.isEmpty && !pending;
 
   /// Fields the options left out of this check.
   final List<String> skipped;
@@ -309,14 +319,22 @@ FieldCompare compareDescription(String single, String merged, {String header = '
   }
   final pc = compareParams(single, merged);
   final pa = extractParams(single), pb = extractParams(merged);
+  final traitsA = descriptionTraits(single), traitsB = descriptionTraits(merged);
+  bool traitToken(List<(int, int)> spans, int s, int e) => spans.any((p) => s >= p.$1 && e <= p.$2);
+  var traitConflict = false, traitIncomplete = false;
+  for (final key in {...traitsA.values.keys, ...traitsB.values.keys}) {
+    final x = traitsA.values[key] ?? <String>{}, y = traitsB.values[key] ?? <String>{};
+    if (x.isEmpty || y.isEmpty) { traitIncomplete = true; }
+    else if (x.length != y.length || !x.containsAll(y)) { traitConflict = true; }
+  }
   bool inParam(List<Param> ps, int s, int e) => ps.any((p) => s < p.end && e > p.start);
   // Tokens with digits (model names, codes) must match exactly; words that
   // only name the kind of item or are filler may be worded differently
   // ("Chip resistor" / "贴片电阻"); any other word (RED / GREEN) must match.
   (String, int, int) norm((String, int, int) t) => RegExp(r'\d').hasMatch(t.$1) ? t : (t.$1.toLowerCase(), t.$2, t.$3);
   bool counts((String, int, int) t) => RegExp(r'\d').hasMatch(t.$1) || !wordingWords.contains(t.$1.toLowerCase());
-  final ta = [for (final t in paramTokens(single)) if (!inParam(pa, t.$2, t.$3) && counts(t)) norm(t)];
-  final tb = [for (final t in paramTokens(merged)) if (!inParam(pb, t.$2, t.$3) && counts(t)) norm(t)];
+  final ta = [for (final t in paramTokens(single)) if (!inParam(pa, t.$2, t.$3) && !traitToken(traitsA.spans, t.$2, t.$3) && counts(t)) norm(t)];
+  final tb = [for (final t in paramTokens(merged)) if (!inParam(pb, t.$2, t.$3) && !traitToken(traitsB.spans, t.$2, t.$3) && counts(t)) norm(t)];
   final sa = [..._unmatched(ta, tb), for (final (x, _) in pc.conflicts) (x.start, x.end)];
   final sb = [..._unmatched(tb, ta), for (final (_, y) in pc.conflicts) (y.start, y.end)];
   // Descriptions that name different kinds of item (LED / diode) differ.
@@ -331,8 +349,8 @@ FieldCompare compareDescription(String single, String merged, {String header = '
       pc.verdict != ParamVerdict.conflict &&
       ((sb.isEmpty && sa.isNotEmpty && wordsOnly(sa, single) && otherScript.hasMatch(merged)) || (sa.isEmpty && sb.isNotEmpty && wordsOnly(sb, merged) && otherScript.hasMatch(single)));
   final textSame = (sa.isEmpty && sb.isEmpty || translated) && !kindsDiffer;
-  final conflict = pc.verdict == ParamVerdict.conflict || !textSame;
-  final incomplete = !conflict && (pc.verdict == ParamVerdict.incomplete || translated);
+  final conflict = pc.verdict == ParamVerdict.conflict || !textSame || traitConflict;
+  final incomplete = !conflict && (pc.verdict == ParamVerdict.incomplete || translated || traitIncomplete);
   return FieldCompare(
     key: 'description',
     header: header,
@@ -342,8 +360,8 @@ FieldCompare compareDescription(String single, String merged, {String header = '
     incomplete: incomplete,
     // Same values written differently.
     equivalent: !conflict && pc.matched.any((m) => m.$1.text.replaceAll(' ', '') != m.$2.text.replaceAll(' ', '')),
-    singleSpans: [...sa, if (incomplete) for (final p in pc.onlyA) (p.start, p.end)],
-    mergedSpans: [...sb, if (incomplete) for (final p in pc.onlyB) (p.start, p.end)],
+    singleSpans: [...sa, if (traitConflict || traitIncomplete) ...traitsA.spans, if (incomplete) for (final p in pc.onlyA) (p.start, p.end)],
+    mergedSpans: [...sb, if (traitConflict || traitIncomplete) ...traitsB.spans, if (incomplete) for (final p in pc.onlyB) (p.start, p.end)],
   );
 }
 
@@ -408,7 +426,7 @@ FieldCompare compareExact(String key, String header, String single, String merge
       final extra = {for (final e in p.extra.entries) relabel[e.key] ?? e.key: e.value};
       final existing = byPn[p.partNo];
       if (existing == null) {
-        final copy = BomPart(p.partNo, description: p.description, quantity: p.quantity, refs: [...p.refs], extra: extra, sources: [...p.sources], recordIds: [...p.recordIds], dnp: p.dnp, alternates: p.alternates, kind: p.kind);
+        final copy = BomPart(p.partNo, description: p.description, quantity: p.quantity, refs: [...p.refs], extra: extra, sources: [...p.sources], recordIds: [...p.recordIds], dnp: p.dnp, level: p.level, alternates: p.alternates, kind: p.kind, sourceDescriptions: [...p.sourceDescriptions]);
         byPn[p.partNo] = copy;
         order.add(copy);
         sources[p.partNo] = [tag];
@@ -417,6 +435,7 @@ FieldCompare compareExact(String key, String header, String single, String merge
       existing.refs.addAll(p.refs);
       existing.sources.addAll(p.sources);
       existing.recordIds.addAll(p.recordIds);
+      existing.sourceDescriptions.addAll(p.sourceDescriptions.where((d) => !existing.sourceDescriptions.contains(d)));
       if (p.quantity != null) existing.quantity = (existing.quantity ?? 0) + p.quantity!;
       if (existing.description.isEmpty) existing.description = p.description;
       for (final e in extra.entries) {
@@ -630,11 +649,11 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
     var basis = '';
     if (m.isNotEmpty) {
       final c = right.where((x) => !usedR.contains(x) && mpnOf(x) == m).toList();
-      if (c.length == 1) (q, basis) = (c.single, 'mpn');
+      if (c.length == 1 && left.where((x) => !usedL.contains(x) && mpnOf(x) == m).length == 1) (q, basis) = (c.single, 'mpn');
     }
     if (q == null) {
       final c = right.where((x) => !usedR.contains(x) && (p.alternates.contains(x.partNo) || x.alternates.contains(p.partNo))).toList();
-      if (c.length == 1) (q, basis) = (c.single, 'alternate');
+      if (c.length == 1 && left.where((x) => !usedL.contains(x) && (x.alternates.contains(c.single.partNo) || c.single.alternates.contains(x.partNo))).length == 1) (q, basis) = (c.single, 'alternate');
     }
     if (q != null) {
       groups.add(([p], [q], MatchBasis([basis], 0.9)));
@@ -688,6 +707,15 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
   final singleRefOwner = {for (final p in single.parts) for (final r in p.refs) r: p.partNo};
   final mergedRefOwner = {for (final p in merged) for (final r in p.refs) r: p.partNo};
 
+  final singleRecords = {for (final r in single.records) r.id: r};
+  final mergedRecords = {for (final d in [a, ?b]) for (final r in d.records) r.id: r};
+  Map<String, int> refCounts(Iterable<BomRecord> records) {
+    final counts = <String, int>{};
+    for (final r in records) { for (final ref in r.refs) { counts[ref] = (counts[ref] ?? 0) + 1; } }
+    return counts;
+  }
+  final singleRefCounts = refCounts(singleRecords.values), mergedRefCounts = refCounts(mergedRecords.values);
+
   CompareRow groupRow(List<BomPart> ls, List<BomPart> rs, MatchBasis basis) {
     final s = _combine(ls), m = _combine(rs);
     final srcs = {for (final q in rs) ...?sources[q.partNo]}.toList();
@@ -695,6 +723,42 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
     final desc = compareDescription(s.description, m.description, header: descHeader);
     final descOn = options.checks('description');
     final fields = <FieldCompare>[if (descOn) desc];
+    // Totals never replace validation of every original source row.
+    void integrity(List<BomPart> parts, List<BomDocument> docs, bool isSingle) {
+      final records = isSingle ? singleRecords : mergedRecords;
+      final allRefs = isSingle ? singleRefCounts : mergedRefCounts;
+      for (final p in parts) {
+        final rows = [for (final id in p.recordIds) if (records[id] != null) records[id]!];
+        final conflicts = <String>[];
+        if (rows.isNotEmpty) {
+          final first = rows.first;
+          if (options.checks('dnp') && rows.any((r) => !knownFittedFlag(r.extra['dnp'] ?? ''))) { reasons.add('dnp_unsure'); }
+          for (final r in rows.skip(1)) {
+            if (descOn && !compareDescription(first.description, r.description).equal) { conflicts.add('${first.source}: ${first.description} / ${r.source}: ${r.description}'); }
+            if (options.checks('dnp') && first.dnp != r.dnp) { conflicts.add('${first.source} / ${r.source}: DNP ${first.dnp} / ${r.dnp}'); }
+            if (options.checks('level') && first.level != r.level) { conflicts.add('${first.source} / ${r.source}: level ${first.level} / ${r.level}'); }
+            for (final key in {...first.extra.keys, ...r.extra.keys}) {
+              if (!options.checks(key) || const ['dnp', 'level', 'alternate'].contains(key)) continue;
+              final x = first.extra[key] ?? '', y = r.extra[key] ?? '';
+              if (x.isNotEmpty && y.isNotEmpty && x != y) { conflicts.add('${first.source} / ${r.source}: $key $x / $y'); }
+            }
+          }
+          if (options.checks('quantity') && docs.any((d) => d.column(BomRole.quantity) != null) && rows.any((r) => r.quantity == null)) { reasons.add('qty_invalid'); }
+        }
+        if (conflicts.isNotEmpty) {
+          reasons.add('input_conflict');
+          fields.add(FieldCompare(key: 'input:${isSingle ? 'single' : 'merged'}:${p.partNo}', header: p.partNo, single: isSingle ? conflicts.join('\n') : '', merged: isSingle ? '' : conflicts.join('\n'), equal: false));
+        }
+        if (options.checks('refs') && p.refs.any((r) => (allRefs[r] ?? 0) > 1)) { reasons.add('duplicate_refs'); }
+        if (options.checks('quantity') && options.checks('refs') && p.quantity != null && p.refs.isNotEmpty && p.quantity != p.refs.length) { reasons.add('qty_refs'); }
+      }
+    }
+    integrity(ls, [single], true);
+    integrity(rs, [a, ?b], false);
+    if (options.checks('dnp') && !hasAll(srcs, BomRole.dnp) && [single, for (final tag in srcs) src(tag)].any((d) => d.column(BomRole.dnp) != null)) { reasons.add('dnp_unsure'); }
+    for (final role in [BomRole.quantity, BomRole.refs]) {
+      if (options.checks(role.name) && !hasAll(srcs, role) && [single, for (final tag in srcs) src(tag)].any((d) => d.column(role) != null)) { reasons.add('field_unavailable'); }
+    }
     if (hasAll(srcs, BomRole.quantity) && options.checks('quantity')) fields.add(compareExact('quantity', '', formatQuantity(s.quantity), formatQuantity(m.quantity)));
     final sRefs = s.refs.toSet(), mRefs = m.refs.toSet();
     final refsOk = hasAll(srcs, BomRole.refs) && options.checks('refs');
@@ -743,6 +807,7 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
     };
     for (final f in fields) {
       if (f.equal) continue;
+      if (f.key.startsWith('input:')) continue;
       reasons.add(switch (f.key) {
         'description' => compareParams(s.description, m.description).verdict == ParamVerdict.conflict ? 'param_conflict' : 'desc_text',
         'quantity' => 'qty',
@@ -751,20 +816,21 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
       });
     }
     if (altNote) reasons.add('alt_differs');
-    if (s.dnp != m.dnp && options.checks('dnp')) reasons.add(dnpSure ? 'dnp_differs' : 'dnp_unsure');
+    if (s.dnp != m.dnp && options.checks('dnp')) reasons.add(dnpSure && !reasons.contains('dnp_unsure') ? 'dnp_differs' : 'dnp_unsure');
     if (s.level != null && m.level != null && s.level != m.level && options.checks('level')) reasons.add('level');
-    if (descOn && desc.incomplete && desc.equal && (desc.singleSpans.isNotEmpty || desc.mergedSpans.isNotEmpty) && compareParams(s.description, m.description).verdict != ParamVerdict.incomplete) reasons.add('wording_unsure');
+    if (descOn && desc.incomplete && desc.equal && sameDescriptionTraits(s.description, m.description) && (desc.singleSpans.isNotEmpty || desc.mergedSpans.isNotEmpty) && compareParams(s.description, m.description).verdict != ParamVerdict.incomplete) reasons.add('wording_unsure');
     if (ls.length > 1 || rs.length > 1) reasons.add('split');
     if (!basis.firm) reasons.add('weak_match');
-    final hard = reasons.any((r) => const ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'dnp_differs', 'level'].contains(r));
+    final hard = reasons.any((r) => const ['param_conflict', 'desc_text', 'qty', 'refs', 'col', 'dnp_differs', 'level', 'input_conflict', 'duplicate_refs'].contains(r));
+    final uncertain = reasons.any((r) => const ['dnp_unsure', 'qty_invalid', 'qty_refs', 'field_unavailable'].contains(r));
     final CheckStatus status;
     if (hard) {
       // A conflict is only NG when the pairing itself is certain.
       status = basis.firm ? CheckStatus.ng : CheckStatus.review;
     } else if (pnDiffers) {
-      status = approved && basis.firm && ls.length == 1 && rs.length == 1 && !(descOn && desc.incomplete) ? CheckStatus.substitute : CheckStatus.review;
+      status = approved && basis.firm && ls.length == 1 && rs.length == 1 && !(descOn && desc.incomplete) && !uncertain ? CheckStatus.substitute : CheckStatus.review;
       if (status == CheckStatus.review && !approved) reasons.add('pn_differs');
-    } else if ((descOn && desc.incomplete) || reasons.contains('dnp_unsure') || !basis.firm) {
+    } else if ((descOn && desc.incomplete) || uncertain || !basis.firm) {
       if (descOn && desc.incomplete && !reasons.contains('wording_unsure')) reasons.add('param_incomplete');
       status = CheckStatus.review;
     } else {
@@ -783,7 +849,7 @@ CompareReport compareBoms(BomDocument single, BomDocument a, BomDocument? b, {Se
       extraRefs: extra,
       movedRefs: moved,
       basis: basis,
-      reasons: reasons,
+      reasons: reasons.toSet().toList(),
     );
   }
 

@@ -177,8 +177,8 @@ class BomRecord {
 /// The records of one part number (a part listed twice in a file is one
 /// part): what the comparison works on.
 class BomPart {
-  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds, this.dnp = false, this.level, this.alternates = const [], this.kind = ItemKind.unknown})
-    : recordIds = recordIds ?? [];
+  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds, this.dnp = false, this.level, this.alternates = const [], this.kind = ItemKind.unknown, List<String>? sourceDescriptions})
+    : recordIds = recordIds ?? [], sourceDescriptions = sourceDescriptions ?? [];
 
   /// [records] of one part number, in file order.
   factory BomPart.of(String partNo, Iterable<BomRecord> records) {
@@ -205,6 +205,7 @@ class BomPart {
       level: list.first.level,
       alternates: {for (final r in list) ...r.alternates}.toList(),
       kind: list.map((r) => r.kind).firstWhere((k) => k != ItemKind.unknown, orElse: () => ItemKind.unknown),
+      sourceDescriptions: list.map((r) => r.description).where((d) => d.isNotEmpty).toSet().toList(),
     );
   }
 
@@ -228,10 +229,13 @@ class BomPart {
   final List<String> alternates;
   final ItemKind kind;
 
+  /// All original descriptions, retained for assembly reminders after grouping.
+  final List<String> sourceDescriptions;
+
   /// Excel row numbers, for short display.
   List<int> get rows => [for (final s in sources) s.row];
 
-  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds], dnp: dnp, level: level, alternates: alternates, kind: kind);
+  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds], dnp: dnp, level: level, alternates: alternates, kind: kind, sourceDescriptions: [...sourceDescriptions]);
 }
 
 /// Something worth telling the user about a file.

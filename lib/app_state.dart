@@ -18,6 +18,7 @@ import 'core/history.dart';
 import 'core/local_ai/local_ai.dart';
 import 'core/local_ai/model_store.dart';
 import 'core/local_ai/semantic_match.dart';
+import 'core/local_ai/usage.dart';
 import 'core/settings.dart';
 import 'core/table_reader.dart';
 import 'core/report.dart';
@@ -64,10 +65,19 @@ enum UpdateStatus { idle, checking, upToDate, available, downloading, installing
 
 enum AiStatus { idle, running, done, failed }
 
-enum LocalStatus { idle, running, done, failed }
+enum LocalStatus { idle,
+  disabled,
+  unavailable,
+  notNeeded,
+  cloudOnly,
+  running, done, failed }
 
 class AppState extends ChangeNotifier {
-  AppState(this.settings, this.settingsDir, {ModelStore? models, KeyStore? keys, this.history}) : models = models ?? ModelStore.forApp(settingsDir), keys = keys ?? SecureKeyStore();
+  AppState(this.settings, this.settingsDir, {ModelStore? models, KeyStore? keys, this.history,
+    this.localModelsFactory,
+  }) : models = models ?? ModelStore.forApp(settingsDir), keys = keys ?? SecureKeyStore();
+  final Future<LocalModels> Function(ModelStore, LocalModelSpec)?
+  localModelsFactory;
 
   AppSettings settings;
   final String settingsDir;
@@ -115,6 +125,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> persist() => settings.save(settingsDir);
+
+  /// Restore runtime availability before the first check after launch.
+  /// A saved enabled switch alone does not populate the model status map.
+  Future<void> initialize() async {
+    await Future.wait([loadKeys(), refreshModels()]);
+  }
 
   LoadedFile? file(InputKind k) => switch (k) {
     InputKind.single => single,
@@ -296,7 +312,9 @@ class AppState extends ChangeNotifier {
 
   /// Uses [m] for the next checks.
   void setEmbeddingModel(LocalModelSpec m) {
+    if (localBusy) return;
     settings.embeddingModel = m.id;
+    localTestKey = localTestDetail = '';
     final old = _local;
     _local = null;
     old?.dispose();
@@ -335,6 +353,10 @@ class AppState extends ChangeNotifier {
   void cancelModelDownload(LocalModelSpec m) => _downloads[m.id]?.cancel();
 
   Future<void> deleteModel(LocalModelSpec m) async {
+    if (localBusy) return;
+    final old = _local;
+    _local = null;
+    await old?.dispose();
     await models.delete(m);
     await refreshModels();
   }
@@ -401,6 +423,17 @@ class AppState extends ChangeNotifier {
   }
 
   void _reset() {
+    _checkRun++;
+    _cloudCancel?.cancel();
+    _aiCancel?.cancel();
+    cloudRunning = false;
+    cloudRun = null;
+    cloudError = '';
+    localStatus = LocalStatus.idle;
+    localProgress = 0;
+    localPaired = localTexts = localMillis = 0;
+    localError = '';
+    _historyId = null;
     report = null;
     selected = null;
     ai = null;
@@ -415,22 +448,49 @@ class AppState extends ChangeNotifier {
   void runCheckNow() {
     if (single == null) throw UserMessage('msg_need_single');
     if (bomA == null) throw UserMessage('msg_need_a');
+    if (settings.checkMode != CheckMode.local && !cloudReady) {
+      throw UserMessage('err_cloud_no_key');
+    }
+    // Never start a second inference on the same native engine.
+    if (localBusy) throw UserMessage('local_wait');
+    _aiRun++;
+    _aiCancel?.cancel();
+    _cloudCancel?.cancel();
+    cloudRunning = false;
+    cloudRun = null;
+    cloudError = '';
+    final run = ++_checkRun;
     report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, options: settings.compareOptions);
     _historyId = HistoryStore.newId(report!.at);
     selected = null;
     ai = null;
     aiStatus = AiStatus.idle;
-    localStatus = LocalStatus.idle;
+    localStatus = settings.checkMode == CheckMode.cloudFull
+        ? LocalStatus.cloudOnly
+        : !settings.localAiEnabled
+        ? LocalStatus.disabled
+        : !localModelsReady
+        ? LocalStatus.unavailable
+        : report!.rows.any(
+                (r) => r.status == CheckStatus.unmatched && r.single != null,
+              ) &&
+              report!.rows.any(
+                (r) => r.status == CheckStatus.unmatched && r.merged != null,
+              )
+        ? LocalStatus.running
+        : LocalStatus.notNeeded;
+    localProgress = 0;
+    localPaired = localTexts = localMillis = 0;
+    localModelName = activeEmbedding.name;
     localError = '';
-    _checkedStatus();
+    report!.pending =
+        localStatus == LocalStatus.running ||
+        settings.checkMode != CheckMode.local;
+    if (settings.checkMode != CheckMode.cloudFull) _checkedStatus();
     notifyListeners();
-    final run = ++_checkRun;
-    cloudRun = null;
-    cloudError = '';
-    _cloudCancel?.cancel();
     if (settings.checkMode == CheckMode.cloudFull) {
       _runCloudFull(run);
-    } else if (settings.localAiEnabled && localModelsReady && report!.count(CheckStatus.unmatched) > 0) {
+    } else if (localStatus == LocalStatus.running) {
       // The local embedding model proposes counterparts for unmatched
       // lines; the cloud steps wait for its result.
       _runLocal(run);
@@ -470,20 +530,24 @@ class AppState extends ChangeNotifier {
   void cancelCloud() => _cloudCancel?.cancel();
 
   Future<void> _runHybrid(int run) async {
+    final localUsage = report!.localModel;
     final cancel = _cloudCancel = CloudCancel();
     cloudRunning = true;
     _status('status_cloud_running');
     notifyListeners();
     final (r, cr) = await hybridCheck(report!, cloudProvider, privacy: settings.privacy, cancel: cancel, onProgress: (p) {
-      cloudRun = p;
+        if (run != _checkRun) return;
+        cloudRun = p;
       notifyListeners();
     });
     if (run != _checkRun) return;
     report = r;
+    report!.localModel = localUsage;
     cloudRun = cr;
     cloudRunning = false;
+    _checkedStatus();
     if (cr.complete) {
-      _checkedStatus();
+      // Final metadata and history are already captured above.
     } else {
       // The local result stands where the cloud did not answer.
       _status('status_cloud_partial', {'done': cr.batchesDone, 'all': cr.batches, 'e': cr.errors.toSet().join(', ')});
@@ -512,6 +576,7 @@ class AppState extends ChangeNotifier {
         options: settings.compareOptions,
         cancel: cancel,
         onProgress: (p) {
+          if (run != _checkRun) return;
           cloudRun = p;
           notifyListeners();
         },
@@ -534,9 +599,25 @@ class AppState extends ChangeNotifier {
     report!
       ..mode = settings.checkMode.name
       ..models = [
-        if (localStatus == LocalStatus.done) activeEmbedding.name,
+        if (localStatus == LocalStatus.done && localTexts > 0) localModelName,
         if (settings.checkMode != CheckMode.local && cloudRun != null) '${settings.cloud.kind.name} ${settings.cloud.modelName}',
       ];
+    report!.localModel = LocalModelUsage(
+      state: localStatus.name,
+      model: localModelName,
+      texts: localTexts,
+      paired: localPaired,
+      millis: localMillis,
+      error: localError,
+    );
+    if (report!.pending) {
+      _status(
+        localStatus == LocalStatus.running
+            ? 'status_local_running'
+            : 'status_cloud_running',
+      );
+      return;
+    }
     if (report!.complete) {
       _status('status_checked', {
         'pass': report!.count(CheckStatus.pass),
@@ -629,35 +710,91 @@ class AppState extends ChangeNotifier {
 
   /// Lines the local model paired in the last check.
   int localPaired = 0;
+  int localTexts = 0;
+  int localMillis = 0;
+  String localModelName = '';
+  bool localTesting = false;
+  bool _localBusy = false;
+  bool get localBusy => _localBusy || localTesting;
+  String localTestKey = '';
+  String localTestDetail = '';
+  int localTestMillis = 0;
   int _checkRun = 0;
   LocalModels? _local;
 
   /// Opened on first use and kept for later checks.
-  Future<LocalModels> _localModels() async => _local ??= await LlamaLocalModels.open(models, embedding: activeEmbedding);
+  Future<LocalModels> _localModels() async => _local ??= await (localModelsFactory?.call(models, activeEmbedding) ??
+          LlamaLocalModels.open(models, embedding: activeEmbedding));
+
+  /// A separate real embedding call; success never claims a BOM used it.
+  Future<void> testLocalModel() async {
+    if (localBusy || !localModelsReady) return;
+    localTesting = true;
+    localTestKey = 'local_test_running';
+    localTestDetail = '';
+    notifyListeners();
+    final watch = Stopwatch()..start();
+    try {
+      final ai = await _localModels();
+      checkedVectors(
+        await ai.embed(['贴片电阻 10K 0402', 'Chip resistor 10kΩ 0402']),
+        2,
+      );
+      localTestKey = 'local_test_ok';
+    } catch (e) {
+      localTestKey = 'local_test_failed';
+      localTestDetail = '$e';
+      final old = _local;
+      _local = null;
+      await old?.dispose();
+    } finally {
+      localTestMillis = watch.elapsedMilliseconds;
+      localTesting = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> _runLocal(int run) async {
+    _localBusy = true;
     localStatus = LocalStatus.running;
     _status('status_local_running');
     notifyListeners();
+    final watch = Stopwatch()..start();
     try {
       final ai = await _localModels();
+      if (run != _checkRun) return;
       final first = report!;
-      final sug = await semanticSuggestions(first, ai, cancelled: () => run != _checkRun, onProgress: (p) {
-        localProgress = p;
+      final sug = await semanticSuggestions(first, ai, cancelled: () => run != _checkRun,
+        onEmbedded: (n) {
+          if (run == _checkRun) localTexts = n;
+        },
+        onProgress: (p) {
+          if (run != _checkRun) return;
+          localProgress = p;
         notifyListeners();
       });
       if (run != _checkRun) return;
       report = compareBoms(single!.bom, bomA!.bom, bomB?.bom, semantic: sug, options: settings.compareOptions);
+      report!.pending = settings.checkMode == CheckMode.hybrid;
       localPaired = sug.length;
+      localMillis = watch.elapsedMilliseconds;
       localStatus = LocalStatus.done;
       _checkedStatus();
-    } on LocalAiException catch (e) {
+    } catch (e) {
       if (run != _checkRun) return;
       // The rule result stands; the failure is shown, not hidden.
       localStatus = LocalStatus.failed;
-      localError = 'local_err_${e.code}';
-      _status('status_local_failed', {'e': e.code});
+      localMillis = watch.elapsedMilliseconds;
+      localError = e is LocalAiException
+          ? 'local_err_${e.code}'
+          : 'local_err_inference_failed';
+      report!.pending = false;
+      _checkedStatus();
+      _status('status_local_failed', {'e': '$e'});
+    } finally {
+      _localBusy = false;
     }
+    if (run != _checkRun) return;
     notifyListeners();
     _afterLocal(run);
   }
@@ -736,7 +873,7 @@ class AppState extends ChangeNotifier {
     aiErrorDetail = '';
     notifyListeners();
     try {
-      final result = await runAiCheck(cloudProvider, r, cancel: cancel);
+      final result = await runAiCheck(cloudProvider, r, cancel: cancel, privacy: settings.privacy);
       if (run != _aiRun) return;
       ai = result;
       aiStatus = AiStatus.done;
@@ -799,7 +936,11 @@ class AppState extends ChangeNotifier {
     return r.rows.where((row) {
       if (filter != null && row.status != filter) return false;
       if (riskFilter != null && riskOf(row) != riskFilter) return false;
-      if (reasonFilter != null && !row.reasons.contains(reasonFilter)) return false;
+      if (reasonFilter == 'orientation'
+          ? row.orientation.isEmpty
+          : reasonFilter != null && !row.reasons.contains(reasonFilter)) {
+        return false;
+      }
       if (q.isEmpty) return true;
       return row.partNo.toUpperCase().contains(q) ||
           row.description.toUpperCase().contains(q) ||

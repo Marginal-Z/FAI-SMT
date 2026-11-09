@@ -19,8 +19,8 @@ Future<void> main() async {
   final dir = (await getApplicationSupportDirectory()).path;
   final settings = await AppSettings.load(dir);
   final state = AppState(settings, dir, history: HistoryStore(p.join(dir, 'history')));
-  // The API key comes from the system key store.
-  await state.loadKeys();
+  // Restore secure keys and model availability before the first check.
+  await state.initialize();
   // First launch: walk the user through the main steps.
   if (!settings.tourDone) state.tourStep = 0;
   runApp(SmtFaiApp(state: state));

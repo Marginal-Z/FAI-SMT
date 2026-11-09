@@ -105,10 +105,12 @@ final _letter = RegExp(r'\p{L}', unicode: true);
 final _param = RegExp(r'\d+(?:\.\d+)?\s?(?:K|M|R|Ω|UF|NF|PF|MF|UH|NH|MH|V|W|A|%|MHZ|KHZ|HZ|PPM)\b|\b(?:01005|0201|0402|0603|0805|1206|1210|2512)\b', caseSensitive: false);
 
 double? parseQuantity(String s) {
-  final t = toHalfWidth(s).replaceAll(',', '').trim();
+  final t = toHalfWidth(s).trim();
   if (t.isEmpty) return null;
-  final m = RegExp(r'^-?\d+(?:\.\d+)?').firstMatch(t);
-  return m == null ? null : double.tryParse(m.group(0)!);
+  // Consume the whole cell; never silently truncate fractions or expressions.
+  final m = RegExp(r'^([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*(?:pcs?|ea|个|只|件)?$', caseSensitive: false).firstMatch(t);
+  final n = m == null ? null : double.tryParse(m.group(1)!.replaceAll(',', ''));
+  return n != null && n.isFinite && n >= 0 ? n : null;
 }
 
 String formatQuantity(double? q) {
@@ -119,7 +121,7 @@ String formatQuantity(double? q) {
 // ------------------------------------------------------------- header hints
 
 const _hints = <BomRole, List<String>>{
-  BomRole.partNo: ['料号', '料件编号', '物料编码', '物料编号', '物料代码', '品号', '元件编号', '组件料号', '编码', '品番', '部品コード', '품번', '품목코드', 'código', 'codigo', 'référence', 'artikelnummer', 'partno', 'partnumber', 'p/n', 'pn', 'itemcode', 'material'],
+  BomRole.partNo: ['料号', '料件编号', '物料编码', '物料编号', '物料代码', '品号', '元件编号', '组件料号', '编码', '品番', '部品コード', '품번', '품목코드', 'código', 'codigo', 'référence', 'artikelnummer', 'partno', 'partnumber', 'p/n', 'pn', 'sku', 'itemcode', 'material'],
   BomRole.description: ['描述', '品名', '规格', '名称', '型号规格', '物料名称', '物料描述', '品名・仕様', '仕様', '품명', '규격', 'descripción', 'descripcion', 'désignation', 'bezeichnung', 'wert', 'valor', 'valeur', '値', 'description', 'desc', 'value', 'comment', 'spec'],
   BomRole.quantity: ['用量', '数量', '组成用量', '单机用量', '单位用量', '員数', '数量', '수량', 'cantidad', 'quantité', 'menge', 'anzahl', 'qty', 'quantity', 'count', 'usage'],
   BomRole.refs: ['位号', '插件位置', '元件位置', '点位', '位置', '部品番号', '回路番号', '부품위치', '위치번호', 'referencias', 'repères', 'bestückungsplatz', 'designator', 'reference', 'refdes', 'ref', 'location', 'position'],
@@ -139,6 +141,14 @@ const _codeWords = ['p/n', 'pn', 'no', 'number', 'code', '#', 'part', '编码', 
 const _fittedHeaders = ['fitted', 'populate', 'populated', 'mounted', '贴装', '是否贴装', '是否安装', '是否上件', '是否装配', '装配', '上件', 'bestückt'];
 const _yes = {'y', 'yes', '是', '1', 'x', 'true', '√', 'ja', 'ใช่'};
 const _no = {'n', 'no', '否', '0', 'false', '-', 'nein', 'ไม่'};
+
+/// Whether a fitted flag can be interpreted, rather than silently treating
+/// an unfamiliar value as fitted. Empty flags follow the current BOM policy.
+bool knownFittedFlag(String value) {
+  final t = cleanCell(value).toLowerCase();
+  return t.isEmpty || _yes.contains(t) || _no.contains(t) || isDnpText(t) ||
+      const {'fitted', 'populated', 'mounted', '装', '贴', '安装', '已贴', '已装', '贴装'}.contains(t);
+}
 
 String _norm(String h) => toHalfWidth(h).toLowerCase().replaceAll(RegExp(r'[\s_]+'), '');
 
@@ -253,7 +263,9 @@ int _headerRow(Grid g) {
     final cells = g.rows[r].where((c) => c.trim().isNotEmpty).toList();
     if (cells.length < 3) continue;
     final textOnly = cells.every((c) => !_numberCell.hasMatch(cleanCell(c)));
-    final next = g.rows[r + 1].where((c) => c.trim().isNotEmpty).toList();
+    var nextRow = r + 1;
+    while (nextRow < g.rows.length && g.rows[nextRow].every((c) => c.trim().isEmpty)) { nextRow++; }
+    final next = nextRow < g.rows.length ? g.rows[nextRow].where((c) => c.trim().isNotEmpty).toList() : <String>[];
     if (textOnly && next.length >= 3 && next.any((c) => _numberCell.hasMatch(cleanCell(c)) || splitRefs(c).every(_designator.hasMatch))) return r;
     return -1;
   }
@@ -459,7 +471,11 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   };
   used.addAll(indexCols);
 
-  var refsCol = pick((c) => features[c].refs * features[c].fill + features[c].refsMany * 0.4 + _hint(header(c), BomRole.refs) * 0.8);
+  var refsCol = pick((c) {
+    // A PN such as P1001 can look like a designator. Respect an explicit PN header.
+    if (_hint(header(c), BomRole.partNo) >= 0.7 && _hint(header(c), BomRole.refs) == 0) return 0;
+    return features[c].refs * features[c].fill + features[c].refsMany * 0.4 + _hint(header(c), BomRole.refs) * 0.8;
+  });
   // Quantity: numbers, best when they match the designator count.
   double qtyMatch(int c) {
     if (refsCol == null) return 0;
@@ -585,6 +601,7 @@ BomDocument _readSheet(Grid g, {required String file, required String id, requir
   bool fittedPolarity() {
     if (dnpCol == null) return false;
     final h = _norm(header(dnpCol));
+    if (h.contains('notfitted') || h.contains('不贴') || h.contains('空贴')) return false;
     if (_fittedHeaders.any((w) => h.contains(w))) return true;
     if (_hint(header(dnpCol), BomRole.dnp) > 0) return false;
     final v = [for (final r in data) cleanCell(g.cell(r, dnpCol)).toLowerCase()].where((x) => x.isNotEmpty);
