@@ -96,12 +96,13 @@ void main() {
     expect(r.rows.where((x) => x.reasons.contains('cloud_missing')).every((x) => x.status != CheckStatus.pass), isTrue);
   });
 
-  test('a cut-off answer is not used', () async {
+  test('a cut-off batch is replaced by complete smaller answers', () async {
     final m = mutateBom(8);
     oracle([m.left.grid, m.right], truncate: true);
     final (r, run) = await cloudFullCheck([m.left.grid], [m.right], null, provider(), batchSize: 100);
-    expect(run.errors, contains('truncated'));
-    expect(r.complete, isFalse);
+    expect(run.errors, isEmpty);
+    expect(run.complete, isTrue);
+    expect(r.complete, isTrue);
   });
 
   test('invented counterparts are dropped', () async {

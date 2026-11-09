@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'bom.dart';
 import 'bom_compare.dart';
 import 'cloud/provider.dart';
+import 'cloud/batching.dart';
 import 'cloud/hybrid.dart' show PrivacyOptions;
 
 enum AiSeverity { error, warning, info }
@@ -70,7 +71,7 @@ const _system = '''你是电子制造（SMT）BOM 核对专家。用户给出两
 1. 料号缺失或多出（只在一侧出现）。
 2. 用量不一致；用量与位号数量不符。
 3. 位号缺失、多出、重复，或同一位号出现在不同料号下。
-4. 物料描述：只比较参数（阻值、容值、电感量、电压、功率、精度、温度系数、封装尺寸、型号等英文与数字）。中文名称多一个字、少一个字或长短不同但参数一致视为一致；参数不同必须指出。参数写法不同但等价（如 10K 与 10KΩ、0.1uF 与 100nF）请说明是否等价。
+4. 物料描述：核对阻值、容值、电感量、电压、功率、精度、温度系数、封装、型号，也核对颜色、极性及介质/材质。通用名称写法不同但规格一致可视为等价；不能忽略中文里的区分特征，信息不足时提示复核。参数写法不同但等价（如 10K 与 10KΩ、0.1uF 与 100nF）请说明是否等价。
 5. 其他列（extra）的内容必须完全一致，任何不同都要指出。
 只输出一个 JSON 对象，不要输出其他文字：
 {"summary":"中文总结：整体是否一致、主要问题与建议","findings":[{"partNo":"料号","field":"description|quantity|refs|partNo|其他列名","side":"single|merged|both","severity":"error|warning|info","message":"中文说明","singleValue":"A-BOM 中的值","mergedValue":"B+C 中的值"}]}
@@ -80,7 +81,8 @@ String _clip(String s, int n) => s.length <= n ? s : '${s.substring(0, n)}…';
 
 /// The comparison as compact JSON for the prompt. Large BOMs send the
 /// differing rows in full and only the part numbers of matching rows.
-String comparisonJson(CompareReport report, {PrivacyOptions privacy = const PrivacyOptions(otherColumns: true), Map<String, String>? aliases}) {
+String comparisonJson(CompareReport report, {PrivacyOptions privacy = const PrivacyOptions(otherColumns: true), Map<String, String>? aliases, List<CompareRow>? rows}) {
+  final included = rows ?? report.rows;
   final names = aliases ?? <String, String>{};
   String name(String pn) => privacy.partNumbers ? pn : names.putIfAbsent(pn, () => 'P${names.length + 1}');
   Map<String, dynamic> side(BomPart? p) => p == null
@@ -92,13 +94,13 @@ String comparisonJson(CompareReport report, {PrivacyOptions privacy = const Priv
           if (privacy.designators) 'refs': p.refs.join(',') else 'designatorCount': p.refs.length,
           if (privacy.otherColumns && p.extra.values.any((v) => v.isNotEmpty)) 'extra': {for (final e in p.extra.entries) if (e.value.isNotEmpty) report.compared[e.key] ?? e.key: e.value},
         };
-  final big = report.rows.length > 400;
+  final big = included.length > 400;
   return jsonEncode({
     if (privacy.otherColumns) 'columnsCompared': report.compared.values.toList(),
     if (privacy.otherColumns) 'columnsOnlyInSingle': report.singleOnlyColumns,
     if (privacy.otherColumns) 'columnsOnlyInMerged': report.mergedOnlyColumns,
     'rows': [
-      for (final r in report.rows)
+      for (final r in included)
         if (!big || r.status != CheckStatus.pass)
           {
             'partNo': name(r.partNo),
@@ -110,7 +112,7 @@ String comparisonJson(CompareReport report, {PrivacyOptions privacy = const Priv
             'merged': side(r.merged),
           },
     ],
-    if (big) 'matchingPartNumbers': [for (final r in report.rows) if (r.status == CheckStatus.pass) name(r.partNo)],
+    if (big) 'matchingPartNumbers': [for (final r in included) if (r.status == CheckStatus.pass) name(r.partNo)],
   });
 }
 
@@ -154,21 +156,46 @@ const _schema = {
 /// part not in the check are dropped: nothing invented reaches the screen.
 Future<AiResult> runAiCheck(CloudProvider provider, CompareReport report, {CloudCancel? cancel, PrivacyOptions privacy = const PrivacyOptions()}) async {
   final aliases = <String, String>{};
-  final payload = comparisonJson(report, privacy: privacy, aliases: aliases);
-  final originals = {for (final e in aliases.entries) e.value: e.key};
-  final reply = await provider.ask(system: _system, user: payload, schema: _schema, maxTokens: 8192, cancel: cancel);
-  final known = {for (final r in report.rows) ...[r.partNo, ...r.singleParts.map((p) => p.partNo), ...r.mergedParts.map((p) => p.partNo)]};
-  final findings = [
-    for (final f in (reply.json['findings'] as List? ?? const []))
-      if (f is Map) AiFinding.fromJson({...f.cast<String, dynamic>(), 'partNo': originals['${f['partNo']}'] ?? f['partNo']}),
-  ];
+  String payload(List<CompareRow> rows) => comparisonJson(report, privacy: privacy, aliases: aliases, rows: rows);
+  final batches = <List<CompareRow>>[];
+  var pending = <CompareRow>[];
+  for (final row in report.rows) {
+    if (pending.isNotEmpty && (pending.length >= 12 || utf8.encode(payload([...pending, row])).length > 32000)) {
+      batches.add(pending);
+      pending = [];
+    }
+    pending.add(row);
+  }
+  if (pending.isNotEmpty) batches.add(pending);
+  final findings = <AiFinding>[];
+  final summaries = <String>[];
+  final usage = Usage();
+  var dropped = 0;
+  for (final initial in batches) {
+    await adaptiveCloudBatch<CompareRow>(initial,
+      request: (batch) => provider.ask(
+        system: '$_system\n当前是分批分析，只分析本批提供的物料，不对未提供物料下结论。总结仅说明本批；说明保持简洁，不重复同一问题，不抄写长段输入。',
+        user: payload(batch), schema: _schema, maxTokens: 1024 + 512 * batch.length, cancel: cancel),
+      onReply: (batch, reply) {
+        usage.add(reply.usage);
+        summaries.add('${reply.json['summary'] ?? ''}'.trim());
+        final originals = {for (final e in aliases.entries) e.value: e.key};
+        final known = {for (final r in batch) ...[r.partNo, ...r.singleParts.map((p) => p.partNo), ...r.mergedParts.map((p) => p.partNo)]};
+        for (final f in (reply.json['findings'] as List? ?? const [])) {
+          if (f is! Map) continue;
+          final finding = AiFinding.fromJson({...f.cast<String, dynamic>(), 'partNo': originals['${f['partNo']}'] ?? f['partNo']});
+          if (known.contains(finding.partNo)) { findings.add(finding); } else { dropped++; }
+        }
+      },
+      onSplit: (e) { if (e.usage != null) usage.add(e.usage!); },
+      onError: (_, error) => throw error,
+      cancel: cancel,
+    );
+    if (cancel?.cancelled ?? false) throw CloudException('cancelled');
+  }
   return AiResult(
-    summary: '${reply.json['summary'] ?? ''}'.trim(),
-    findings: [for (final f in findings) if (known.contains(f.partNo)) f],
-    dropped: findings.where((f) => !known.contains(f.partNo)).length,
-    model: provider.model,
-    at: DateTime.now(),
-    usage: reply.usage,
+    summary: summaries.length <= 1 ? summaries.join() : [for (var i = 0; i < summaries.length; i++) '[${i + 1}/${summaries.length}] ${summaries[i]}'].join('\n'),
+    findings: findings, dropped: dropped, model: provider.model, at: DateTime.now(), usage: usage,
   );
 }
 

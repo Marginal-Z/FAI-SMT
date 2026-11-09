@@ -40,7 +40,7 @@ class ProviderPreset {
 
 const providerPresets = {
   ProviderKind.openai: ProviderPreset(ProviderKind.openai, 'https://api.openai.com/v1', 'gpt-4o-mini', Price(0.15, 0.6)),
-  ProviderKind.deepseek: ProviderPreset(ProviderKind.deepseek, 'https://api.deepseek.com/v1', 'deepseek-chat', Price(0.27, 1.1), jsonSchema: false),
+  ProviderKind.deepseek: ProviderPreset(ProviderKind.deepseek, 'https://api.deepseek.com/v1', 'deepseek-flash', Price(0.3, 1.2), jsonSchema: false),
   ProviderKind.anthropic: ProviderPreset(ProviderKind.anthropic, 'https://api.anthropic.com', 'claude-sonnet-5-5', Price(3, 15)),
   ProviderKind.custom: ProviderPreset(ProviderKind.custom, '', '', Price(0, 0), jsonSchema: false),
 };
@@ -63,7 +63,17 @@ class ProviderConfig {
 
   ProviderPreset get preset => providerPresets[kind]!;
   String get url => (baseUrl.trim().isEmpty ? preset.baseUrl : baseUrl.trim()).replaceAll(RegExp(r'/+$'), '');
-  String get modelName => model.trim().isEmpty ? preset.model : model.trim();
+  bool get deepseek => kind == ProviderKind.deepseek || Uri.tryParse(url)?.host == 'api.deepseek.com';
+  bool get jsonSchema => preset.jsonSchema && !deepseek;
+  String get modelName {
+    final selected = model.trim().isEmpty ? preset.model : model.trim();
+    // Only migrate retired aliases on the official API, not custom gateways.
+    if (Uri.tryParse(url)?.host == 'api.deepseek.com' &&
+        const ['deepseek-chat', 'deepseek-reasoner'].contains(selected)) {
+      return 'deepseek-flash';
+    }
+    return selected;
+  }
   bool get anthropic => kind == ProviderKind.anthropic;
 
   Map<String, dynamic> toJson() => {
@@ -91,12 +101,13 @@ class ProviderConfig {
 }
 
 class CloudException implements Exception {
-  CloudException(this.code, [this.detail = '']);
+  CloudException(this.code, [this.detail = '', this.usage]);
 
   /// `no_key`, `http`, `auth`, `rate_limited`, `server`, `timeout`,
   /// `network`, `bad_reply`, `truncated`, `schema`, `cancelled`.
   final String code;
   final String detail;
+  final Usage? usage;
 
   @override
   String toString() => 'CloudException($code) $detail';
@@ -246,6 +257,9 @@ class HttpCloudProvider implements CloudProvider {
   Future<CloudReply> ask({required String system, required String user, required Map<String, dynamic> schema, int maxTokens = 4096, CloudCancel? cancel}) async {
     if (apiKey.trim().isEmpty && config.kind != ProviderKind.custom) throw CloudException('no_key');
     CloudException? last;
+    final spent = Usage();
+    var budget = config.deepseek ? math.max(4096, maxTokens) : maxTokens;
+    final ceiling = math.max(16384, budget);
     for (var attempt = 1; attempt <= config.maxRetries + 1; attempt++) {
       if (cancel?.cancelled ?? false) throw CloudException('cancelled');
       // Rate limit: keep a gap between requests.
@@ -256,14 +270,22 @@ class HttpCloudProvider implements CloudProvider {
       }
       _last = DateTime.now();
       try {
-        return await _once(system, user, schema, maxTokens, cancel, attempt);
+        final reply = await _once(system, user, schema, budget, cancel, attempt);
+        spent.add(reply.usage);
+        return CloudReply(reply.json, spent, reply.model);
       } on CloudException catch (e) {
         last = e;
+        spent.add(e.usage ?? Usage(requests: 1));
         // Worth another try: rate limits, server errors, network trouble,
         // and an answer that broke the schema.
-        final retry = const ['rate_limited', 'network', 'timeout', 'server', 'schema', 'bad_reply'].contains(e.code);
-        if (!retry || attempt > config.maxRetries) rethrow;
-        await Future<void>.delayed(Duration(milliseconds: (400 * math.pow(2, attempt - 1)).round()));
+        final grow = e.code == 'truncated' && budget < ceiling;
+        final retry = grow || const ['rate_limited', 'network', 'timeout', 'server', 'schema', 'bad_reply'].contains(e.code);
+        if (!retry || attempt > config.maxRetries) throw CloudException(e.code, e.detail, spent);
+        if (grow) {
+          budget = math.min(ceiling, budget * 2);
+        } else {
+          await Future<void>.delayed(Duration(milliseconds: (400 * math.pow(2, attempt - 1)).round()));
+        }
       }
     }
     throw last!;
@@ -273,6 +295,7 @@ class HttpCloudProvider implements CloudProvider {
     final http = client ?? (HttpClient()..connectionTimeout = const Duration(seconds: 20));
     final sw = Stopwatch()..start();
     var status = 0;
+    var usage = Usage(requests: 1);
     void cancelNow() => http.close(force: true);
     cancel?._onCancel.add(cancelNow);
     try {
@@ -308,10 +331,11 @@ class HttpCloudProvider implements CloudProvider {
               'temperature': 0,
               'max_tokens': maxTokens,
               'messages': [
-                {'role': 'system', 'content': config.preset.jsonSchema ? system : '$system$schemaNote'},
+                {'role': 'system', 'content': config.jsonSchema ? system : '$system$schemaNote'},
                 {'role': 'user', 'content': user},
               ],
-              'response_format': config.preset.jsonSchema
+              if (config.deepseek) 'thinking': {'type': 'disabled'},
+              'response_format': config.jsonSchema
                   ? {
                       'type': 'json_schema',
                       'json_schema': {'name': 'answer', 'schema': schema, 'strict': false},
@@ -327,7 +351,7 @@ class HttpCloudProvider implements CloudProvider {
       if (status >= 500) throw CloudException('server', '$status ${_clip(text)}');
       if (status < 200 || status >= 300) throw CloudException('http', '$status ${_clip(text)}');
       final j = jsonDecode(text) as Map<String, dynamic>;
-      final usage = _usage(j);
+      usage = _usage(j);
       Map<String, dynamic>? answer;
       if (a) {
         if (j['stop_reason'] == 'max_tokens') throw CloudException('truncated');
@@ -346,9 +370,9 @@ class HttpCloudProvider implements CloudProvider {
       onRecord?.call(RequestRecord(at: DateTime.now(), provider: name, model: model, status: status, millis: sw.elapsedMilliseconds, usage: usage, attempt: attempt));
       return CloudReply(answer, usage, model);
     } on CloudException catch (e) {
-      onRecord?.call(RequestRecord(at: DateTime.now(), provider: name, model: model, status: status, millis: sw.elapsedMilliseconds, usage: Usage(requests: 1), error: '${e.code} ${e.detail}', attempt: attempt));
+      onRecord?.call(RequestRecord(at: DateTime.now(), provider: name, model: model, status: status, millis: sw.elapsedMilliseconds, usage: usage, error: '${e.code} ${e.detail}', attempt: attempt));
       if (cancel?.cancelled ?? false) throw CloudException('cancelled');
-      rethrow;
+      throw CloudException(e.code, e.detail, usage);
     } on TimeoutException {
       onRecord?.call(RequestRecord(at: DateTime.now(), provider: name, model: model, status: status, millis: sw.elapsedMilliseconds, usage: Usage(requests: 1), error: 'timeout', attempt: attempt));
       throw CloudException('timeout');

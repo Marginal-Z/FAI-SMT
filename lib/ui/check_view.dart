@@ -154,6 +154,7 @@ class _CheckViewState extends State<CheckView> {
     final narrow = widget.cards;
     final pad = EdgeInsets.fromLTRB(narrow ? 16 : 24, phone ? 4 : 6, narrow ? 16 : 24, 0);
     final imports = ImportBar(state: state);
+    final models = LocalModelIndicator(state: state);
 
     if (report == null) {
       final hint = DCard(
@@ -167,14 +168,14 @@ class _CheckViewState extends State<CheckView> {
       if (phone) {
         return ListView(
           padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + 12),
-          children: [imports, const SizedBox(height: 14), SizedBox(height: 260, child: hint)],
+          children: [imports, const SizedBox(height: 12), models, const SizedBox(height: 14), SizedBox(height: 260, child: hint)],
         );
       }
       return Padding(
         padding: pad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [imports, const SizedBox(height: 16), Expanded(child: hint), const SizedBox(height: 16)],
+          children: [imports, const SizedBox(height: 12), models, const SizedBox(height: 16), Expanded(child: hint), const SizedBox(height: 16)],
         ),
       );
     }
@@ -361,7 +362,7 @@ class _CheckViewState extends State<CheckView> {
     final aiPanel = _AiPanel(state: state);
     final showAi = state.settings.aiEnabled && state.aiStatus != AiStatus.idle;
 
-    if (phone) return _phonePage(context, [top, if (showAi) ...[aiPanel, const SizedBox(height: 12)], filters, const SizedBox(height: 12)], visible, pad);
+    if (phone) return _phonePage(context, [top, models, const SizedBox(height: 12), if (showAi) ...[aiPanel, const SizedBox(height: 12)], filters, const SizedBox(height: 12)], visible, pad);
 
     final table = visible.isEmpty
         ? DCard(
@@ -383,7 +384,7 @@ class _CheckViewState extends State<CheckView> {
             clip: true,
             child: LayoutBuilder(
               builder: (context, box) {
-                final width = math.max(box.maxWidth, 980.0);
+                final width = math.max(box.maxWidth, 1240.0);
                 return ThinScrollbar(
                   controller: _hScroll,
                   horizontal: true,
@@ -435,6 +436,8 @@ class _CheckViewState extends State<CheckView> {
             : keyedTable;
         final children = [
           top,
+          models,
+          const SizedBox(height: 12),
           if (!side && showAi) ...[aiPanel, const SizedBox(height: 12)],
           if (!wideTop) ...[filters, const SizedBox(height: 14)],
           short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
@@ -630,6 +633,7 @@ const _cols = [
   (90.0, 0.0), // quantity
   (190.0, 1.1), // designators
   (110.0, 0.0), // other columns
+  (220.0, 0.6), // orientation reminders
   (96.0, 0.0), // result
 ];
 
@@ -664,7 +668,8 @@ class _HeaderRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(color: c.solid, borderRadius: c.r(14)),
-      child: _gridRow([Text('#', style: style), t('f_part_no'), t('f_desc_both'), t('f_qty_both'), t('f_refs'), t('f_other'), t('f_result')]),
+      child: _gridRow([Text('#', style: style), t('f_part_no'), t('f_desc_both'), t('f_qty_both'), t('f_refs'), t('f_other'),
+        t('orientation_title'), t('f_result')]),
     );
   }
 }
@@ -783,11 +788,6 @@ class _ResultRow extends StatelessWidget {
               // Long numbers wrap rather than being cut off.
               Text(row.partNo, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.tx)),
               if (row.sources.isNotEmpty) Text(row.sourceNames.join(' + '), style: TextStyle(fontSize: 11, color: c.tx3)),
-              if (row.orientation.isNotEmpty)
-                Text(
-                  s.t('orientation_title'),
-                  style: TextStyle(fontSize: 11.5, color: c.warnTx),
-                ),
             ],
           ),
           cell(_sides(context, desc, single: row.single?.description, merged: row.merged?.description), diff: desc != null && !desc.equal),
@@ -807,6 +807,7 @@ class _ResultRow extends StatelessWidget {
                   tooltip: otherDiffs.map((f) => '${fieldLabel(s, f)}: ${f.single} ≠ ${f.merged}').join('\n'),
                   builder: (context, hover, _) => DBadge(text: s.t('other_diff', {'n': otherDiffs.length}), background: c.warnTint, color: c.warnTx),
                 ),
+          _OrientationCell(row: row),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -879,11 +880,29 @@ class _RowCard extends StatelessWidget {
             ],
             const SizedBox(height: 6),
             _refChips(context, row, max: 8),
-            if (row.orientation.isNotEmpty)
-              Text(
+            if (row.orientation.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: c.warnTint,
+                  borderRadius: c.r(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
                 s.t('orientation_title'),
-                style: TextStyle(fontSize: 12, color: c.warnTx),
+                style: TextStyle(fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: c.warnTx),
               ),
+                    const SizedBox(height: 4),
+                    _OrientationCell(row: row),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -891,6 +910,58 @@ class _RowCard extends StatelessWidget {
   }
 }
 
+/// Compact, actionable reminders. Full evidence stays in the part detail.
+class _OrientationCell extends StatelessWidget {
+  const _OrientationCell({required this.row});
+  final CompareRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    if (row.orientation.isEmpty) {
+      return Text('—', style: TextStyle(color: c.tx3));
+    }
+    final tip = [
+      for (final h in row.orientation)
+        '${s.t('orientation_${h.code}')}\n${h.evidence}\n${h.refs.isEmpty ? s.t('orientation_no_refs') : h.refs.join(', ')}',
+      s.t('orientation_scope'),
+    ].join('\n\n');
+    return Hoverable(
+      key: ValueKey('orientation-${row.partNo}'),
+      tooltip: tip,
+      cursor: SystemMouseCursors.help,
+      builder: (context, hover, _) => Padding(
+        padding: const EdgeInsets.only(right: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final h in row.orientation) ...[
+              Text(
+                s.t('orientation_short_${h.code}'),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  color: c.warnTx,
+                ),
+              ),
+              Text(
+                h.refs.isEmpty
+                    ? s.t('orientation_no_refs')
+                    : '${h.refs.take(6).join(', ')}${h.refs.length > 6 ? ' … (+${h.refs.length - 6})' : ''}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, height: 1.4, color: c.tx2),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 /// The selected part: every compared field side by side, designator
 /// differences and the AI's notes.
 class _Detail extends StatelessWidget {

@@ -159,7 +159,8 @@ class _TourOverlayState extends State<TourOverlay> {
       builder: (context, box) {
         const cardW = 360.0;
         final size = box.biggest;
-        final hole = target?.inflate(6);
+        final visible = target?.intersect(Offset.zero & size);
+        final hole = visible != null && !visible.isEmpty ? visible.inflate(6) : null;
         // Callout below the target when it fits, else above, else beside it,
         // else inside its lower right corner (targets as large as the page).
         const cardH = 250.0;
@@ -170,9 +171,9 @@ class _TourOverlayState extends State<TourOverlay> {
           double clampX(double x) => x.clamp(16.0, math.max(16.0, size.width - cardW - 16)).toDouble();
           double clampY(double y) => y.clamp(16.0, math.max(16.0, size.height - cardH - 16)).toDouble();
           if (hole.bottom + 14 + cardH < size.height) {
-            pos = Offset(clampX(hole.center.dx - cardW / 2), hole.bottom + 14);
+            pos = Offset(clampX(hole.center.dx - cardW / 2), clampY(hole.bottom + 14));
           } else if (hole.top - 14 - cardH > 0) {
-            pos = Offset(clampX(hole.center.dx - cardW / 2), hole.top - 14 - cardH);
+            pos = Offset(clampX(hole.center.dx - cardW / 2), clampY(hole.top - 14 - cardH));
           } else if (hole.right + 14 + cardW < size.width) {
             pos = Offset(hole.right + 14, clampY(hole.center.dy - cardH / 2));
           } else if (hole.left - 14 - cardW > 0) {

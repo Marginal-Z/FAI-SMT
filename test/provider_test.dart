@@ -81,9 +81,9 @@ void main() {
 
   test('a cut-off reply is an error, never a partial answer', () async {
     server.replies.add(FakeReply.openai('{"kind": "resis', finish: 'length'));
-    await expectLater(provider(ProviderKind.openai).ask(system: 's', user: 'u', schema: schema), throwsA(isA<CloudException>().having((e) => e.code, 'code', 'truncated')));
+    await expectLater(provider(ProviderKind.openai, retries: 0).ask(system: 's', user: 'u', schema: schema), throwsA(isA<CloudException>().having((e) => e.code, 'code', 'truncated')));
     server.replies.add(FakeReply.anthropic({'kind': 'resistor'}, stop: 'max_tokens'));
-    await expectLater(provider(ProviderKind.anthropic).ask(system: 's', user: 'u', schema: schema), throwsA(isA<CloudException>().having((e) => e.code, 'code', 'truncated')));
+    await expectLater(provider(ProviderKind.anthropic, retries: 0).ask(system: 's', user: 'u', schema: schema), throwsA(isA<CloudException>().having((e) => e.code, 'code', 'truncated')));
   });
 
   test('a wrong key is not retried', () async {

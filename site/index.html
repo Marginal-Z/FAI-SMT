@@ -260,7 +260,7 @@ footer a:hover{color:var(--tx)}
       <a class="btn primary" href="#download" id="heroDl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg><span>免费下载</span></a>
       <a class="btn ghost" href="#tutorial">查看使用教程</a>
     </div>
-    <div class="meta rv"><span id="verLine">最新版本 v3.2.0</span> · Windows · Android · Linux · 本地核对不上传 BOM</div>
+    <div class="meta rv"><span id="verLine">最新版本 v3.2.1</span> · Windows · Android · Linux · 本地核对不上传 BOM</div>
     <div class="hero-shot rv">
       <div class="shot"><img class="only-light" src="assets/check.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面" fetchpriority="high"><img class="only-dark" src="assets/check-dark.webp" width="1440" height="900" alt="SMT-FAI BOM 核对界面（深色）" loading="lazy"></div>
     </div>
@@ -402,8 +402,8 @@ footer a:hover{color:var(--tx)}
             <li>表格中不一致的单元格填色，不同的字符加粗高亮；位号标出 B+C 缺少（缺）和多出（多）的。</li>
             <li>点击一行，右侧逐列对比 A-BOM 与 B+C 的值，并显示来源行号。</li>
             <li>按料号、位号或描述搜索，按结果筛选。</li>
-            <li>选择原因筛选中的 <b>方向核对提醒</b>，查看依据及位号；仍需人工对照规格书、PCB 丝印与首件实物。</li>
-            <li>核对页显示本次本地模型是否实际调用；在 <b>设置 → 本地模型</b> 运行推理自检，核实加载与向量推理。</li>
+            <li>结果表格的 <b>方向核对提醒</b> 栏直接显示检查项和位号；仍需人工对照规格书、PCB 丝印与首件实物。</li>
+            <li>核对页可直接开关和选择本地模型，并显示本次实际调用记录；在 <b>设置 → 本地模型</b> 运行推理自检。</li>
             <li>每次核对自动保存到 <b>核对记录</b>（右上角时钟图标）：原始文件副本、SHA-256、结果与当时的报告，可按文件名、料号或描述长期查询追溯。</li>
             <li>在 <b>设置 → 核对与输出</b> 选择参与核对的字段、报告包含的列和报告列出的结果。</li>
           </ol>
@@ -416,6 +416,7 @@ footer a:hover{color:var(--tx)}
           <ol>
             <li>打开「设置 → AI 核对」，选择 <b>OpenAI 兼容</b>（OpenAI、DeepSeek、通义千问、Kimi、Ollama、vLLM 等）或 <b>Anthropic</b>。</li>
             <li>填写接口地址（留空为官方地址）、API Key 与模型，点 <b>测试连接</b>。</li>
+            <li>DeepSeek 官方接口默认使用 <b>deepseek-flash</b>，结构化核对使用非思考模式；回答被截断时自动增加输出预算，并按需拆小批次重试。</li>
             <li>在核对页打开「AI 核对」开关。之后每次核对完成都会自动分析，结果显示在表格右侧。</li>
             <li>AI 标记的料号带青色标识；点击一条发现即可跳到对应料号。</li>
           </ol>
@@ -481,7 +482,7 @@ footer a:hover{color:var(--tx)}
         </div>
       </div>
     </div>
-    <p class="ver" id="verInfo">当前版本 <b>v3.2.0</b> · <a href="https://github.com/Marginal-Z/FAI-SMT/releases/latest">更新说明与全部安装包</a></p>
+    <p class="ver" id="verInfo">当前版本 <b>v3.2.1</b> · <a href="https://github.com/Marginal-Z/FAI-SMT/releases/latest">更新说明与全部安装包</a></p>
   </div>
 </section>
 
@@ -525,7 +526,7 @@ footer a:hover{color:var(--tx)}
 
 <script>
 (function(){
-  var REPO='Marginal-Z/FAI-SMT', FALLBACK='3.2.0';
+  var REPO='Marginal-Z/FAI-SMT', FALLBACK='3.2.1';
   document.getElementById('yr').textContent=new Date().getFullYear();
 
   // Theme toggle (remembered per browser).

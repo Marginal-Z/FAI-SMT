@@ -2,6 +2,9 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/services.dart';
 
 import 'package:flutter/widgets.dart';
 
@@ -944,12 +947,21 @@ String formatTime(DateTime t) {
 
 /// Compact select box that opens a list below it.
 class DropdownSelect<T> extends StatefulWidget {
-  const DropdownSelect({super.key, required this.value, required this.options, required this.onChanged, this.width = 150, this.flat = false});
+  const DropdownSelect({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.width = 150,
+    this.flat = false,
+    this.optionMaxLines = 1,
+  });
 
   final T value;
   final List<(T, String)> options;
-  final ValueChanged<T> onChanged;
+  final ValueChanged<T>? onChanged;
   final double width;
+  final int optionMaxLines;
 
   /// Inside a card: hover tint, no glass shadow.
   final bool flat;
@@ -961,102 +973,233 @@ class DropdownSelect<T> extends StatefulWidget {
 class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
   final _portal = OverlayPortalController();
   final _link = LayerLink();
+  final _focus = FocusNode();
+  final _target = GlobalKey();
+  bool _focused = false;
+  bool _above = false;
+  double _menuHeight = 320;
+  double _menuWidth = 150;
+  int _highlight = 0;
+
+  void _toggle() {
+    if (widget.onChanged == null) return;
+    _focus.requestFocus();
+    final box = _target.currentContext!.findRenderObject()! as RenderBox;
+    final top = box.localToGlobal(Offset.zero).dy;
+    _menuWidth = math.max(150, box.size.width);
+    final media = MediaQuery.of(context);
+    final below =
+        media.size.height - media.padding.bottom - top - box.size.height - 12;
+    final above = top - media.padding.top - 12;
+    _above = below < 280 && above > below;
+    _menuHeight = math.max(48, math.min(320, _above ? above : below));
+    _highlight = widget.options.indexWhere((o) => o.$1 == widget.value);
+    if (_highlight < 0) _highlight = 0;
+    _portal.toggle();
+  }
+
+  void _choose(T value) {
+    _portal.hide();
+    widget.onChanged?.call(value);
+  }
+
+  KeyEventResult _key(FocusNode node, KeyEvent event) {
+    if (widget.onChanged == null || event is KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape && _portal.isShowing) {
+      _portal.hide();
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.space) {
+      if (_portal.isShowing) {
+        _choose(widget.options[_highlight].$1);
+      } else {
+        _toggle();
+      }
+    } else if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.arrowUp) {
+      if (!_portal.isShowing) {
+        _toggle();
+      } else {
+        setState(
+          () => _highlight =
+              (_highlight + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)) %
+              widget.options.length,
+        );
+      }
+    } else if (key == LogicalKeyboardKey.tab) {
+      _portal.hide();
+      return KeyEventResult.ignored;
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final m = Metrics.of(context);
-    final current = widget.options.firstWhere((o) => o.$1 == widget.value, orElse: () => widget.options.first);
-    return CompositedTransformTarget(
-      link: _link,
-      child: OverlayPortal(
-        controller: _portal,
-        overlayChildBuilder: (_) => Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _portal.hide),
-            ),
-            CompositedTransformFollower(
-              link: _link,
-              targetAnchor: Alignment.bottomLeft,
-              offset: const Offset(0, 6),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: AppTheme(
-                  colors: c,
-                  child: DefaultTextStyle(
-                    style: baseTextStyle(c),
-                    child: Container(
-                      width: widget.width < 150 ? 150 : widget.width,
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(18), boxShadow: c.shadow, border: c.cardBorder),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final (v, label) in widget.options)
-                            Hoverable(
-                              onTap: () {
-                                _portal.hide();
-                                widget.onChanged(v);
-                              },
-                              builder: (context, hover, _) => Container(
-                                height: m.touch ? 40 : 36,
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                alignment: Alignment.centerLeft,
-                                decoration: BoxDecoration(
-                                  color: v == widget.value
-                                      ? c.blueTint
-                                      : hover
-                                      ? c.hover
-                                      : null,
-                                  borderRadius: c.r(12),
-                                ),
-                                child: Text(
-                                  label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: v == widget.value ? c.blueTx : c.text,
-                                    fontWeight: v == widget.value ? FontWeight.w600 : FontWeight.w400,
+    final current = widget.options.firstWhere(
+      (o) => o.$1 == widget.value,
+      orElse: () => widget.options.first,
+    );
+    return Focus(
+      focusNode: _focus,
+      canRequestFocus: widget.onChanged != null,
+      onFocusChange: (v) {
+        setState(() => _focused = v);
+        if (!v && _portal.isShowing) _portal.hide();
+      },
+      onKeyEvent: _key,
+      child: Semantics(
+        button: true,
+        enabled: widget.onChanged != null,
+        child: CompositedTransformTarget(
+          key: _target,
+          link: _link,
+          child: OverlayPortal(
+            controller: _portal,
+            overlayChildBuilder: (_) => Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _portal.hide,
+                  ),
+                ),
+                CompositedTransformFollower(
+                  link: _link,
+                  targetAnchor: _above
+                      ? Alignment.topLeft
+                      : Alignment.bottomLeft,
+                  followerAnchor: _above
+                      ? Alignment.bottomLeft
+                      : Alignment.topLeft,
+                  offset: Offset(0, _above ? -6 : 6),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    widthFactor: 1,
+                    heightFactor: 1,
+                    child: AppTheme(
+                      colors: c,
+                      child: DefaultTextStyle(
+                        style: baseTextStyle(c),
+                        child: Container(
+                          width: _menuWidth,
+                          constraints: BoxConstraints(maxHeight: _menuHeight),
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: c.solid,
+                            borderRadius: c.r(18),
+                            boxShadow: c.shadow,
+                            border: c.cardBorder,
+                          ),
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (final (v, label) in widget.options)
+                                  Hoverable(
+                                    onTap: widget.onChanged == null
+                                        ? null
+                                        : () => _choose(v),
+                                    builder: (context, hover, _) => Container(
+                                      constraints: BoxConstraints(
+                                        minHeight: m.touch ? 44 : 36,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      alignment: Alignment.centerLeft,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            _portal.isShowing &&
+                                                v ==
+                                                    widget
+                                                        .options[_highlight]
+                                                        .$1
+                                            ? c.blueTint
+                                            : hover
+                                            ? c.hover
+                                            : null,
+                                        borderRadius: c.r(12),
+                                      ),
+                                      child: Text(
+                                        label,
+                                        maxLines: widget.optionMaxLines,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: v == widget.value
+                                              ? c.blueTx
+                                              : c.text,
+                                          fontWeight: v == widget.value
+                                              ? FontWeight.w600
+                                              : FontWeight.w400,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
+                              ],
                             ),
-                        ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          ],
-        ),
-        child: Hoverable(
-          onTap: _portal.toggle,
-          builder: (context, hover, _) => Container(
-            width: widget.width,
-            height: m.touch ? 44 : 40,
-            padding: const EdgeInsets.only(left: 16, right: 14),
-            decoration: BoxDecoration(
-              color: widget.flat ? (hover ? Color.alphaBlend(c.hover, c.hover) : c.hover) : (hover ? c.glass2 : c.glass),
-              borderRadius: c.r(22),
-              boxShadow: widget.flat ? null : c.shadowSm,
-              border: c.industrial ? Border.all(color: c.lineStrong) : null,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    current.$2,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: c.text),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                CustomPaint(size: const Size(10, 10), painter: _DownCaret(c.textDim)),
               ],
+            ),
+            child: Hoverable(
+              onTap: widget.onChanged == null ? null : _toggle,
+              tooltip: current.$2,
+              builder: (context, hover, _) => Container(
+                width: widget.width,
+                height: m.touch ? 44 : 40,
+                padding: const EdgeInsets.only(left: 16, right: 14),
+                decoration: BoxDecoration(
+                  color: widget.flat
+                      ? (hover ? Color.alphaBlend(c.hover, c.hover) : c.hover)
+                      : (hover ? c.glass2 : c.glass),
+                  borderRadius: c.r(22),
+                  boxShadow: widget.flat ? null : c.shadowSm,
+                  border: _focused
+                      ? Border.all(color: c.blue, width: 1.5)
+                      : c.industrial
+                      ? Border.all(color: c.lineStrong)
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        current.$2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: c.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    CustomPaint(
+                      size: const Size(10, 10),
+                      painter: _DownCaret(c.textDim),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -1064,7 +1207,6 @@ class _DropdownSelectState<T> extends State<DropdownSelect<T>> {
     );
   }
 }
-
 class _DownCaret extends CustomPainter {
   _DownCaret(this.color);
 

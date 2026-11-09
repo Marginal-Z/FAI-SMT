@@ -17,6 +17,7 @@ import '../bom.dart';
 import '../bom_compare.dart';
 import '../params.dart';
 import 'provider.dart';
+import 'batching.dart';
 
 /// What may leave the machine.
 class PrivacyOptions {
@@ -56,7 +57,8 @@ const _system = '''You are an electronics manufacturing engineer checking two bi
 A local program already compared them and could not settle the items below. For each item:
 - "pair" items: decide whether the line of BOM 1 and the line of BOM 2 describe the same physical part (same component, same values and package), regardless of language or wording. Answer same = yes / no / unsure.
 - "unmatched" items: the line of BOM 1 has no counterpart yet; choose the candidate from BOM 2 that is the same physical part, or none.
-Only cite ids given to you. Say unsure when the text does not let you decide. Explain briefly in Chinese.''';
+Only cite ids given to you. Say unsure when the text does not let you decide. Explain briefly in Chinese.
+JSON shape example: {"answers":[{"id":"i1","same":"unsure","reason":"需确认"}]}. Replace the example id with actual ids in this request.''';
 
 const _schema = {
   'type': 'object',
@@ -127,7 +129,7 @@ Future<(CompareReport, CloudRun)> hybridCheck(
   CompareReport local,
   CloudProvider provider, {
   PrivacyOptions privacy = const PrivacyOptions(),
-  int batchSize = 30,
+  int batchSize = 8,
   CloudCancel? cancel,
   void Function(CloudRun)? onProgress,
 }) async {
@@ -147,8 +149,9 @@ Future<(CompareReport, CloudRun)> hybridCheck(
 
   // Answers that passed the checks: item id → (same, counterpart row, reason).
   final accepted = <String, (String, CompareRow?, String)>{};
-  for (final batch in batches) {
+  for (final initial in batches) {
     if (cancel?.cancelled ?? false) break;
+    await adaptiveCloudBatch<_Item>(initial, request: (batch) {
     final payload = [
       for (final it in batch)
         {
@@ -163,9 +166,9 @@ Future<(CompareReport, CloudRun)> hybridCheck(
             ],
         },
     ];
-    run.linesSent += batch.length;
-    try {
-      final reply = await provider.ask(system: _system, user: payloadText(payload), schema: _schema, maxTokens: 400 + 120 * batch.length, cancel: cancel);
+      return provider.ask(system: '$_system\nKeep each reason concise (at most 80 Chinese characters).', user: payloadText(payload), schema: _schema, maxTokens: 1024 + 256 * batch.length, cancel: cancel);
+    }, onReply: (batch, reply) {
+      run.linesSent += batch.length;
       run.usage.add(reply.usage);
       final byId = {for (final it in batch) it.id: it};
       for (final a in (reply.json['answers'] as List? ?? const [])) {
@@ -190,12 +193,18 @@ Future<(CompareReport, CloudRun)> hybridCheck(
         accepted[it.id] = (same, counterpart, '${a['reason'] ?? ''}');
       }
       run.batchesDone++;
-    } on CloudException catch (e) {
+      onProgress?.call(run);
+    }, onError: (batch, e) {
+      run.linesSent += batch.length;
       run.batchesFailed++;
       run.errors.add(e.code);
-      if (e.code == 'cancelled') break;
-    }
-    onProgress?.call(run);
+      if (e.usage != null) run.usage.add(e.usage!);
+      onProgress?.call(run);
+    }, onSplit: (e) {
+      run.batches++;
+      if (e.usage != null) run.usage.add(e.usage!);
+      onProgress?.call(run);
+    }, cancel: cancel);
   }
 
   // Apply what the program can verify.

@@ -18,18 +18,21 @@ import '../bom_compare.dart';
 import '../table_reader.dart';
 import 'hybrid.dart' show CloudRun, PrivacyOptions;
 import 'provider.dart';
+import 'batching.dart';
 
 const _roles = ['partNo', 'description', 'quantity', 'refs', 'serial', 'mpn', 'maker', 'alternate', 'level', 'dnp', 'other'];
 
 const _columnSystem = '''You read the columns of an electronics bill of materials. For every column say what it holds:
 partNo (the company's own part number of each line), description, quantity, refs (PCB designators such as R1, C3),
 serial (line number), mpn (manufacturer part number), maker (manufacturer), alternate (alternative part numbers),
-level (depth in a multi-level BOM), dnp (fitted / not fitted flag), other. Judge from header and values; headers may be missing or in any language.''';
+level (depth in a multi-level BOM), dnp (fitted / not fitted flag), other. Judge from header and values; headers may be missing or in any language.
+JSON shape example: {"columns":[{"column":"A","role":"partNo"}]}. Use only the column letters supplied in the current request.''';
 
 const _matchSystem = '''You compare two electronics bills of materials. For every line of BOM 1 in the request, find the line(s) of BOM 2 that are the same physical part
 (a part may be split over several lines on one side), or none. Then judge the pair: pass (same part, same quantity, same designators),
 ng (same position but something differs: value, package, quantity, designators), review (you cannot tell), unmatched (no counterpart),
-substitute (another part number that one BOM lists as an alternate). Only cite ids from the request. Explain briefly in Chinese.''';
+substitute (another part number that one BOM lists as an alternate). Only cite ids from the request. Explain briefly in Chinese.
+JSON shape example: {"lines":[{"id":"L1","counterparts":["R1"],"verdict":"review","reason":"需确认"}]}. Replace example ids with the actual ids in this request.''';
 
 const _matchSchema = {
   'type': 'object',
@@ -76,9 +79,11 @@ Future<Map<int, BomRole>> cloudColumns(Grid g, CloudProvider provider, CloudRun 
     letters.add(_letter(c));
     lines.add('Column ${_letter(c)}: ${values.map((v) => v.length > 40 ? '${v.substring(0, 40)}…' : v).join(' | ')}');
   }
-  final reply = await provider.ask(
+  final replies = <CloudReply>[];
+  await adaptiveCloudBatch<String>(letters,
+    request: (batch) => provider.ask(
     system: _columnSystem,
-    user: 'The first values of each column (the header row, if any, comes first):\n${lines.join('\n')}',
+    user: 'The first values of each column (the header row, if any, comes first):\n${[for (final c in batch) lines[letters.indexOf(c)]].join('\n')}',
     schema: {
       'type': 'object',
       'properties': {
@@ -87,7 +92,7 @@ Future<Map<int, BomRole>> cloudColumns(Grid g, CloudProvider provider, CloudRun 
           'items': {
             'type': 'object',
             'properties': {
-              'column': {'type': 'string', 'enum': letters},
+              'column': {'type': 'string', 'enum': batch},
               'role': {'type': 'string', 'enum': _roles},
             },
             'required': ['column', 'role'],
@@ -96,11 +101,17 @@ Future<Map<int, BomRole>> cloudColumns(Grid g, CloudProvider provider, CloudRun 
       },
       'required': ['columns'],
     },
-    maxTokens: 200 + 40 * letters.length,
+    maxTokens: 1024 + 96 * batch.length,
+    cancel: cancel,
+    ),
+    onReply: (_, reply) => replies.add(reply),
+    onError: (_, error) => throw error,
+    onSplit: (e) { if (e.usage != null) run.usage.add(e.usage!); },
     cancel: cancel,
   );
-  run.usage.add(reply.usage);
   final out = <int, BomRole>{};
+  for (final reply in replies) {
+  run.usage.add(reply.usage);
   for (final item in (reply.json['columns'] as List? ?? const []).whereType<Map>()) {
     final c = letters.indexOf('${item['column']}');
     final role = BomRole.values.where((r) => r.name == '${item['role']}').firstOrNull;
@@ -113,6 +124,8 @@ Future<Map<int, BomRole>> cloudColumns(Grid g, CloudProvider provider, CloudRun 
       run.dropped++;
     }
   }
+  }
+  if (cancel?.cancelled ?? false) throw CloudException('cancelled');
   return out;
 }
 
@@ -136,7 +149,7 @@ Future<(CompareReport, CloudRun)> cloudFullCheck(
   String aName = '',
   String bName = '',
   PrivacyOptions privacy = const PrivacyOptions(),
-  int batchSize = 25,
+  int batchSize = 8,
   CloudCancel? cancel,
   void Function(CloudRun)? onProgress,
   CompareOptions options = const CompareOptions(),
@@ -185,20 +198,21 @@ Future<(CompareReport, CloudRun)> cloudFullCheck(
   final ids = leftIds.keys.toList();
   for (var i = 0; i < ids.length; i += batchSize) {
     if (cancel?.cancelled ?? false) break;
-    final batch = ids.sublist(i, i + batchSize > ids.length ? ids.length : i + batchSize);
+    final initial = ids.sublist(i, i + batchSize > ids.length ? ids.length : i + batchSize);
     run.batches++;
-    run.linesSent += batch.length;
-    try {
-      final reply = await provider.ask(
-        system: _matchSystem,
+    await adaptiveCloudBatch<String>(initial,
+      request: (batch) => provider.ask(
+        system: '$_matchSystem\nKeep each reason concise (at most 80 Chinese characters). Do not repeat the input.',
         user: jsonEncode({
           'bom1': [for (final id in batch) side(id, leftIds[id]!)],
           'bom2': bom2,
         }),
         schema: _matchSchema,
-        maxTokens: 400 + 150 * batch.length,
+        maxTokens: 1024 + 256 * batch.length,
         cancel: cancel,
-      );
+      ),
+      onReply: (batch, reply) {
+      run.linesSent += batch.length;
       run.usage.add(reply.usage);
       for (final line in (reply.json['lines'] as List? ?? const []).whereType<Map>()) {
         final id = '${line['id']}';
@@ -211,12 +225,18 @@ Future<(CompareReport, CloudRun)> cloudFullCheck(
         answers[id] = (cps, '${line['verdict']}', '${line['reason'] ?? ''}');
       }
       run.batchesDone++;
-    } on CloudException catch (e) {
+      onProgress?.call(run);
+    }, onError: (batch, e) {
+      run.linesSent += batch.length;
       run.batchesFailed++;
       run.errors.add(e.code);
-      if (e.code == 'cancelled') break;
-    }
-    onProgress?.call(run);
+      if (e.usage != null) run.usage.add(e.usage!);
+      onProgress?.call(run);
+    }, onSplit: (e) {
+      run.batches++;
+      if (e.usage != null) run.usage.add(e.usage!);
+      onProgress?.call(run);
+    }, cancel: cancel);
   }
 
   // 3. The program's checks. A BOM 2 line claimed by two lines of BOM 1

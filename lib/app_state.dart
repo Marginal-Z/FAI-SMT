@@ -124,7 +124,16 @@ class AppState extends ChangeNotifier {
     statusArgs = args;
   }
 
-  Future<void> persist() => settings.save(settingsDir);
+  Future<void> _persistTail = Future<void>.value();
+
+  /// Keep rapid preference changes ordered, with a snapshot for each write.
+  Future<void> persist() {
+    final snapshot = AppSettings.fromJson(settings.toJson());
+    final save = _persistTail.then((_) => snapshot.save(settingsDir));
+    // A failed write must not prevent later saves from being attempted.
+    _persistTail = save.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return save;
+  }
 
   /// Restore runtime availability before the first check after launch.
   /// A saved enabled switch alone does not populate the model status map.
@@ -311,15 +320,21 @@ class AppState extends ChangeNotifier {
   bool get localModelsReady => modelStatus[activeEmbedding.id]?.state == ModelState.ready;
 
   /// Uses [m] for the next checks.
-  void setEmbeddingModel(LocalModelSpec m) {
-    if (localBusy) return;
+  Future<void> setEmbeddingModel(LocalModelSpec m) async {
+    if (localBusy || m.role != LocalModelRole.embedding) return;
+    _modelChanging = true;
     settings.embeddingModel = m.id;
     localTestKey = localTestDetail = '';
     final old = _local;
     _local = null;
-    old?.dispose();
-    persist();
     notifyListeners();
+    try {
+      await old?.dispose();
+    } finally {
+      _modelChanging = false;
+      notifyListeners();
+    }
+    await persist();
   }
 
   Future<void> refreshModels() async {
@@ -362,6 +377,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setLocalAiEnabled(bool v) {
+    if (localBusy) return;
     settings.localAiEnabled = v;
     persist();
     notifyListeners();
@@ -715,7 +731,8 @@ class AppState extends ChangeNotifier {
   String localModelName = '';
   bool localTesting = false;
   bool _localBusy = false;
-  bool get localBusy => _localBusy || localTesting;
+  bool _modelChanging = false;
+  bool get localBusy => _localBusy || localTesting || _modelChanging;
   String localTestKey = '';
   String localTestDetail = '';
   int localTestMillis = 0;

@@ -24,6 +24,7 @@ import 'design.dart';
 import 'guide_page.dart';
 import 'history_page.dart';
 import 'lucide.dart';
+import 'local_model_controls.dart';
 import 'theme.dart';
 import 'tour.dart';
 import 'ui_scale.dart';
@@ -1043,7 +1044,9 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
                   ),
                 ),
                 if (m.role == LocalModelRole.embedding && m.id != active.id && st.state == ModelState.ready) ...[
-                  PillButton(label: s.t('model_use'), icon: Lucide.check, kind: PillKind.soft, height: 34, fontSize: 13, onTap: () => state.setEmbeddingModel(m)),
+                  PillButton(label: s.t('model_use'), icon: Lucide.check, kind: PillKind.soft, height: 34, fontSize: 13, onTap: state.localBusy
+                        ? null
+                        : () => state.setEmbeddingModel(m)),
                   const SizedBox(width: 6),
                 ],
                 if (busy)
@@ -1078,32 +1081,10 @@ class _LocalAiSettingsState extends State<_LocalAiSettings> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Hoverable(
-          onTap: ready && !state.localBusy
-              ? () => state.setLocalAiEnabled(!state.settings.localAiEnabled) : null,
-          cursor: ready ? SystemMouseCursors.click : SystemMouseCursors.basic,
-          builder: (context, hover, _) => Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: hover && ready ? c.hover : c.well, borderRadius: c.r(14)),
-            child: Row(
-              children: [
-                LucideIcon(Lucide.cpu, size: 18, color: c.okTx, stroke: 2.2),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(s.t('local_use'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: c.tx)),
-                      const SizedBox(height: 2),
-                      Text(ready ? s.t('local_use_hint') : s.t('local_need_models'), style: TextStyle(fontSize: 12.5, height: 1.4, color: c.tx2)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Opacity(opacity: ready ? 1 : 0.4, child: ToggleSwitch(value: ready && state.settings.localAiEnabled)),
-              ],
-            ),
-          ),
+        LocalModelControls(state: state, manage: false),
+                      const SizedBox(height: 10),
+                      Text(
+          s.t('local_use_hint'), style: TextStyle(fontSize: 12.5, height: 1.5, color: c.tx2),
         ),
         const SizedBox(height: 10),
         Text(s.t('local_lowend'), style: TextStyle(fontSize: 12.5, height: 1.5, color: c.tx2),

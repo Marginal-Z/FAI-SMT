@@ -13,6 +13,7 @@ import 'package:smt_fai/services/key_store.dart';
 
 class FakeModels implements LocalModels {
   int calls = 0;
+  int disposals = 0;
   Object? failure;
   Completer<List<List<double>>>? pending;
   @override
@@ -35,7 +36,7 @@ class FakeModels implements LocalModels {
     int maxTokens = 600,
   }) async => {};
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async { disposals++; }
 }
 
 class ReadyStore extends ModelStore {
@@ -182,6 +183,63 @@ void main() {
     expect(s.localTestKey, 'local_test_ok');
     expect(s.report!.localModel.state, 'notNeeded');
     expect(s.report!.models, isEmpty);
+  });
+  test('model selection changes the next engine and preserves recorded usage', () async {
+    final opened = <String>[];
+    final second = FakeModels();
+    final s = AppState(AppSettings(localAiEnabled: true), dir.path,
+      localModelsFactory: (_, spec) async {
+        opened.add(spec.id);
+        return opened.length == 1 ? fake : second;
+      });
+    for (final m in embeddingModels.take(2)) {
+      s.modelStatus[m.id] = const ModelStatus(ModelState.ready);
+    }
+    s.single = LoadedFile('S.csv', input('S', ['P1001']));
+    s.bomA = LoadedFile('A.csv', input('A', ['Q1001']));
+    s.runCheckNow();
+    await settle(s);
+    final usage = s.report!.localModel.toJson();
+    await s.setEmbeddingModel(embeddingModels[1]);
+    expect(fake.disposals, 1);
+    expect(s.report!.localModel.toJson(), usage);
+    expect(s.activeEmbedding.id, embeddingModels[1].id);
+    await s.testLocalModel();
+    expect(opened, [embeddingModels[0].id, embeddingModels[1].id]);
+    expect(second.calls, 1);
+    final saved = await AppSettings.load(dir.path);
+    expect(saved.embeddingModel, embeddingModels[1].id);
+    expect(saved.localAiEnabled, isTrue);
+  });
+  test('busy inference rejects model and enable changes', () async {
+    fake.pending = Completer<List<List<double>>>();
+    final s = state();
+    final original = s.activeEmbedding.id;
+    final test = s.testLocalModel();
+    await s.setEmbeddingModel(embeddingModels[1]);
+    s.setLocalAiEnabled(false);
+    expect(s.activeEmbedding.id, original);
+    expect(s.settings.localAiEnabled, isTrue);
+    fake.pending!.complete([[1, 0], [1, 0]]);
+    await test;
+    expect(s.localTestKey, 'local_test_ok');
+  });
+  test('rapid model and switch changes persist the latest valid settings', () async {
+    final s = state();
+    final saves = <Future<void>>[];
+    for (var i = 0; i < 20; i++) {
+      s.settings.embeddingModel = embeddingModels[i % embeddingModels.length].id;
+      s.setLocalAiEnabled(i.isEven);
+      saves.add(s.persist());
+    }
+    await Future.wait(saves);
+    await s.setEmbeddingModel(embeddingModels[1]);
+    s.setLocalAiEnabled(false);
+    await s.persist();
+    final saved = await AppSettings.load(dir.path);
+    expect(saved.embeddingModel, embeddingModels[1].id);
+    expect(saved.localAiEnabled, isFalse);
+    expect(saved.tourDone, s.settings.tourDone);
   });
   test(
     'native vectors must have consistent finite, nonzero values and count',

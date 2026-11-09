@@ -100,6 +100,9 @@ void main() {
       }
       f ??= find.text('下一步');
       expect(f, findsWidgets, reason: 'step ${state.tourStep}');
+      final next = tester.getRect(f.last);
+      expect(next.top, greaterThanOrEqualTo(0), reason: 'step ${state.tourStep}');
+      expect(next.bottom, lessThanOrEqualTo(844), reason: 'step ${state.tourStep}');
       await tester.tap(f.last, warnIfMissed: false);
       await tester.pumpAndSettle();
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
