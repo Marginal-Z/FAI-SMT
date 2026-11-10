@@ -49,7 +49,8 @@ class HomeWindow extends StatelessWidget {
       ? SettingsScreen(state: state)
       : LayoutBuilder(
           builder: (context, box) {
-            final compact = LayoutSize.of(box.maxWidth) == LayoutSize.compact;
+            // The comparison table needs room for part numbers and verdicts.
+            final compact = box.maxWidth < 1000;
             return CheckView(state: state, cards: compact);
           },
         );

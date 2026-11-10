@@ -120,6 +120,12 @@ class _CheckViewState extends State<CheckView> {
   final _scroll = ScrollController();
   final _hScroll = ScrollController();
   final _page = ScrollController();
+  final _headerScroll = ScrollController();
+  final _storage = PageStorageBucket();
+  bool _moreFilters = false;
+  bool _directionExpanded = false;
+  CompareReport? _directionReport;
+  final _directionKey = GlobalKey(debugLabel: 'direction-summary');
 
   /// Only parts the AI check flagged.
   bool _aiOnly = false;
@@ -136,6 +142,7 @@ class _CheckViewState extends State<CheckView> {
     _scroll.dispose();
     _hScroll.dispose();
     _page.dispose();
+    _headerScroll.dispose();
     super.dispose();
   }
 
@@ -144,17 +151,30 @@ class _CheckViewState extends State<CheckView> {
     widget.state.setFilter(widget.state.filter == f ? null : f);
   }
 
+  void _toggleDirections() {
+    setState(() => _directionExpanded = !_directionExpanded);
+    if (!_directionExpanded) { return; }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_directionExpanded) { return; }
+      final target = _directionKey.currentContext;
+      if (target != null) { Scrollable.ensureVisible(target, alignment: 0); }
+    });
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PageStorage(bucket: _storage, child: Builder(builder: _buildPage));
+
+  Widget _buildPage(BuildContext context) {
     final state = widget.state;
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final report = state.report;
-    final phone = isPhoneLayout(context);
+    if (!identical(_directionReport, report)) { _directionReport = report; _directionExpanded = false; }
+    final phone = isPhoneLayout(context) || widget.cards;
     final narrow = widget.cards;
     final pad = EdgeInsets.fromLTRB(narrow ? 16 : 24, phone ? 4 : 6, narrow ? 16 : 24, 0);
-    final imports = ImportBar(state: state);
-    final models = LocalModelIndicator(state: state);
+    final imports = ImportBar(state: state, compact: phone);
+    final models = LocalModelIndicator(state: state, compact: phone);
 
     if (report == null) {
       final hint = DCard(
@@ -179,7 +199,7 @@ class _CheckViewState extends State<CheckView> {
       if (phone) {
         return ListView(
           padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + 12),
-          children: [imports, const SizedBox(height: 12), models, const SizedBox(height: 12), DirectionReminderPanel(state: state), const SizedBox(height: 14), SizedBox(height: 280, child: hint)],
+          children: [imports, const SizedBox(height: 8), models, const SizedBox(height: 8), SizedBox(height: 280, child: hint), const SizedBox(height: 8), DirectionReminderPanel(state: state)],
         );
       }
       return Padding(padding: pad, child: LayoutBuilder(builder: (context, box) {
@@ -235,28 +255,15 @@ class _CheckViewState extends State<CheckView> {
         },
       ),
     ];
-    final gap = phone ? 14.0 : 16.0;
-    final stats = phone
-        ? SizedBox(
-            key: tourTargets.checkCards,
-            height: 92,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              itemCount: statCards.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => SizedBox(width: 150, child: statCards[i]),
-            ),
-          )
-        : IntrinsicHeight(
-            key: tourTargets.checkCards,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < statCards.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: statCards[i])],
-              ],
-            ),
-          );
+    final stats = LayoutBuilder(builder: (context, box) {
+      final columns = box.maxWidth >= 880 ? 6 : 3;
+      return Container(key: tourTargets.checkCards, decoration: BoxDecoration(color: c.card, border: c.cardBorder), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        for (var start = 0; start < statCards.length; start += columns)
+          SizedBox(height: 56, child: Row(children: [
+            for (var i = start; i < math.min(start + columns, statCards.length); i++) Expanded(child: statCards[i]),
+          ])),
+      ]));
+    });
 
     var visible = state.visibleRows();
     if (_aiOnly) visible = visible.where((r) => aiParts.contains(r.partNo)).toList();
@@ -265,12 +272,12 @@ class _CheckViewState extends State<CheckView> {
     final count = Text.rich(
       TextSpan(
         children: [
-          TextSpan(text: s.t('count_prefix')),
+          TextSpan(text: '${s.t('count_prefix')} '),
           TextSpan(
             text: '${visible.length}',
             style: TextStyle(fontWeight: FontWeight.w600, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
-          TextSpan(text: s.t('count_suffix')),
+          TextSpan(text: ' ${s.t('count_suffix')}'),
         ],
       ),
       style: TextStyle(fontSize: 14, color: c.tx2),
@@ -309,77 +316,40 @@ class _CheckViewState extends State<CheckView> {
       onChanged: state.setReasonFilter,
     );
     final columnsNote = _ColumnsNote(report: report);
-    final filters = KeyedSubtree(
-      key: tourTargets.checkFilters,
-      child: narrow
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                search,
-                const SizedBox(height: 12),
-                Row(children: [resultSelect, const Spacer(), count]),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    riskSelect,
-                    const SizedBox(width: 8),
-                    Expanded(child: reasonSelect),
-                  ],
-                ),
-              ],
-            )
-          : Row(
-              children: [
-                SizedBox(width: 280, child: search),
-                const SizedBox(width: 16),
-                resultSelect,
-                const SizedBox(width: 10),
-                riskSelect,
-                const SizedBox(width: 10),
-                reasonSelect,
-                const SizedBox(width: 16),
-                Expanded(child: columnsNote),
-                const SizedBox(width: 16),
-                count,
-              ],
-            ),
-    );
+    final filters = KeyedSubtree(key: tourTargets.checkFilters, child: DCard(radius: 14,
+      padding: const EdgeInsets.all(8), child: LayoutBuilder(builder: (context, box) {
+        if (box.maxWidth >= 880) { return Row(children: [
+          Expanded(child: search), const SizedBox(width: 12), resultSelect, const SizedBox(width: 8),
+          riskSelect, const SizedBox(width: 8), reasonSelect,
+          if (box.maxWidth >= 1250) ...[const SizedBox(width: 12), SizedBox(width: 160, child: columnsNote)],
+          const SizedBox(width: 12), count,
+        ]); }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [Expanded(child: search), const SizedBox(width: 10), count,
+            if (phone) ...[const SizedBox(width: 6), GlassButton(key: const ValueKey('more-check-filters'), icon: Lucide.filter, size: 44,
+              tooltip: s.t(_moreFilters ? 'filters_less' : 'filters_more'), onTap: () => setState(() => _moreFilters = !_moreFilters))]]),
+          if (!phone || _moreFilters) ...[const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [resultSelect, riskSelect, reasonSelect])],
+        ]);
+      })));
 
-    final wideTop = !phone && MediaQuery.sizeOf(context).width >= 1250;
-    final top = wideTop
-        ? Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        KeyedSubtree(key: tourTargets.fileChecks, child: ImportCardsRow(state: state)),
-                        const SizedBox(height: 12),
-                        stats,
-                        // The filters sit beside the actions panel, leaving
-                        // no empty band under the cards.
-                        const Spacer(),
-                        const SizedBox(height: 12),
-                        filters,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(width: 236, child: ImportActions(state: state)),
-                ],
-              ),
-            ),
-          )
-        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [imports, SizedBox(height: gap), stats, SizedBox(height: gap)]);
+    Widget metadata() => LayoutBuilder(builder: (context, box) {
+      final paired = box.maxWidth >= 900;
+      final directions = DirectionReminderPanel(key: _directionKey, state: state, onFilter: () => setState(() => _aiOnly = false),
+        expanded: _directionExpanded, onExpand: _toggleDirections, inlineDetails: !paired);
+      if (paired) { return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(flex: 3, child: models), const SizedBox(width: 8), Expanded(flex: 2, child: directions),
+      ]), if (_directionExpanded) ...[const SizedBox(height: 8), DCard(key: const ValueKey('direction-expanded-content'), padding: const EdgeInsets.all(12), radius: 16, child: _DirectionDetails(state: state))]]); }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [models, const SizedBox(height: 8), directions]);
+    });
+    final top = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      imports, const SizedBox(height: 8), stats, const SizedBox(height: 8), metadata(),
+    ]);
 
     final aiPanel = _AiPanel(state: state);
     final showAi = state.settings.aiEnabled && state.aiStatus != AiStatus.idle;
 
-    if (phone) return _phonePage(context, [top, models, const SizedBox(height: 12), DirectionReminderPanel(state: state), const SizedBox(height: 12), if (showAi) ...[aiPanel, const SizedBox(height: 12)], filters, const SizedBox(height: 12)], visible, pad);
+    if (phone) return _phonePage(context, [top, const SizedBox(height: 8), if (showAi) ...[aiPanel, const SizedBox(height: 8)], filters, const SizedBox(height: 8)], visible, pad);
 
     final table = visible.isEmpty
         ? DCard(
@@ -401,11 +371,12 @@ class _CheckViewState extends State<CheckView> {
             clip: true,
             child: LayoutBuilder(
               builder: (context, box) {
-                final width = math.max(box.maxWidth, 1240.0);
+                final width = math.max(box.maxWidth, 1260.0);
                 return ThinScrollbar(
                   controller: _hScroll,
                   horizontal: true,
                   child: SingleChildScrollView(
+                    key: const PageStorageKey('check-table-columns'),
                     controller: _hScroll,
                     scrollDirection: Axis.horizontal,
                     child: SizedBox(
@@ -418,6 +389,7 @@ class _CheckViewState extends State<CheckView> {
                             child: ThinScrollbar(
                               controller: _scroll,
                               child: ListView.builder(
+                                key: const PageStorageKey('check-table-rows'),
                                 controller: _scroll,
                                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                                 itemCount: visible.length,
@@ -434,43 +406,29 @@ class _CheckViewState extends State<CheckView> {
             ),
           );
     final keyedTable = KeyedSubtree(key: tourTargets.checkTable, child: table);
-    return LayoutBuilder(
-      builder: (context, box) {
-        final short = box.maxHeight < 900;
-        final selected = state.selected != null;
-        final side = box.maxWidth >= 1100 && (selected || showAi);
-        // Right of the table: the selected part, else the AI analysis.
-        final panel = selected ? _Detail(state: state) : aiPanel;
-        final body = side
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: keyedTable),
-                  const SizedBox(width: 16),
-                  SizedBox(width: 380, child: panel),
-                ],
-              )
-            : keyedTable;
-        final children = [
-          top,
-          models,
-          const SizedBox(height: 12),
-          DirectionReminderPanel(state: state),
-          const SizedBox(height: 12),
-          if (!side && showAi) ...[aiPanel, const SizedBox(height: 12)],
-          if (!wideTop) ...[filters, const SizedBox(height: 14)],
-          short ? SizedBox(height: math.max(440.0, box.maxHeight * 0.66), child: body) : Expanded(child: body),
-          if (!side && selected) ...[const SizedBox(height: 14), SizedBox(height: 380, child: _Detail(state: state))],
-          const SizedBox(height: 16),
-        ];
-        final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
-        return Padding(
-          padding: pad,
-          child: short ? SingleChildScrollView(controller: _page, child: column) : column,
-        );
-      },
-    );
+    return Padding(padding: pad, child: LayoutBuilder(builder: (context, box) {
+      final selected = state.selected != null;
+      final side = box.maxWidth >= 1400 && (selected || showAi);
+      final panel = selected ? _Detail(state: state) : aiPanel;
+      Widget body = side
+        ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: keyedTable), const SizedBox(width: 12), SizedBox(width: 360, child: panel)])
+        : keyedTable;
+      if (!side && selected) { body = Stack(children: [Positioned.fill(child: keyedTable),
+        Positioned(top: 0, bottom: 0, right: 0, width: math.min(420, box.maxWidth * 0.8), child: _Detail(state: state))]); }
+      final header = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min,
+        children: [top, if (!side && showAi) ...[const SizedBox(height: 8), aiPanel]]);
+      final viewport = KeyedSubtree(key: const ValueKey('check-results-viewport'), child: body);
+      if (box.maxHeight < 360) { return SingleChildScrollView(controller: _page, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        header, const SizedBox(height: 8), filters, const SizedBox(height: 8), SizedBox(height: 360, child: viewport), const SizedBox(height: 12),
+      ])); }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ConstrainedBox(constraints: BoxConstraints(maxHeight: box.maxHeight * 0.44),
+          child: ThinScrollbar(controller: _headerScroll, child: SingleChildScrollView(key: const PageStorageKey('check-header-scroll'), controller: _headerScroll, child: header))),
+        const SizedBox(height: 8), filters, const SizedBox(height: 8), Expanded(child: viewport), const SizedBox(height: 12),
+      ]);
+    }));
   }
+
 
   /// Phones: one scrolling list of row cards; the selected part opens in a
   /// sheet over the bottom of the screen.
@@ -483,20 +441,15 @@ class _CheckViewState extends State<CheckView> {
     return Stack(
       children: [
         ListView.builder(
+          key: const PageStorageKey('check-card-rows'),
           controller: _page,
           padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, bottomInset(context) + (selected == null ? 12 : 320)),
           itemCount: visible.length + head.length,
           itemBuilder: (context, i) {
             if (i < head.length) return head[i];
             final row = visible[i - head.length];
-            final card = Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: DCard(
-                radius: 20,
-                padding: EdgeInsets.zero,
-                child: _RowCard(state: state, row: row, ai: aiParts.contains(row.partNo)),
-              ),
-            );
+            final card = DecoratedBox(decoration: BoxDecoration(color: c.card, border: Border(bottom: BorderSide(color: c.lineStrong))),
+              child: _RowCard(state: state, row: row, ai: aiParts.contains(row.partNo)));
             return i == head.length ? KeyedSubtree(key: tourTargets.checkTable, child: card) : card;
           },
         ),
@@ -519,10 +472,14 @@ class _CheckViewState extends State<CheckView> {
   }
 }
 
-/// Independent assembly reminders, separate from the comparison verdicts.
+/// Assembly reminders stay visible as a compact summary; details open on demand.
 class DirectionReminderPanel extends StatefulWidget {
-  const DirectionReminderPanel({super.key, required this.state});
+  const DirectionReminderPanel({super.key, required this.state, this.onFilter, this.expanded, this.onExpand, this.inlineDetails = true});
   final AppState state;
+  final VoidCallback? onFilter;
+  final bool? expanded;
+  final VoidCallback? onExpand;
+  final bool inlineDetails;
   @override
   State<DirectionReminderPanel> createState() => _DirectionReminderPanelState();
 }
@@ -530,71 +487,78 @@ class DirectionReminderPanel extends StatefulWidget {
 class _DirectionReminderPanelState extends State<DirectionReminderPanel> {
   bool _expanded = false;
   CompareReport? _report;
-
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
     final report = state.report;
     if (!identical(_report, report)) { _expanded = false; _report = report; }
+    final expanded = widget.expanded ?? _expanded;
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final rows = report?.rows.where((r) => r.orientation.isNotEmpty).toList() ?? <CompareRow>[];
-    final counts = <String, int>{};
     final refs = <String>{};
     for (final row in rows) {
-      for (final h in row.orientation) {
-        counts.update(h.code, (n) => n + 1, ifAbsent: () => 1);
-        refs.addAll(h.refs);
-      }
+      for (final h in row.orientation) { refs.addAll(h.refs); }
     }
-    return DCard(
-      key: const ValueKey('direction-reminders-panel'),
-      padding: const EdgeInsets.all(12),
-      radius: 18,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 12, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text(s.t('orientation_title'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.tx)),
-          if (report != null) Text(s.t('direction_panel_counts', {'n': rows.length, 'refs': refs.length}), style: TextStyle(fontSize: 12.5, color: c.warnTx)),
-          if (rows.isNotEmpty) ...[
-            PillButton(label: s.t(state.reasonFilter == 'orientation' ? 'direction_show_all' : 'direction_filter'), kind: PillKind.soft, height: 34, fontSize: 12,
-              onTap: () {
-                final off = state.reasonFilter == 'orientation';
-                if (!off) { state.setFilter(null); state.setRiskFilter(null); state.setSearch(''); }
-                state.setReasonFilter(off ? null : 'orientation');
-              }),
-            PillButton(label: s.t(_expanded ? 'direction_collapse' : 'direction_expand'), kind: PillKind.ghost, height: 34, fontSize: 12,
-              onTap: () => setState(() => _expanded = !_expanded)),
-          ],
-        ]),
-        if (counts.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 6, children: [for (final e in counts.entries)
-            DBadge(text: '${s.t('orientation_short_${e.key}')} · ${e.value}', background: c.warnTint, color: c.warnTx)]),
+    return DCard(key: const ValueKey('direction-reminders-panel'), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), radius: 16,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [Expanded(child: Hoverable(tooltip: s.t('orientation_scope'), builder: (context, hover, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(s.t('orientation_title'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.tx)),
+          const SizedBox(height: 3), Text(s.t(report == null ? 'direction_waiting' : rows.isEmpty ? 'direction_no_items' : 'direction_panel_counts', {'n': rows.length, 'refs': refs.length}),
+            maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: rows.isEmpty ? c.tx2 : c.warnTx)),
+        ]))), if (rows.isNotEmpty) ...[
+          const SizedBox(width: 8), Semantics(toggled: state.reasonFilter == 'orientation', child: DecoratedBox(position: DecorationPosition.foreground,
+            decoration: BoxDecoration(borderRadius: c.r(22), border: state.reasonFilter == 'orientation' ? Border.all(color: c.warnTx, width: 1.5) : null),
+            child: GlassButton(key: const ValueKey('direction-filter'), icon: Lucide.filter, size: 44,
+            tooltip: s.t(state.reasonFilter == 'orientation' ? 'direction_show_all' : 'direction_filter'), onTap: () {
+              final off = state.reasonFilter == 'orientation';
+              if (!off) { state.setFilter(null); state.setRiskFilter(null); state.setSearch(''); }
+              widget.onFilter?.call(); state.setReasonFilter(off ? null : 'orientation');
+            }))),
+          GlassButton(key: const ValueKey('direction-expand'), icon: expanded ? Lucide.chevronUp : Lucide.chevronDown, size: 44,
+            tooltip: s.t(expanded ? 'direction_collapse' : 'direction_expand'), onTap: widget.onExpand ?? () => setState(() => _expanded = !_expanded)),
+        ]]),
+        if (expanded && rows.isNotEmpty && widget.inlineDetails) ...[
+          const SizedBox(height: 8), _DirectionDetails(state: state),
         ],
-        const SizedBox(height: 6),
-        Text(s.t(report == null ? 'direction_waiting' : rows.isEmpty ? 'direction_no_items' : 'orientation_scope'), style: TextStyle(fontSize: 12, height: 1.4, color: c.tx2)),
-        if (_expanded && rows.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          SizedBox(height: math.min(220, rows.length * 60.0), child: ListView.builder(
-            primary: false, itemCount: rows.length,
-            itemBuilder: (context, i) {
-              final row = rows[i];
-              final hints = row.orientation;
-              return Hoverable(onTap: () => state.select(row), builder: (context, hover, _) => Container(
-                constraints: const BoxConstraints(minHeight: 54),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(color: hover ? c.hover : c.well, borderRadius: c.r(10)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('${row.partNo} · ${hints.map((h) => s.t('orientation_short_${h.code}')).join(' / ')}', maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.warnTx)),
-                  Text(hints.expand((h) => h.refs).toSet().join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.tx2)),
-                ]),
-              ));
-            },
-          )),
-        ],
-      ]),
-    );
+      ]));
+  }
+}
+
+class _DirectionDetails extends StatelessWidget {
+  const _DirectionDetails({required this.state});
+  final AppState state;
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.of(context);
+    final s = Strings.of(context);
+    final rows = state.report!.rows.where((r) => r.orientation.isNotEmpty).toList();
+    final counts = <String, int>{};
+    for (final row in rows) {
+      for (final h in row.orientation) { counts.update(h.code, (n) => n + 1, ifAbsent: () => 1); }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Wrap(spacing: 6, runSpacing: 6, children: [for (final e in counts.entries)
+        DBadge(text: '${s.t('orientation_short_${e.key}')} · ${e.value}', background: c.warnTint, color: c.warnTx)]),
+      const SizedBox(height: 8), Text(s.t('orientation_scope'), style: TextStyle(fontSize: 12, height: 1.4, color: c.tx2)), const SizedBox(height: 8),
+      LayoutBuilder(builder: (context, box) {
+        final columns = box.maxWidth >= 1000 ? 3 : box.maxWidth >= 600 ? 2 : 1;
+        return SizedBox(height: math.min(180, ((rows.length + columns - 1) ~/ columns) * 72.0), child: GridView.builder(
+          key: const ValueKey('direction-details-list'), primary: false, itemCount: rows.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, mainAxisExtent: 66),
+          itemBuilder: (context, i) {
+            final row = rows[i]; final hints = row.orientation;
+            return Hoverable(onTap: () => state.select(row), builder: (context, hover, _) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(color: hover ? c.hover : c.card, border: Border(bottom: BorderSide(color: c.line), right: BorderSide(color: c.line))),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('${row.partNo} · ${hints.map((h) => s.t('orientation_short_${h.code}')).join(' / ')}', maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.warnTx)),
+                Text(hints.expand((h) => h.refs).toSet().join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.tx2)),
+              ])));
+          }));
+      }),
+    ]);
   }
 }
 
@@ -665,61 +629,19 @@ class _StatCard extends StatelessWidget {
     final c = AppTheme.of(context);
     final share = total == null || total == 0 ? null : value / total!;
     final pct = share == null ? '' : '${(share * 100).toStringAsFixed(share > 0 && share < 0.02 ? 1 : 0)}%';
-    return Hoverable(
-      onTap: onTap,
-      builder: (context, hover, _) => Opacity(
-        opacity: dim ? 0.55 : 1,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: c.r(20),
-            border: Border.all(color: selected ? fg.withValues(alpha: 0.6) : (c.industrial ? c.lineStrong : const Color(0x00000000)), width: selected || !c.industrial ? 1.5 : 1),
-            boxShadow: c.shadowSm,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 26,
-                    height: 26,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-                    child: LucideIcon(icon, size: 14, color: fg, stroke: 2.4),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.tx),
-                    ),
-                  ),
-                  Text(
-                    '$value',
-                    style: TextStyle(fontSize: 22, height: 1, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: c.tx, fontFeatures: const [FontFeature.tabularFigures()]),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: share != null ? TrackBar(value: share < 0.02 && value > 0 ? 0.02 : share, color: bar, height: 4) : const SizedBox(height: 4),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(pct, style: TextStyle(fontSize: 11.5, color: c.tx2, fontFeatures: const [FontFeature.tabularFigures()])),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return Hoverable(onTap: onTap, tooltip: '$label: $value${total == null ? '' : ' / $total · $pct'}',
+      builder: (context, hover, _) => Opacity(opacity: dim ? 0.55 : 1, child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(color: selected ? tint : hover ? c.hover : c.card, borderRadius: c.r(12),
+          border: Border.all(color: selected ? fg.withValues(alpha: 0.55) : c.lineStrong.withValues(alpha: c.industrial ? 1 : 0.35))),
+        child: LayoutBuilder(builder: (context, box) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Row(children: [if (box.maxWidth >= 130) ...[LucideIcon(icon, size: 16, color: fg), const SizedBox(width: 7)],
+            Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, height: 1.1, fontWeight: FontWeight.w600, color: c.tx))),
+            const SizedBox(width: 6), Text('$value', style: TextStyle(fontSize: 20, height: 1, fontWeight: FontWeight.w700, color: fg, fontFeatures: const [FontFeature.tabularFigures()])),
+          ]),
+          if (share != null) ...[const SizedBox(height: 5), TrackBar(value: share, color: bar, height: 2)],
+        ])),
+      )));
   }
 }
 
@@ -732,7 +654,7 @@ const _cols = [
   (190.0, 1.1), // designators
   (110.0, 0.0), // other columns
   (220.0, 0.6), // orientation reminders
-  (96.0, 0.0), // result
+  (120.0, 0.0), // result, including translated labels and an optional AI mark
 ];
 
 Widget _gridRow(List<Widget> cells, {CrossAxisAlignment cross = CrossAxisAlignment.center}) => LayoutBuilder(
@@ -744,10 +666,11 @@ Widget _gridRow(List<Widget> cells, {CrossAxisAlignment cross = CrossAxisAlignme
     return Row(
       crossAxisAlignment: cross,
       children: [
-        for (var i = 0; i < cells.length; i++)
+        // Put the verdict beside the part number, within a laptop viewport.
+        for (final i in const [0, 1, 7, 2, 3, 4, 5, 6])
           SizedBox(
             width: _cols[i].$1 * shrink + (flex == 0 ? 0 : spare * _cols[i].$2 / flex),
-            child: Align(alignment: i == cells.length - 1 ? Alignment.centerRight : (i == 3 ? Alignment.center : Alignment.centerLeft), child: cells[i]),
+            child: Align(alignment: i == 7 || i == 3 ? Alignment.center : Alignment.centerLeft, child: cells[i]),
           ),
       ],
     );
@@ -876,6 +799,7 @@ class _ResultRow extends StatelessWidget {
               ? c.hover
               : null,
           borderRadius: c.r(14),
+          border: Border(bottom: BorderSide(color: c.line)),
         ),
         child: _gridRow([
           Text('$index', style: TextStyle(fontSize: 13, color: c.tx3, fontFeatures: const [FontFeature.tabularFigures()])),
@@ -922,7 +846,10 @@ class _ResultRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
-              DBadge(text: statusLabel(s, row.status), background: statusTint(c, row.status), color: statusText(c, row.status)),
+              Flexible(child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: statusTint(c, row.status), borderRadius: c.r(12)),
+                child: Text(statusLabel(s, row.status), maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11.5, height: 1.2, fontWeight: FontWeight.w600, color: statusText(c, row.status))))),
             ],
           ),
         ]),
@@ -1115,7 +1042,7 @@ class _Detail extends StatelessWidget {
           ),
           DBadge(text: statusLabel(s, row.status), background: statusTint(c, row.status), color: statusText(c, row.status)),
           const SizedBox(width: 8),
-          GlassButton(icon: Lucide.x, size: 30, iconSize: 14, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
+          GlassButton(icon: Lucide.x, size: 44, iconSize: 16, tooltip: s.t('dlg_close'), onTap: () => state.select(null)),
         ],
       ),
       const SizedBox(height: 4),

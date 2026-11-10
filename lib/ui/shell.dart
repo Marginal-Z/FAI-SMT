@@ -1,9 +1,6 @@
-/// App frame of the SMT-FAI design: header with the logo, the glass pill
-/// navigation and round glass actions; footer with the status and the
-/// keyboard shortcuts.
+/// Flat app frame: header, navigation, status and keyboard shortcuts.
 library;
 
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/widgets.dart';
 
@@ -309,19 +306,10 @@ class PhoneNavBar extends StatelessWidget {
               onTap: onTap,
               builder: (context, hover, _) {
                 final color = ind ? (on ? c.navOnTx : c.tx2) : (on ? c.blueTx : c.tx);
-                final BoxDecoration deco;
-                if (ind) {
-                  deco = BoxDecoration(borderRadius: c.r(4), color: on ? c.navOn : (hover ? c.hover : null));
-                } else if (on) {
-                  deco = BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    color: c.dark ? const Color(0x24FFFFFF) : const Color(0x8CFFFFFF),
-                    border: Border.all(color: c.dark ? const Color(0x33FFFFFF) : const Color(0xCCFFFFFF), width: 0.8),
-                    boxShadow: [BoxShadow(color: Color.fromRGBO(0, 0, 0, c.dark ? 0.25 : 0.08), blurRadius: 10, offset: const Offset(0, 3))],
-                  );
-                } else {
-                  deco = BoxDecoration(borderRadius: BorderRadius.circular(28), color: hover ? c.hover : null);
-                }
+                final deco = BoxDecoration(
+                  color: on ? (ind ? c.navOn : c.blueTint) : (hover ? c.hover : null),
+                  border: on ? Border(bottom: BorderSide(color: ind ? c.btn : c.blue, width: 2)) : null,
+                );
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 260),
                   curve: Curves.easeOutCubic,
@@ -346,74 +334,11 @@ class PhoneNavBar extends StatelessWidget {
           ),
       ],
     );
-    // Industrial style: a flat bar along the bottom edge with a top rule.
-    if (ind) {
-      return Container(
-        key: tourTargets.tabs,
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-        decoration: BoxDecoration(
-          color: c.card,
-          border: Border(top: BorderSide(color: c.lineStrong)),
-        ),
-        child: items,
-      );
-    }
-    final radius = BorderRadius.circular(34);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-      child: Container(
-        key: tourTargets.tabs,
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          boxShadow: [
-            BoxShadow(color: Color.fromRGBO(0, 0, 0, c.dark ? 0.45 : 0.14), blurRadius: 30, offset: const Offset(0, 12)),
-            BoxShadow(color: Color.fromRGBO(0, 0, 0, c.dark ? 0.3 : 0.06), blurRadius: 3, offset: const Offset(0, 1)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: radius,
-          child: BackdropFilter(
-            filter: ImageFilter.compose(outer: ImageFilter.blur(sigmaX: 22, sigmaY: 22), inner: const ColorFilter.matrix(_saturate)),
-            child: CustomPaint(
-              painter: _GlassPainter(dark: c.dark, radius: 34),
-              child: Padding(padding: const EdgeInsets.all(6), child: items),
-            ),
-          ),
-        ),
-      ),
+    return Container(
+      key: tourTargets.tabs,
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+      decoration: BoxDecoration(color: c.card, border: Border(top: BorderSide(color: c.lineStrong))),
+      child: items,
     );
   }
-}
-
-/// Saturation 1.6: colours under the glass come through livelier.
-const _saturate = <double>[
-  1.47244, -0.42912, -0.04332, 0, 0, //
-  -0.12756, 1.17088, -0.04332, 0, 0,
-  -0.12756, -0.42912, 1.55668, 0, 0,
-  0, 0, 0, 1, 0,
-];
-
-/// Glass body: a flat translucent fill and a thin light rim.
-class _GlassPainter extends CustomPainter {
-  _GlassPainter({required this.dark, required this.radius});
-
-  final bool dark;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final rr = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-    canvas.drawRRect(rr, Paint()..color = dark ? const Color(0xB31C1C1F) : const Color(0xB3F8F8FA));
-    canvas.drawRRect(
-      rr.deflate(0.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = dark ? const Color(0x33FFFFFF) : const Color(0xCCFFFFFF),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_GlassPainter old) => old.dark != dark;
 }

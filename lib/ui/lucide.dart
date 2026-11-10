@@ -17,6 +17,7 @@ class Lucide {
   final List<String> parts;
 
   static const cpu = Lucide(['rect 4 4 16 16 3', 'rect 9 9 6 6 1.5', 'M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2']);
+  static const filter = Lucide(['M4 4h16l-6 7v7l-4 2v-9Z']);
   static const chevronDown = Lucide(['m6 9 6 6 6-6']);
   static const chevronLeft = Lucide(['m15 18-6-6 6-6']);
   static const more = Lucide(['circle 12 12 1', 'circle 19 12 1', 'circle 5 12 1']);

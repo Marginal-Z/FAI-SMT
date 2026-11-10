@@ -57,7 +57,7 @@ void main() {
         expect(state.canExportReport, isTrue);
         expect(state.report!.localModel.rows, 2);
         final panel = find.byKey(const ValueKey('direction-reminders-panel'));
-        final expand = find.descendant(of: panel, matching: find.text('展开明细'));
+        final expand = find.byKey(const ValueKey('direction-expand'));
         if (expand.evaluate().isEmpty && width < 600) {
           await tester.scrollUntilVisible(
             panel,
@@ -65,19 +65,27 @@ void main() {
             scrollable: find.byType(Scrollable).first,
           );
         }
-        await tester.ensureVisible(find.text('展开明细'));
-        await tester.tap(find.text('展开明细'));
+        await tester.ensureVisible(expand);
+        await tester.tap(expand);
         await tester.pumpAndSettle();
         expect(
-          find.descendant(of: panel, matching: find.textContaining('P1001')),
+          find.descendant(
+            of: find.byKey(const ValueKey('direction-details-list')),
+            matching: find.textContaining('P1001'),
+          ),
           findsOneWidget,
         );
         expect(
-          find.descendant(of: panel, matching: find.textContaining('D1')),
+          find.descendant(
+            of: find.byKey(const ValueKey('direction-details-list')),
+            matching: find.textContaining('D1'),
+          ),
           findsOneWidget,
         );
-        await tester.ensureVisible(find.text('仅看需核方向'));
-        await tester.tap(find.text('仅看需核方向'));
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('direction-filter')),
+        );
+        await tester.tap(find.byKey(const ValueKey('direction-filter')));
         await tester.pumpAndSettle();
         expect(state.reasonFilter, 'orientation');
         expect(state.visibleRows().map((r) => r.partNo), ['P1001']);

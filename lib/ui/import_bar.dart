@@ -17,55 +17,48 @@ import 'theme.dart';
 import 'tour.dart';
 import 'widgets.dart';
 
-class ImportBar extends StatelessWidget {
-  const ImportBar({super.key, required this.state, this.actions = true});
-
+class ImportBar extends StatefulWidget {
+  const ImportBar({super.key, required this.state, this.actions = true, this.compact = false});
   final AppState state;
-
-  /// Include the run / export / clear card (the check page places it
-  /// itself when the statistics row is shown).
   final bool actions;
+  final bool compact;
+  @override
+  State<ImportBar> createState() => _ImportBarState();
+}
 
+class _ImportBarState extends State<ImportBar> {
+  bool _showFiles = false;
   @override
   Widget build(BuildContext context) {
-    final phone = isPhoneLayout(context);
+    final state = widget.state;
+    final s = Strings.of(context);
+    final c = AppTheme.of(context);
+    final phone = widget.compact || isPhoneLayout(context);
+    final running = state.localBusy || state.cloudRunning;
+    final collapsed = phone && (state.report != null || running) && !_showFiles;
+    final files = [state.single, state.bomA, state.bomB].whereType<LoadedFile>().toList();
+    final issues = files.fold<int>(0, (n, file) => n + file.bom.warnings.length);
     final cards = importCards(context, state);
-    final actionsCard = ImportActions(state: state, compact: phone);
-    return KeyedSubtree(
-      key: tourTargets.fileChecks,
-      child: LayoutBuilder(
-        builder: (context, box) {
-          const gap = 12.0;
-          if (box.maxWidth >= 1080) {
-            return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: ImportCardsRow(state: state)),
-                  if (actions) ...[const SizedBox(width: gap), SizedBox(width: 220, child: actionsCard)],
-                ],
-            );
-          }
-          if (box.maxWidth >= 640) {
-            final w = (box.maxWidth - gap) / 2;
-            return Wrap(
-              spacing: gap,
-              runSpacing: gap,
-              children: [
-                for (final card in cards) SizedBox(width: w, child: card),
-                if (actions) SizedBox(width: w, child: actionsCard),
-              ],
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final card in cards) ...[card, const SizedBox(height: 10)],
-              if (actions) actionsCard,
-            ],
-          );
-        },
-      ),
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      KeyedSubtree(key: tourTargets.fileChecks, child: collapsed
+        ? Hoverable(key: const ValueKey('input-files-summary'), onTap: () => setState(() => _showFiles = true), tooltip: s.t('files_expand'),
+          builder: (context, hover, _) => Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            constraints: const BoxConstraints(minHeight: 48),
+            decoration: BoxDecoration(color: hover ? c.hover : c.card, borderRadius: c.r(14), border: c.cardBorder),
+            child: Row(children: [LucideIcon(Lucide.fileCheck, size: 18, color: c.blueTx), const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.t('files_loaded_brief', {'n': files.length}) + (issues == 0 ? '' : ' · ${s.t('in_issues', {'n': issues})}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.tx)),
+                Text(files.map((f) => f.name).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: c.tx2)),
+              ])), const SizedBox(width: 8), LucideIcon(Lucide.chevronDown, size: 16, color: c.tx2),
+            ])))
+        : LayoutBuilder(builder: (context, box) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (box.maxWidth >= 760) ImportCardsRow(state: state)
+            else for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: 8), cards[i]],
+            if (phone && (state.report != null || running)) Align(alignment: Alignment.centerRight,
+              child: PillButton(label: s.t('files_collapse'), kind: PillKind.ghost, height: 44, onTap: () => setState(() => _showFiles = false))),
+          ]))),
+      if (widget.actions) ...[const SizedBox(height: 8), ImportActions(state: state, compact: phone)],
+    ]);
   }
 }
 
@@ -83,7 +76,7 @@ class ImportCardsRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: cards[i])],
+          for (final card in cards) Expanded(child: card),
         ],
       ),
     );
@@ -205,7 +198,7 @@ class _ImportCardState extends State<_ImportCard> {
         decoration: BoxDecoration(
           color: _dragging || (hover && f == null) ? Color.alphaBlend(c.blueTint, c.card) : c.card,
           borderRadius: c.r(22),
-          border: Border.all(color: widget.next || _dragging ? c.blue : (c.industrial ? c.lineStrong : const Color(0x00000000)), width: widget.next || _dragging || !c.industrial ? 1.5 : 1),
+          border: Border.all(color: widget.next || _dragging ? c.blue : c.lineStrong, width: widget.next || _dragging ? 1.5 : 1),
           boxShadow: c.shadowSm,
         ),
         child: Row(
@@ -293,99 +286,55 @@ class _ImportCardState extends State<_ImportCard> {
 /// on phones one row with round icon buttons.
 class ImportActions extends StatelessWidget {
   const ImportActions({super.key, required this.state, this.compact = false});
-
   final AppState state;
   final bool compact;
-
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final ready = state.ready;
-    final run = PillButton(
-      key: tourTargets.runButton,
-      label: s.t('btn_run'),
-      icon: Lucide.play,
-      kind: PillKind.primary,
-      height: compact ? 40 : 44,
-      fontSize: 15,
-      iconSize: 15,
-      padding: EdgeInsets.fromLTRB(16, 0, compact ? 16 : 10, 0),
+    final touch = Metrics.of(context).touch;
+    final run = PillButton(key: tourTargets.runButton, label: s.t('btn_run'), icon: Lucide.play,
+      kind: PillKind.primary, height: 44, fontSize: 14, padding: const EdgeInsets.symmetric(horizontal: 18),
       trailing: compact ? null : const KeyHint('F5'),
-      onTap: ready && !state.localBusy && !state.cloudRunning ? () => runCheck(context, state) : null,
-    );
-    final export = PillButton(
-      key: compact ? null : tourTargets.checkExport,
-      label: s.t('btn_export_excel'),
-      icon: Lucide.download,
-      kind: PillKind.soft,
-      height: 40,
-      fontSize: 14,
-      iconSize: 15,
-      color: c.blueTx,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      onTap: state.canExportReport ? () => exportReport(context, state) : null,
-    );
-    return Container(
-      padding: EdgeInsets.all(compact ? 12 : 16),
-      decoration: BoxDecoration(color: c.card, borderRadius: c.r(22), boxShadow: c.shadowSm, border: c.cardBorder),
-      child: compact
-          // Phones: export and clear as round icon buttons beside Run.
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-              children: [
-                Expanded(child: run),
-                const SizedBox(width: 8),
-                KeyedSubtree(
-                  key: tourTargets.checkExport,
-                  child: GlassButton(
-                    icon: Lucide.download,
-                    size: 40,
-                    tooltip: s.t('btn_export_excel'),
-                    onTap: state.canExportReport ? () => exportReport(context, state) : null,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                GlassButton(icon: Lucide.trash, size: 40, tooltip: s.t('btn_clear'), onTap: state.clearAll),
-              ],
-            ),
-                const SizedBox(height: 10),
-                ModeSelector(state: state),
-                if (!state.localAnalysisRequired) ...[const SizedBox(height: 10), AiSwitch(state: state)],
-              ],
-            )
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                run,
-                const SizedBox(height: 10),
-                ModeSelector(state: state),
-                if (!state.localAnalysisRequired) ...[const SizedBox(height: 10), AiSwitch(state: state)],
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(child: export),
-                    const SizedBox(width: 6),
-                    GlassButton(icon: Lucide.trash, size: 40, tooltip: s.t('btn_clear'), onTap: state.clearAll),
-                  ],
-                ),
-              ],
-            ),
-    );
+      onTap: state.ready && !state.localBusy && !state.cloudRunning ? () => runCheck(context, state) : null);
+    final export = compact
+      ? KeyedSubtree(key: tourTargets.checkExport, child: GlassButton(icon: Lucide.download, size: 44,
+          tooltip: s.t('btn_export_excel'), onTap: state.canExportReport ? () => exportReport(context, state) : null))
+      : PillButton(key: tourTargets.checkExport, label: s.t('btn_export_excel'), icon: Lucide.download,
+          kind: PillKind.soft, height: 44, fontSize: 13, color: c.blueTx,
+          onTap: state.canExportReport ? () => exportReport(context, state) : null);
+    final clear = GlassButton(icon: Lucide.trash, size: 44, tooltip: s.t('btn_clear'), onTap: state.clearAll);
+    return Container(key: const ValueKey('check-command-bar'), padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: c.card, borderRadius: c.r(16), border: c.cardBorder),
+      child: LayoutBuilder(builder: (context, box) {
+        final inline = !compact && box.maxWidth >= 640;
+        return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [if (inline) run else Expanded(child: run), const SizedBox(width: 12),
+            if (inline) ...[SizedBox(width: touch ? 270 : 244, child: ModeSelector(state: state)), const Spacer()],
+            export, const SizedBox(width: 6), clear]),
+          if (!inline) ...[const SizedBox(height: 8), ModeSelector(state: state)],
+          if (!state.localAnalysisRequired) ...[const SizedBox(height: 6), Align(alignment: Alignment.centerLeft, child: AiSwitch(state: state))],
+        ]);
+      }));
   }
 }
 
 /// Model controls and the immutable evidence for the displayed check.
-class LocalModelIndicator extends StatelessWidget {
-  const LocalModelIndicator({super.key, required this.state});
+class LocalModelIndicator extends StatefulWidget {
+  const LocalModelIndicator({super.key, required this.state, this.compact = false});
   final AppState state;
+  final bool compact;
+  @override
+  State<LocalModelIndicator> createState() => _LocalModelIndicatorState();
+}
+
+class _LocalModelIndicatorState extends State<LocalModelIndicator> {
+  bool _showOptions = false;
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context);
     final c = AppTheme.of(context);
+    final state = widget.state;
     final usage = state.report?.localModel ??
         (state.localAnalysisRequired && state.localStatus != LocalStatus.idle ? state.currentLocalUsage : null);
     final status = usage?.state ?? 'idle';
@@ -396,7 +345,7 @@ class LocalModelIndicator extends StatelessWidget {
         : c.tx2;
     return Container(
       key: tourTargets.localModels,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: c.r(18),
@@ -406,15 +355,21 @@ class LocalModelIndicator extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          LocalModelControls(state: state),
+          if ((widget.compact || isPhoneLayout(context)) && (state.report != null || state.localBusy || state.cloudRunning)) ...[
+            Row(children: [Expanded(child: Text(s.t(state.localAnalysisRequired ? 'local_analysis_required' : 'local_usage_title'),
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.tx))),
+              PillButton(key: const ValueKey('model-options-expand'), label: s.t('local_options'), kind: PillKind.ghost, height: 44,
+                onTap: () => setState(() => _showOptions = !_showOptions))]),
+            if (_showOptions) LocalModelControls(state: state, compact: true),
+          ] else LocalModelControls(state: state, compact: true),
           if (usage != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 2),
             Wrap(
               spacing: 16,
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(
+                if (usage.kind != 'analysis' || status != 'done') Text(
                   s.t('local_usage_title'),
                   style: TextStyle(
                     fontSize: 12.5,
@@ -422,20 +377,20 @@ class LocalModelIndicator extends StatelessWidget {
                     color: c.tx,
                   ),
                 ),
-                Text(
+                if (usage.kind != 'analysis' || status != 'done') Text(
                   s.t(usage.kind == 'analysis' && (status == 'unavailable' || status == 'failed') ? 'local_analysis_no_result' : 'local_state_$status'),
                   style: TextStyle(fontSize: 12, height: 1.4, color: color),
                 ),
-                if (usage.model.isNotEmpty)
+                if (usage.model.isNotEmpty && (widget.compact || isPhoneLayout(context) || usage.kind != 'analysis'))
                   Text(
                     usage.model,
                     style: TextStyle(fontSize: 11.5, height: 1.4, color: c.tx2),
                   ),
                 if (status == 'done')
                   Text(
-                    s.t(usage.kind == 'analysis' ? 'local_analysis_counts' : 'local_usage_counts', {
+                    s.t(usage.kind == 'analysis' ? 'local_analysis_brief' : 'local_usage_counts', {
                       'n': usage.kind == 'analysis' ? usage.rows : usage.texts,
-                      'all': usage.total, 'b': usage.calls,
+                      'all': usage.total, 'b': usage.calls, 's': (usage.millis / 1000).toStringAsFixed(1),
                       'p': usage.paired,
                       'ms': usage.millis,
                     }),

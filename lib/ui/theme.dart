@@ -61,11 +61,11 @@ class AppColors {
   /// corners, no shadows or gradients, graphite accent, system fonts.
   final bool industrial;
 
-  /// Corner radius: the design's radius, or in the industrial style 3–6 px.
-  BorderRadius r(double v) => BorderRadius.circular(!industrial || v <= 4 ? v : (v >= 100 ? 4 : (v <= 12 ? 3 : (v <= 20 ? 4 : 6))));
+  /// Both palettes use square surfaces and controls.
+  BorderRadius r(double _) => BorderRadius.zero;
 
-  /// Industrial style: every card is outlined.
-  Border? get cardBorder => industrial ? Border.all(color: lineStrong) : null;
+  /// Flat regions are separated by a one-pixel rule, without card shadows.
+  Border get cardBorder => Border.all(color: lineStrong);
   final Color bg;
   final Color tx;
   final Color tx2;
@@ -180,11 +180,8 @@ class AppColors {
     band: Color(0xFFF7F7F9),
     line: Color(0xFFE5E5EA),
     lineStrong: Color(0xFFD2D2D7),
-    shadow: [
-      BoxShadow(color: Color(0x05000000), offset: Offset(0, 1), blurRadius: 2),
-      BoxShadow(color: Color(0x141E2850), offset: Offset(0, 24), blurRadius: 60),
-    ],
-    shadowSm: [BoxShadow(color: Color(0x141E2850), offset: Offset(0, 4), blurRadius: 20)],
+    shadow: [],
+    shadowSm: [],
   );
 
   static const darkTheme = AppColors(
@@ -227,11 +224,8 @@ class AppColors {
     band: Color(0x0AFFFFFF),
     line: Color(0xFF2C2C2E),
     lineStrong: Color(0xFF3A3A3C),
-    shadow: [
-      BoxShadow(color: Color(0x4D000000), offset: Offset(0, 1), blurRadius: 2),
-      BoxShadow(color: Color(0x73000000), offset: Offset(0, 24), blurRadius: 60),
-    ],
-    shadowSm: [BoxShadow(color: Color(0x59000000), offset: Offset(0, 4), blurRadius: 20)],
+    shadow: [],
+    shadowSm: [],
   );
 
   /// Industrial style (light), from the SMT-FAI industrial design.

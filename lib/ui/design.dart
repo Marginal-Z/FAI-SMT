@@ -20,7 +20,7 @@ class MeshBackground extends StatelessWidget {
   Widget build(BuildContext context) => ColoredBox(color: AppTheme.of(context).bg, child: child);
 }
 
-/// Translucent rounded card with the design's soft shadow.
+/// Flat, square section with a thin rule around its content.
 class DCard extends StatelessWidget {
   const DCard({super.key, required this.child, this.radius = 32, this.padding = EdgeInsets.zero, this.shadow, this.color, this.clip = false});
 
@@ -37,7 +37,7 @@ class DCard extends StatelessWidget {
     return Container(
       padding: padding,
       clipBehavior: clip ? Clip.antiAlias : Clip.none,
-      decoration: BoxDecoration(color: color ?? c.card, borderRadius: c.r(radius), boxShadow: c.industrial ? null : (shadow ?? c.shadow), border: c.cardBorder),
+      decoration: BoxDecoration(color: color ?? c.card, borderRadius: BorderRadius.zero, border: c.cardBorder),
       child: child,
     );
   }
@@ -149,13 +149,6 @@ class PillButton extends StatelessWidget {
                 borderRadius: c.r(height / 2),
                 // Industrial style: outlined, no glow.
                 border: c.industrial && kind != PillKind.ghost ? Border.all(color: primary ? c.btnHover : c.lineStrong) : null,
-                boxShadow: c.industrial
-                    ? null
-                    : primary && enabled
-                    ? const [BoxShadow(color: Color(0x5C0071E3), offset: Offset(0, 8), blurRadius: 22)]
-                    : kind == PillKind.glass
-                    ? c.shadowSm
-                    : null,
               ),
               // Centred when the pill is stretched to a column's width.
               child: Center(

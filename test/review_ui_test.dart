@@ -26,6 +26,12 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(SmtFaiApp(state: s, touch: width < 840));
       await tester.pumpAndSettle();
+      final options = find.byKey(const ValueKey('model-options-expand'));
+      if (options.evaluate().isNotEmpty) {
+        await tester.ensureVisible(options);
+        await tester.tap(options);
+        await tester.pumpAndSettle();
+      }
       expect(find.byKey(const ValueKey('local-model-toggle')), findsOneWidget);
       expect(find.byKey(const ValueKey('local-model-choice')), findsOneWidget);
       final direction = find.byKey(const ValueKey('orientation-P1001'));

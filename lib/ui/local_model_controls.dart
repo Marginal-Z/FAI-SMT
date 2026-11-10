@@ -17,10 +17,12 @@ class LocalModelControls extends StatelessWidget {
     super.key,
     required this.state,
     this.manage = true,
+    this.compact = false,
   });
 
   final AppState state;
   final bool manage;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -53,20 +55,20 @@ class LocalModelControls extends StatelessWidget {
       style: TextStyle(fontSize: 11.5, height: 1.4, color: c.tx2),
     );
     final manager = PillButton(
-      label: s.t('local_manage'),
+      label: s.t(compact ? 'local_manage_short' : 'local_manage'),
       kind: PillKind.ghost,
-      height: 44,
+      height: Metrics.of(context).touch ? 44 : 36,
       onTap: () => state.openSettings(SettingsSection.localAi),
     );
     final choice = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
+        if (!compact) Text(
           s.t(required ? 'local_analysis_model' : 'local_pick_title'),
           style: TextStyle(fontSize: 12, color: c.tx2),
         ),
-        const SizedBox(height: 4),
+        if (!compact) const SizedBox(height: 4),
         DropdownSelect<String>(
           key: const ValueKey('local-model-choice'),
           value: required ? state.localAnalysisModel.id : state.activeEmbedding.id,
@@ -88,6 +90,18 @@ class LocalModelControls extends StatelessWidget {
     );
     return LayoutBuilder(
       builder: (context, box) {
+        if (compact) {
+          final warning = required ? !state.localAnalysisReady : !cloudOnly && on && !state.localModelsReady;
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          if (box.maxWidth >= 520)
+              Row(children: [SizedBox(width: 180, child: toggle), const SizedBox(width: 12), Expanded(child: choice), if (manage) ...[const SizedBox(width: 8), manager]])
+            else ...[
+              Row(children: [Expanded(child: toggle), if (manage) ...[const SizedBox(width: 8), manager]]),
+              choice,
+            ],
+            if (warning) ...[const SizedBox(height: 4), note],
+          ]);
+        }
         if (box.maxWidth >= 700) {
           return Row(
             children: [

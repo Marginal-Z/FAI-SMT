@@ -5,6 +5,14 @@ const supportedLanguages = ['zh', 'en', 'th'];
 
 /// key -> [zh, en, th]. Templates use `{name}` placeholders.
 const Map<String, List<String>> _t = {
+  'local_manage_short': ['模型设置', 'Models', 'ตั้งค่าโมเดล'],
+  'local_options': ['模型选项', 'Model options', 'ตัวเลือกโมเดล'],
+  'files_expand': ['查看 / 更换文件', 'View / replace files', 'ดู / เปลี่ยนไฟล์'],
+  'files_collapse': ['收起文件', 'Collapse files', 'ย่อไฟล์'],
+  'files_loaded_brief': ['已导入 {n} 份文件', '{n} files imported', 'นำเข้า {n} ไฟล์แล้ว'],
+  'filters_more': ['更多筛选', 'More filters', 'ตัวกรองเพิ่มเติม'],
+  'filters_less': ['收起筛选', 'Fewer filters', 'ย่อตัวกรอง'],
+  'local_analysis_brief': ['已分析 {n}/{all} 项 · {s} 秒', '{n}/{all} analyzed · {s} s', 'วิเคราะห์ {n}/{all} · {s} วินาที'],
   'local_err_model_hash': ['模型文件 SHA-256 校验失败，请重新下载', 'Model SHA-256 mismatch; download it again', 'SHA-256 ของโมเดลไม่ตรง โปรดดาวน์โหลดใหม่'],
   'local_state_unknown': ['旧记录未保存模型调用证据', 'Older record has no local inference evidence', 'บันทึกเก่าไม่มีหลักฐานการเรียกโมเดล'],
   'local_err_model_missing': ['模型文件未就绪，请检查模型下载状态', 'Model file unavailable; check its download status', 'ไฟล์โมเดลไม่พร้อม โปรดตรวจสถานะดาวน์โหลด'],
