@@ -1,7 +1,6 @@
 /// Flat app frame: header, navigation, status and keyboard shortcuts.
 library;
 
-
 import 'package:flutter/widgets.dart';
 
 import '../app_state.dart';
@@ -29,21 +28,42 @@ class AppHeader extends StatelessWidget {
       key: tourTargets.tabs,
       onTap: state.closeSettings,
       builder: (context, hover, _) => Container(
-        height: 44,
+        height: 32,
         padding: const EdgeInsets.fromLTRB(6, 4, 16, 4),
-        decoration: BoxDecoration(color: c.glass, borderRadius: c.r(999), boxShadow: c.shadowSm, border: c.cardBorder),
+        decoration: BoxDecoration(
+          color: c.glass,
+          borderRadius: c.r(999),
+          boxShadow: c.shadowSm,
+          border: c.cardBorder,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 34,
-              height: 34,
+              width: 26,
+              height: 26,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: on ? c.navOn : (hover ? c.hover : c.well), borderRadius: c.r(17)),
-              child: LucideIcon(Lucide.clipboardCheck, size: 18, color: on ? c.navOnTx : c.navTx, stroke: 2),
+              decoration: BoxDecoration(
+                color: on ? c.navOn : (hover ? c.hover : c.well),
+                borderRadius: c.r(17),
+              ),
+              child: LucideIcon(
+                Lucide.clipboardCheck,
+                size: 16,
+                color: on ? c.navOnTx : c.navTx,
+                stroke: 2,
+              ),
             ),
             const SizedBox(width: 10),
-            Text(s.t('mod_check'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: c.tx)),
+            Text(
+              s.t('mod_check'),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+                color: c.tx,
+              ),
+            ),
           ],
         ),
       ),
@@ -65,18 +85,43 @@ class AppHeader extends StatelessWidget {
         ],
         _LanguageButton(state: state),
         const SizedBox(width: 8),
-        GlassButton(icon: Lucide.theme, tooltip: s.t('theme_now_${state.theme.name}'), onTap: state.cycleTheme),
+        GlassButton(
+          size: Metrics.of(context).touch ? 44 : 30,
+          iconSize: 16,
+          icon: Lucide.theme,
+          tooltip: s.t('theme_now_${state.theme.name}'),
+          onTap: state.cycleTheme,
+        ),
         const SizedBox(width: 8),
-        GlassButton(icon: Lucide.history, tooltip: s.t('set_history'), onTap: () => state.openSettings(SettingsSection.history)),
+        GlassButton(
+          size: Metrics.of(context).touch ? 44 : 30,
+          iconSize: 16,
+          icon: Lucide.history,
+          tooltip: s.t('set_history'),
+          onTap: () => state.openSettings(SettingsSection.history),
+        ),
         const SizedBox(width: 8),
-        GlassButton(key: tourTargets.help, icon: Lucide.help, tooltip: s.t('set_guide'), onTap: () => state.openSettings(SettingsSection.guide)),
+        GlassButton(
+          size: Metrics.of(context).touch ? 44 : 30,
+          iconSize: 16,
+          key: tourTargets.help,
+          icon: Lucide.help,
+          tooltip: s.t('set_guide'),
+          onTap: () => state.openSettings(SettingsSection.guide),
+        ),
         const SizedBox(width: 8),
-        GlassButton(icon: Lucide.gear, tooltip: s.t('mod_settings'), onTap: () => state.openSettings()),
+        GlassButton(
+          size: Metrics.of(context).touch ? 44 : 30,
+          iconSize: 16,
+          icon: Lucide.gear,
+          tooltip: s.t('mod_settings'),
+          onTap: () => state.openSettings(),
+        ),
       ],
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 14, 24, 10),
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
       child: Row(children: [nav, const Spacer(), actions]),
     );
   }
@@ -106,7 +151,10 @@ class _LanguageButtonState extends State<_LanguageButton> {
         overlayChildBuilder: (_) => Stack(
           children: [
             Positioned.fill(
-              child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _portal.hide),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _portal.hide,
+              ),
             ),
             CompositedTransformFollower(
               link: _link,
@@ -122,7 +170,12 @@ class _LanguageButtonState extends State<_LanguageButton> {
                     child: Container(
                       width: 168,
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: c.solid, borderRadius: c.r(18), boxShadow: c.shadow, border: c.cardBorder),
+                      decoration: BoxDecoration(
+                        color: c.solid,
+                        borderRadius: c.r(18),
+                        boxShadow: c.shadow,
+                        border: c.cardBorder,
+                      ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -134,7 +187,9 @@ class _LanguageButtonState extends State<_LanguageButton> {
                               },
                               builder: (context, hover, _) => Container(
                                 height: 36,
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: state.language == lang
                                       ? c.blueTint
@@ -150,12 +205,22 @@ class _LanguageButtonState extends State<_LanguageButton> {
                                         languageNames[lang]!,
                                         style: TextStyle(
                                           fontSize: 14,
-                                          fontWeight: state.language == lang ? FontWeight.w600 : FontWeight.w500,
-                                          color: state.language == lang ? c.blueTx : c.tx,
+                                          fontWeight: state.language == lang
+                                              ? FontWeight.w600
+                                              : FontWeight.w500,
+                                          color: state.language == lang
+                                              ? c.blueTx
+                                              : c.tx,
                                         ),
                                       ),
                                     ),
-                                    if (state.language == lang) LucideIcon(Lucide.check, size: 14, color: c.blueTx, stroke: 2.6),
+                                    if (state.language == lang)
+                                      LucideIcon(
+                                        Lucide.check,
+                                        size: 14,
+                                        color: c.blueTx,
+                                        stroke: 2.6,
+                                      ),
                                   ],
                                 ),
                               ),
@@ -169,7 +234,12 @@ class _LanguageButtonState extends State<_LanguageButton> {
             ),
           ],
         ),
-        child: GlassButton(label: languageNames[state.language], trailing: Lucide.chevronDown, onTap: _portal.toggle),
+        child: GlassButton(
+          size: Metrics.of(context).touch ? 44 : 30,
+          label: languageNames[state.language],
+          trailing: Lucide.chevronDown,
+          onTap: _portal.toggle,
+        ),
       ),
     );
   }
@@ -185,9 +255,13 @@ class AppFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
-    final ng = (state.report?.count(CheckStatus.ng) ?? 0) + (state.report?.count(CheckStatus.review) ?? 0) + (state.report?.count(CheckStatus.unmatched) ?? 0);
+    final ng =
+        (state.report?.count(CheckStatus.ng) ?? 0) +
+        (state.report?.count(CheckStatus.review) ?? 0) +
+        (state.report?.count(CheckStatus.unmatched) ?? 0);
     final files = state.loadedCount;
-    final wide = MediaQuery.sizeOf(context).width >= 900 && !Metrics.of(context).touch;
+    final wide =
+        MediaQuery.sizeOf(context).width >= 900 && !Metrics.of(context).touch;
     final style = TextStyle(fontSize: 12, color: c.tx2);
     Widget shortcut(String key, String label) => Row(
       mainAxisSize: MainAxisSize.min,
@@ -199,8 +273,17 @@ class AppFooter extends StatelessWidget {
     );
     // Industrial style: a grey status bar with a top rule.
     return Container(
-      padding: c.industrial ? const EdgeInsets.fromLTRB(16, 7, 16, 7) : const EdgeInsets.fromLTRB(32, 16, 32, 16),
-      decoration: c.industrial ? BoxDecoration(color: c.dark ? c.solid : const Color(0xFFF2F2F2), border: Border(top: BorderSide(color: c.dark ? c.lineStrong : const Color(0xFF8C8C8C)))) : null,
+      padding: const EdgeInsets.fromLTRB(10, 3, 10, 3),
+      decoration: c.industrial
+          ? BoxDecoration(
+              color: c.dark ? c.solid : const Color(0xFFF2F2F2),
+              border: Border(
+                top: BorderSide(
+                  color: c.dark ? c.lineStrong : const Color(0xFF8C8C8C),
+                ),
+              ),
+            )
+          : null,
       child: Row(
         children: [
           Container(
@@ -217,7 +300,12 @@ class AppFooter extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           Expanded(
-            child: Text(s.t(state.statusKey, state.statusArgs), maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+            child: Text(
+              s.t(state.statusKey, state.statusArgs),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
           ),
           Text(s.t('footer_files', {'n': files}), style: style),
           if (wide) ...[
@@ -253,23 +341,46 @@ class PhoneHeader extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: c.tx),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+                color: c.tx,
+              ),
             ),
           ),
           if (state.updateAvailable) ...[
             GlassButton(
               icon: Lucide.download,
               size: 38,
-              tooltip: s.t('upd_available', {'v': state.latestRelease!.version}),
+              tooltip: s.t('upd_available', {
+                'v': state.latestRelease!.version,
+              }),
               onTap: () => state.openSettings(SettingsSection.about),
             ),
             const SizedBox(width: 6),
           ],
-          GlassButton(icon: Lucide.theme, size: 38, tooltip: s.t('theme_now_${state.theme.name}'), onTap: state.cycleTheme),
+          GlassButton(
+            icon: Lucide.theme,
+            size: 38,
+            tooltip: s.t('theme_now_${state.theme.name}'),
+            onTap: state.cycleTheme,
+          ),
           const SizedBox(width: 6),
-          GlassButton(icon: Lucide.history, size: 38, tooltip: s.t('set_history'), onTap: () => state.openSettings(SettingsSection.history)),
+          GlassButton(
+            icon: Lucide.history,
+            size: 38,
+            tooltip: s.t('set_history'),
+            onTap: () => state.openSettings(SettingsSection.history),
+          ),
           const SizedBox(width: 6),
-          GlassButton(key: tourTargets.help, icon: Lucide.help, size: 38, tooltip: s.t('set_guide'), onTap: () => state.openSettings(SettingsSection.guide)),
+          GlassButton(
+            key: tourTargets.help,
+            icon: Lucide.help,
+            size: 38,
+            tooltip: s.t('set_guide'),
+            onTap: () => state.openSettings(SettingsSection.guide),
+          ),
         ],
       ),
     );
@@ -293,8 +404,20 @@ class PhoneNavBar extends StatelessWidget {
     final c = AppTheme.of(context);
     final s = Strings.of(context);
     final tabs = [
-      (Lucide.clipboardCheck, s.t('mod_check'), !state.settingsOpen, state.closeSettings, tourTargets.checkTab),
-      (Lucide.gear, s.t('mod_settings'), state.settingsOpen, () => state.openSettings(), null),
+      (
+        Lucide.clipboardCheck,
+        s.t('mod_check'),
+        !state.settingsOpen,
+        state.closeSettings,
+        tourTargets.checkTab,
+      ),
+      (
+        Lucide.gear,
+        s.t('mod_settings'),
+        state.settingsOpen,
+        () => state.openSettings(),
+        null,
+      ),
     ];
     final ind = c.industrial;
     final items = Row(
@@ -305,10 +428,21 @@ class PhoneNavBar extends StatelessWidget {
               key: key,
               onTap: onTap,
               builder: (context, hover, _) {
-                final color = ind ? (on ? c.navOnTx : c.tx2) : (on ? c.blueTx : c.tx);
+                final color = ind
+                    ? (on ? c.navOnTx : c.tx2)
+                    : (on ? c.blueTx : c.tx);
                 final deco = BoxDecoration(
-                  color: on ? (ind ? c.navOn : c.blueTint) : (hover ? c.hover : null),
-                  border: on ? Border(bottom: BorderSide(color: ind ? c.btn : c.blue, width: 2)) : null,
+                  color: on
+                      ? (ind ? c.navOn : c.blueTint)
+                      : (hover ? c.hover : null),
+                  border: on
+                      ? Border(
+                          bottom: BorderSide(
+                            color: ind ? c.btn : c.blue,
+                            width: 2,
+                          ),
+                        )
+                      : null,
                 );
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 260),
@@ -318,13 +452,22 @@ class PhoneNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      LucideIcon(icon, size: 22, color: color, stroke: on ? 2.2 : 1.8),
+                      LucideIcon(
+                        icon,
+                        size: 22,
+                        color: color,
+                        stroke: on ? 2.2 : 1.8,
+                      ),
                       const SizedBox(height: 3),
                       Text(
                         label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 10.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: color),
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                          color: color,
+                        ),
                       ),
                     ],
                   ),
@@ -337,7 +480,10 @@ class PhoneNavBar extends StatelessWidget {
     return Container(
       key: tourTargets.tabs,
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-      decoration: BoxDecoration(color: c.card, border: Border(top: BorderSide(color: c.lineStrong))),
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border(top: BorderSide(color: c.lineStrong)),
+      ),
       child: items,
     );
   }

@@ -12,7 +12,7 @@
 
 [官网](https://marginal-z.github.io/FAI-SMT/) · [使用教程](https://marginal-z.github.io/FAI-SMT/#tutorial) · [下载](https://github.com/Marginal-Z/FAI-SMT/releases/latest) · [更新记录](https://github.com/Marginal-Z/FAI-SMT/releases)
 
-<img src="site/assets/check-layout-3.3.1.png" width="900" alt="BOM 核对界面">
+<img src="site/assets/check-workspace-3.4.0.png" width="900" alt="BOM 核对界面">
 
 </div>
 
@@ -47,7 +47,13 @@ SMT-FAI 用于 SMT 产线的 BOM 核对。导入作为基准的 A-BOM，再导�
 
 ## 下载与安装
 
-### 3.3.1 更新
+### 3.4.0 更新
+
+核对界面改为紧凑的桌面工作区：操作与筛选集中在顶部，结果表占据主体，文件、模型、方向提醒与详情放在可收起、可调宽的右侧面板。表格直接显示“物料一致 / 有差异 / 待人工确认”和具体问题，详情将最终结论、参考差异、AI 意见与配对依据分别展示。
+
+“旧料号”等已知追溯字段保留并单独提示，不再因空白或差异判 NG；厂商、型号、参数、用量、位号和贴装状态仍参与核对。旧料号不会作为 MPN 或批准替代料使用。本地语言模型仍须完成全量分析后才能输出和导出。详见 [3.4.0 更新说明](docs/release-notes/v3.4.0.md) 和 [验证记录](docs/reviews/2026-11-10-desktop-workspace.md)。
+
+### 3.3.1 更新（历史）
 
 核对界面取消圆角卡片、浮动阴影和玻璃导航，改为直角平面区域、表格式统计栏和行分隔线。现代 / 工业两种配色均使用直角布局。
 

@@ -8,6 +8,28 @@ import 'knowledge.dart';
 
 export 'knowledge.dart' show ItemKind;
 
+/// Deliberately narrow allowlist: manufacturer/MPN/approved alternates and
+/// unknown columns remain material checks. An old number is never an alternate.
+bool isReferenceColumn(String key, [String header = '']) {
+  String norm(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'[\s_\-()（）]'), '');
+  const names = {
+    '旧料号',
+    '舊料號',
+    '原料号',
+    '原料號',
+    '历史料号',
+    '歷史料號',
+    'oldpn',
+    'oldpartno',
+    'oldpartnumber',
+    'previouspartnumber',
+    'legacypn',
+    'legacypartnumber',
+  };
+  return names.contains(norm(key)) || names.contains(norm(header));
+}
+
 /// What a column holds.
 enum BomRole {
   partNo,
@@ -50,7 +72,11 @@ class SourceRef {
   String get label => '$sheet!$row';
 
   @override
-  bool operator ==(Object other) => other is SourceRef && other.file == file && other.sheet == sheet && other.row == row;
+  bool operator ==(Object other) =>
+      other is SourceRef &&
+      other.file == file &&
+      other.sheet == sheet &&
+      other.row == row;
 
   @override
   int get hashCode => Object.hash(file, sheet, row);
@@ -63,7 +89,14 @@ class SourceRef {
 
 /// A recognised column.
 class BomColumn {
-  BomColumn(this.index, this.header, this.role, {this.label = '', this.confidence = 1, this.evidence = ''});
+  BomColumn(
+    this.index,
+    this.header,
+    this.role, {
+    this.label = '',
+    this.confidence = 1,
+    this.evidence = '',
+  });
 
   /// 0-based column index (A = 0).
   final int index;
@@ -165,7 +198,11 @@ class BomRecord {
     'description': description,
     if (quantity != null) 'quantity': quantity,
     if (refs.isNotEmpty) 'refs': refs,
-    if (extra.values.any((v) => v.isNotEmpty)) 'extra': {for (final e in extra.entries) if (e.value.isNotEmpty) e.key: e.value},
+    if (extra.values.any((v) => v.isNotEmpty))
+      'extra': {
+        for (final e in extra.entries)
+          if (e.value.isNotEmpty) e.key: e.value,
+      },
     if (dnp) 'dnp': true,
     if (level != null) 'level': level,
     if (parentId != null) 'parent': parentId,
@@ -177,8 +214,21 @@ class BomRecord {
 /// The records of one part number (a part listed twice in a file is one
 /// part): what the comparison works on.
 class BomPart {
-  BomPart(this.partNo, {required this.description, required this.quantity, required this.refs, required this.extra, required this.sources, List<String>? recordIds, this.dnp = false, this.level, this.alternates = const [], this.kind = ItemKind.unknown, List<String>? sourceDescriptions})
-    : recordIds = recordIds ?? [], sourceDescriptions = sourceDescriptions ?? [];
+  BomPart(
+    this.partNo, {
+    required this.description,
+    required this.quantity,
+    required this.refs,
+    required this.extra,
+    required this.sources,
+    List<String>? recordIds,
+    this.dnp = false,
+    this.level,
+    this.alternates = const [],
+    this.kind = ItemKind.unknown,
+    List<String>? sourceDescriptions,
+  }) : recordIds = recordIds ?? [],
+       sourceDescriptions = sourceDescriptions ?? [];
 
   /// [records] of one part number, in file order.
   factory BomPart.of(String partNo, Iterable<BomRecord> records) {
@@ -195,7 +245,9 @@ class BomPart {
     }
     return BomPart(
       partNo,
-      description: list.map((r) => r.description).firstWhere((d) => d.isNotEmpty, orElse: () => ''),
+      description: list
+          .map((r) => r.description)
+          .firstWhere((d) => d.isNotEmpty, orElse: () => ''),
       quantity: qty,
       refs: [for (final r in list) ...r.refs],
       extra: extra,
@@ -204,8 +256,17 @@ class BomPart {
       dnp: list.every((r) => r.dnp),
       level: list.first.level,
       alternates: {for (final r in list) ...r.alternates}.toList(),
-      kind: list.map((r) => r.kind).firstWhere((k) => k != ItemKind.unknown, orElse: () => ItemKind.unknown),
-      sourceDescriptions: list.map((r) => r.description).where((d) => d.isNotEmpty).toSet().toList(),
+      kind: list
+          .map((r) => r.kind)
+          .firstWhere(
+            (k) => k != ItemKind.unknown,
+            orElse: () => ItemKind.unknown,
+          ),
+      sourceDescriptions: list
+          .map((r) => r.description)
+          .where((d) => d.isNotEmpty)
+          .toSet()
+          .toList(),
     );
   }
 
@@ -235,7 +296,20 @@ class BomPart {
   /// Excel row numbers, for short display.
   List<int> get rows => [for (final s in sources) s.row];
 
-  BomPart copy() => BomPart(partNo, description: description, quantity: quantity, refs: [...refs], extra: {...extra}, sources: [...sources], recordIds: [...recordIds], dnp: dnp, level: level, alternates: alternates, kind: kind, sourceDescriptions: [...sourceDescriptions]);
+  BomPart copy() => BomPart(
+    partNo,
+    description: description,
+    quantity: quantity,
+    refs: [...refs],
+    extra: {...extra},
+    sources: [...sources],
+    recordIds: [...recordIds],
+    dnp: dnp,
+    level: level,
+    alternates: alternates,
+    kind: kind,
+    sourceDescriptions: [...sourceDescriptions],
+  );
 }
 
 /// Something worth telling the user about a file.
@@ -285,12 +359,21 @@ class BomDocument {
   static List<BomPart> _group(List<BomRecord> records) {
     final byKey = <String, List<BomRecord>>{};
     for (final r in records) {
-      byKey.putIfAbsent(r.partNo.isEmpty ? '#${r.id}' : r.partNo, () => []).add(r);
+      byKey
+          .putIfAbsent(r.partNo.isEmpty ? '#${r.id}' : r.partNo, () => [])
+          .add(r);
     }
-    return [for (final e in byKey.entries) BomPart.of(e.value.first.partNo.isEmpty ? '#${e.value.first.source.row}' : e.key, e.value)];
+    return [
+      for (final e in byKey.entries)
+        BomPart.of(
+          e.value.first.partNo.isEmpty ? '#${e.value.first.source.row}' : e.key,
+          e.value,
+        ),
+    ];
   }
 
-  BomColumn? column(BomRole role) => columns.where((c) => c.role == role).firstOrNull;
+  BomColumn? column(BomRole role) =>
+      columns.where((c) => c.role == role).firstOrNull;
 
   /// Columns compared value by value, by label.
   Iterable<BomColumn> get others => columns.where((c) => c.role.attribute);

@@ -23,8 +23,10 @@ class HomeWindow extends StatelessWidget {
     final c = AppTheme.of(context);
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.f5): () => runCheck(context, state),
-        const SingleActivator(LogicalKeyboardKey.keyE, control: true): () => exportReport(context, state),
+        const SingleActivator(LogicalKeyboardKey.f5): () =>
+            runCheck(context, state),
+        const SingleActivator(LogicalKeyboardKey.keyE, control: true): () =>
+            exportReport(context, state),
         const SingleActivator(LogicalKeyboardKey.escape): () {
           if (state.settingsOpen) state.closeSettings();
         },
@@ -34,7 +36,8 @@ class HomeWindow extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(child: _body(c)),
-            if (state.tourStep != null) Positioned.fill(child: TourOverlay(state: state)),
+            if (state.tourStep != null)
+              Positioned.fill(child: TourOverlay(state: state)),
           ],
         ),
       ),
@@ -42,7 +45,12 @@ class HomeWindow extends StatelessWidget {
   }
 
   Widget _body(AppColors c) {
-    return MeshBackground(child: Builder(builder: (context) => isPhoneLayout(context) ? _phone(context) : _desktop()));
+    return MeshBackground(
+      child: Builder(
+        builder: (context) =>
+            isPhoneLayout(context) ? _phone(context) : _desktop(),
+      ),
+    );
   }
 
   Widget _page() => state.settingsOpen
@@ -50,7 +58,7 @@ class HomeWindow extends StatelessWidget {
       : LayoutBuilder(
           builder: (context, box) {
             // The comparison table needs room for part numbers and verdicts.
-            final compact = box.maxWidth < 1000;
+            final compact = box.maxWidth < 840;
             return CheckView(state: state, cards: compact);
           },
         );
@@ -68,11 +76,18 @@ class HomeWindow extends StatelessWidget {
             children: [
               Positioned.fill(
                 child: MediaQuery(
-                  data: mq.copyWith(padding: mq.padding.copyWith(bottom: phoneTabBarInset)),
+                  data: mq.copyWith(
+                    padding: mq.padding.copyWith(bottom: phoneTabBarInset),
+                  ),
                   child: _page(),
                 ),
               ),
-              Positioned(left: 0, right: 0, bottom: 0, child: PhoneNavBar(state: state)),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: PhoneNavBar(state: state),
+              ),
             ],
           ),
         ),

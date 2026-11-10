@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/app_state.dart';
@@ -8,15 +9,23 @@ import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/table_reader.dart';
 import 'package:smt_fai/main.dart';
+import 'package:smt_fai/ui/tour.dart';
 
 void main() {
   for (final width in [390.0, 800.0, 1440.0]) {
-    testWidgets('model evidence and direction details fit width $width', (tester) async {
+    testWidgets('model evidence and direction details fit width $width', (
+      tester,
+    ) async {
       final dir = Directory.systemTemp.createTempSync('review-ui-');
       addTearDown(() => dir.deleteSync(recursive: true));
       final s = AppState(AppSettings(tourDone: true), dir.path);
       s.modelStatus[s.activeEmbedding.id] = const ModelStatus(ModelState.ready);
-      BomDocument doc(String id) => readBom([Grid('s', [['料号', '描述', '用量', '位号'], ['P1001', 'LED red 0603', '1', 'D1']])], id: id);
+      BomDocument doc(String id) => readBom([
+        Grid('s', [
+          ['料号', '描述', '用量', '位号'],
+          ['P1001', 'LED red 0603', '1', 'D1'],
+        ]),
+      ], id: id);
       s.single = LoadedFile('A.csv', doc('S'));
       s.bomA = LoadedFile('B.csv', doc('A'));
       // A fixed comparison fixture tests layout, not model inference.
@@ -26,6 +35,10 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(SmtFaiApp(state: s, touch: width < 840));
       await tester.pumpAndSettle();
+      if (width >= 840) {
+        await tester.tap(find.byKey(tourTargets.localModels));
+        await tester.pumpAndSettle();
+      }
       final options = find.byKey(const ValueKey('model-options-expand'));
       if (options.evaluate().isNotEmpty) {
         await tester.ensureVisible(options);
@@ -34,8 +47,16 @@ void main() {
       }
       expect(find.byKey(const ValueKey('local-model-toggle')), findsOneWidget);
       expect(find.byKey(const ValueKey('local-model-choice')), findsOneWidget);
-      final direction = find.byKey(const ValueKey('orientation-P1001'));
-      if (width < 840) await tester.scrollUntilVisible(direction, 250, scrollable: find.byType(Scrollable).first);
+      final direction = width >= 840
+          ? find.text('核对 A/K 极性')
+          : find.byKey(const ValueKey('orientation-P1001'));
+      if (width < 840) {
+        await tester.scrollUntilVisible(
+          direction,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+      }
       expect(direction, findsOneWidget);
       expect(find.text('核对 A/K 极性'), findsOneWidget);
       expect(tester.takeException(), isNull);

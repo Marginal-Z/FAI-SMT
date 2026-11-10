@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smt_fai/main.dart';
 import 'package:smt_fai/ui/widgets.dart';
+import 'package:smt_fai/ui/tour.dart';
 
 import 'support/local_models.dart';
 
@@ -23,6 +24,10 @@ void main() {
         addTearDown(tester.view.reset);
         await tester.pumpWidget(SmtFaiApp(state: state, touch: width < 840));
         await tester.pumpAndSettle();
+        if (width >= 840) {
+          await tester.tap(find.byKey(tourTargets.fileChecks));
+          await tester.pumpAndSettle();
+        }
         for (final role in ['single', 'a', 'b']) {
           final size = tester.getSize(
             find.byKey(ValueKey('import-card-$role')),
@@ -32,6 +37,10 @@ void main() {
             inInclusiveRange(44, 50),
             reason: '$role at $width',
           );
+        }
+        if (width >= 840) {
+          await tester.tap(find.byKey(tourTargets.localModels));
+          await tester.pumpAndSettle();
         }
         expect(find.text('本地 AI 分析（必需）'), findsOneWidget);
         expect(
@@ -43,7 +52,13 @@ void main() {
           isNull,
         );
         expect(
-          find.byKey(const ValueKey('direction-reminders-panel')),
+          find.byKey(
+            ValueKey(
+              width >= 840
+                  ? 'workspace-directions'
+                  : 'direction-reminders-panel',
+            ),
+          ),
           findsOneWidget,
         );
         state.runCheckNow();
@@ -56,6 +71,50 @@ void main() {
         await tester.pumpAndSettle();
         expect(state.canExportReport, isTrue);
         expect(state.report!.localModel.rows, 2);
+        if (width >= 840) {
+          final viewport = find.byKey(const ValueKey('check-results-viewport'));
+          final before = tester.getSize(viewport).height;
+          await tester.tap(find.byKey(const ValueKey('workspace-directions')));
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: find.byKey(const ValueKey('workspace-inspector')),
+              matching: find.text('P1001'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(const ValueKey('workspace-inspector')),
+              matching: find.text('D1'),
+            ),
+            findsOneWidget,
+          );
+          expect(tester.getSize(viewport).height, before);
+          await tester.tap(
+            find.byKey(const ValueKey('workspace-direction-filter')),
+          );
+          await tester.pumpAndSettle();
+          expect(state.reasonFilter, 'orientation');
+          expect(state.visibleRows().map((r) => r.partNo), ['P1001']);
+          state.select(state.visibleRows().first);
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('workspace-directions')));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.descendant(
+              of: find.byKey(const ValueKey('workspace-inspector')),
+              matching: find.text('P1001'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('final-conclusion')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          return;
+        }
         final panel = find.byKey(const ValueKey('direction-reminders-panel'));
         final expand = find.byKey(const ValueKey('direction-expand'));
         if (expand.evaluate().isEmpty && width < 600) {

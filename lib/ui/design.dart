@@ -3,7 +3,6 @@
 /// tiles, radio and segmented pills.
 library;
 
-
 import 'package:flutter/widgets.dart';
 
 import 'lucide.dart';
@@ -17,12 +16,21 @@ class MeshBackground extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(color: AppTheme.of(context).bg, child: child);
+  Widget build(BuildContext context) =>
+      ColoredBox(color: AppTheme.of(context).bg, child: child);
 }
 
 /// Flat, square section with a thin rule around its content.
 class DCard extends StatelessWidget {
-  const DCard({super.key, required this.child, this.radius = 32, this.padding = EdgeInsets.zero, this.shadow, this.color, this.clip = false});
+  const DCard({
+    super.key,
+    required this.child,
+    this.radius = 32,
+    this.padding = EdgeInsets.zero,
+    this.shadow,
+    this.color,
+    this.clip = false,
+  });
 
   final Widget child;
   final double radius;
@@ -37,7 +45,11 @@ class DCard extends StatelessWidget {
     return Container(
       padding: padding,
       clipBehavior: clip ? Clip.antiAlias : Clip.none,
-      decoration: BoxDecoration(color: color ?? c.card, borderRadius: BorderRadius.zero, border: c.cardBorder),
+      decoration: BoxDecoration(
+        color: color ?? c.card,
+        borderRadius: BorderRadius.zero,
+        border: c.cardBorder,
+      ),
       child: child,
     );
   }
@@ -45,7 +57,16 @@ class DCard extends StatelessWidget {
 
 /// Glass button: a circle with an icon, or a pill with a label.
 class GlassButton extends StatelessWidget {
-  const GlassButton({super.key, this.icon, this.label, this.trailing, this.onTap, this.tooltip, this.size = 36, this.iconSize = 18});
+  const GlassButton({
+    super.key,
+    this.icon,
+    this.label,
+    this.trailing,
+    this.onTap,
+    this.tooltip,
+    this.size = 36,
+    this.iconSize = 18,
+  });
 
   final Lucide? icon;
   final String? label;
@@ -64,20 +85,37 @@ class GlassButton extends StatelessWidget {
       builder: (context, hover, _) => Container(
         width: label == null ? size : null,
         height: size,
-        padding: label == null ? null : const EdgeInsets.symmetric(horizontal: 14),
+        padding: label == null
+            ? null
+            : const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: hover ? c.glass2 : c.glass, borderRadius: c.r(size / 2), boxShadow: c.shadowSm, border: c.cardBorder),
+        decoration: BoxDecoration(
+          color: hover ? c.glass2 : c.glass,
+          borderRadius: c.r(size / 2),
+          boxShadow: c.shadowSm,
+          border: c.cardBorder,
+        ),
         child: label == null
             ? LucideIcon(icon!, size: iconSize, color: c.tx, stroke: 1.7)
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (icon != null) ...[LucideIcon(icon!, size: 16, color: c.tx), const SizedBox(width: 6)],
+                  if (icon != null) ...[
+                    LucideIcon(icon!, size: 16, color: c.tx),
+                    const SizedBox(width: 6),
+                  ],
                   Text(
                     label!,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: c.tx),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: c.tx,
+                    ),
                   ),
-                  if (trailing != null) ...[const SizedBox(width: 6), LucideIcon(trailing!, size: 12, color: c.tx, stroke: 2.4)],
+                  if (trailing != null) ...[
+                    const SizedBox(width: 6),
+                    LucideIcon(trailing!, size: 12, color: c.tx, stroke: 2.4),
+                  ],
                 ],
               ),
       ),
@@ -131,8 +169,12 @@ class PillButton extends StatelessWidget {
         final primary = kind == PillKind.primary;
         final bg = switch (kind) {
           PillKind.primary => hover && enabled ? c.btnHover : c.btn,
-          PillKind.soft => c.industrial ? (hover && enabled ? c.hover : c.card) : (hover && enabled ? c.glass2 : c.hover),
-          PillKind.ghost => hover && enabled ? c.hover : const Color(0x00000000),
+          PillKind.soft =>
+            c.industrial
+                ? (hover && enabled ? c.hover : c.card)
+                : (hover && enabled ? c.glass2 : c.hover),
+          PillKind.ghost =>
+            hover && enabled ? c.hover : const Color(0x00000000),
           PillKind.glass => hover && enabled ? c.glass2 : c.glass,
         };
         final fg = color ?? (primary ? const Color(0xFFFFFFFF) : c.tx);
@@ -143,12 +185,16 @@ class PillButton extends StatelessWidget {
             opacity: enabled || !primary ? 1 : 0.4,
             child: Container(
               height: height,
-              padding: padding ?? EdgeInsets.symmetric(horizontal: height >= 44 ? 22 : 16),
+              padding:
+                  padding ??
+                  EdgeInsets.symmetric(horizontal: height >= 44 ? 22 : 16),
               decoration: BoxDecoration(
                 color: bg,
                 borderRadius: c.r(height / 2),
                 // Industrial style: outlined, no glow.
-                border: c.industrial && kind != PillKind.ghost ? Border.all(color: primary ? c.btnHover : c.lineStrong) : null,
+                border: c.industrial && kind != PillKind.ghost
+                    ? Border.all(color: primary ? c.btnHover : c.lineStrong)
+                    : null,
               ),
               // Centred when the pill is stretched to a column's width.
               child: Center(
@@ -157,7 +203,12 @@ class PillButton extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (icon != null) ...[
-                      LucideIcon(icon!, size: iconSize ?? (height >= 44 ? 18 : 15), color: enabled ? fg : c.tx3, stroke: 1.9),
+                      LucideIcon(
+                        icon!,
+                        size: iconSize ?? (height >= 44 ? 18 : 15),
+                        color: enabled ? fg : c.tx3,
+                        stroke: 1.9,
+                      ),
                       const SizedBox(width: 8),
                     ],
                     Flexible(
@@ -167,13 +218,20 @@ class PillButton extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: fontSize,
-                          fontWeight: weight ?? (primary || height >= 44 ? FontWeight.w600 : FontWeight.w500),
+                          fontWeight:
+                              weight ??
+                              (primary || height >= 44
+                                  ? FontWeight.w600
+                                  : FontWeight.w500),
                           letterSpacing: -0.01 * fontSize,
                           color: enabled || primary ? fg : c.tx3,
                         ),
                       ),
                     ),
-                    if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+                    if (trailing != null) ...[
+                      const SizedBox(width: 12),
+                      trailing!,
+                    ],
                   ],
                 ),
               ),
@@ -196,10 +254,17 @@ class KeyHint extends StatelessWidget {
     height: 24,
     padding: const EdgeInsets.symmetric(horizontal: 9),
     alignment: Alignment.center,
-    decoration: BoxDecoration(color: const Color(0x38FFFFFF), borderRadius: AppTheme.of(context).r(8)),
+    decoration: BoxDecoration(
+      color: const Color(0x38FFFFFF),
+      borderRadius: AppTheme.of(context).r(8),
+    ),
     child: Text(
       text,
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFFFFFFF)),
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFFFFFFFF),
+      ),
     ),
   );
 }
@@ -218,7 +283,11 @@ class Kbd extends StatelessWidget {
       decoration: BoxDecoration(color: c.kbd, borderRadius: c.r(5)),
       child: Text(
         text,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.tx),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: c.tx,
+        ),
       ),
     );
   }
@@ -268,7 +337,9 @@ class GradientTile extends StatelessWidget {
       // Flat: one solid colour (industrial: graphite, grey while a file is missing).
       decoration: BoxDecoration(
         borderRadius: c.r(radius),
-        color: c.industrial ? (colors == gray ? const Color(0xFF606060) : c.btn) : colors.$2,
+        color: c.industrial
+            ? (colors == gray ? const Color(0xFF606060) : c.btn)
+            : colors.$2,
       ),
       alignment: Alignment.center,
       child: Stack(
@@ -276,7 +347,12 @@ class GradientTile extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           LucideIcon(icon, size: iconSize, color: const Color(0xFFFFFFFF)),
-          if (badge != null) Positioned(right: -size * 0.18, bottom: -size * 0.18, child: badge!),
+          if (badge != null)
+            Positioned(
+              right: -size * 0.18,
+              bottom: -size * 0.18,
+              child: badge!,
+            ),
         ],
       ),
     );
@@ -285,7 +361,15 @@ class GradientTile extends StatelessWidget {
 
 /// Small rounded tint tile with a coloured icon (e.g. unit / format cards).
 class TintTile extends StatelessWidget {
-  const TintTile({super.key, required this.icon, this.size = 44, this.radius = 14, this.iconSize = 22, this.tint, this.color});
+  const TintTile({
+    super.key,
+    required this.icon,
+    this.size = 44,
+    this.radius = 14,
+    this.iconSize = 22,
+    this.tint,
+    this.color,
+  });
 
   final Lucide icon;
   final double size;
@@ -301,15 +385,28 @@ class TintTile extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: c.industrial ? c.btn : (tint ?? c.blueTint), borderRadius: c.r(radius)),
-      child: LucideIcon(icon, size: iconSize, color: c.industrial ? const Color(0xFFFFFFFF) : (color ?? c.blueTx)),
+      decoration: BoxDecoration(
+        color: c.industrial ? c.btn : (tint ?? c.blueTint),
+        borderRadius: c.r(radius),
+      ),
+      child: LucideIcon(
+        icon,
+        size: iconSize,
+        color: c.industrial ? const Color(0xFFFFFFFF) : (color ?? c.blueTx),
+      ),
     );
   }
 }
 
 /// Rounded result badge ("PASS", "NG").
 class DBadge extends StatelessWidget {
-  const DBadge({super.key, required this.text, required this.background, required this.color, this.height = 26});
+  const DBadge({
+    super.key,
+    required this.text,
+    required this.background,
+    required this.color,
+    this.height = 26,
+  });
 
   final String text;
   final Color background;
@@ -320,12 +417,20 @@ class DBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     height: height,
     padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(color: background, borderRadius: AppTheme.of(context).r(height / 2)),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: AppTheme.of(context).r(height / 2),
+    ),
     child: Center(
       widthFactor: 1,
       child: Text(
         text,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.24, color: color),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.24,
+          color: color,
+        ),
       ),
     ),
   );
@@ -333,7 +438,13 @@ class DBadge extends StatelessWidget {
 
 /// Designator chip with a leading dot.
 class DotChip extends StatelessWidget {
-  const DotChip({super.key, required this.text, required this.background, required this.color, this.strike = false});
+  const DotChip({
+    super.key,
+    required this.text,
+    required this.background,
+    required this.color,
+    this.strike = false,
+  });
 
   final String text;
   final Color background;
@@ -343,14 +454,20 @@ class DotChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-    decoration: BoxDecoration(color: background, borderRadius: AppTheme.of(context).r(9)),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: AppTheme.of(context).r(9),
+    ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 5,
           height: 5,
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.9), shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.9),
+            shape: BoxShape.circle,
+          ),
         ),
         const SizedBox(width: 6),
         Text(
@@ -371,7 +488,13 @@ class DotChip extends StatelessWidget {
 
 /// Toolbar tile: icon over a short label, blue tint when on.
 class ToolTile extends StatelessWidget {
-  const ToolTile({super.key, required this.icon, required this.label, this.onTap, this.active = false});
+  const ToolTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.active = false,
+  });
 
   final Lucide icon;
   final String label;
@@ -403,7 +526,11 @@ class ToolTile extends StatelessWidget {
             Text(
               label,
               maxLines: 1,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: active ? c.blueTx : c.tx),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: active ? c.blueTx : c.tx,
+              ),
             ),
           ],
         ),
@@ -414,7 +541,12 @@ class ToolTile extends StatelessWidget {
 
 /// Radio choice drawn as a pill with a round marker.
 class RadioPill extends StatelessWidget {
-  const RadioPill({super.key, required this.label, required this.on, required this.onTap});
+  const RadioPill({
+    super.key,
+    required this.label,
+    required this.on,
+    required this.onTap,
+  });
 
   final String label;
   final bool on;
@@ -442,20 +574,30 @@ class RadioPill extends StatelessWidget {
             Container(
               width: 16,
               height: 16,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: on ? c.btn : c.track),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: on ? c.btn : c.track,
+              ),
               alignment: Alignment.center,
               child: on
                   ? Container(
                       width: 5.2,
                       height: 5.2,
-                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFFFFFF)),
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFFFFFFF),
+                      ),
                     )
                   : null,
             ),
             const SizedBox(width: 9),
             Text(
               label,
-              style: TextStyle(fontSize: 13, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? c.blueTx : c.tx),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                color: on ? c.blueTx : c.tx,
+              ),
             ),
           ],
         ),
@@ -466,7 +608,12 @@ class RadioPill extends StatelessWidget {
 
 /// Segmented control: a tinted pill track with the chosen segment raised.
 class SegmentedPill<T> extends StatelessWidget {
-  const SegmentedPill({super.key, required this.value, required this.options, required this.onChanged});
+  const SegmentedPill({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
 
   final T value;
   final List<(T, String)> options;
@@ -494,11 +641,23 @@ class SegmentedPill<T> extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: on ? c.solid : (hover ? c.hover : null),
                     borderRadius: c.r(16),
-                    boxShadow: on ? const [BoxShadow(color: Color(0x1A000000), offset: Offset(0, 2), blurRadius: 8)] : null,
+                    boxShadow: on
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x1A000000),
+                              offset: Offset(0, 2),
+                              blurRadius: 8,
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Text(
                     options[i].$2,
-                    style: TextStyle(fontSize: 13, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? c.blueTx : c.tx2),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                      color: on ? c.blueTx : c.tx2,
+                    ),
                   ),
                 );
               },
@@ -517,12 +676,20 @@ class Caption extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Text(text, style: TextStyle(fontSize: 12, color: AppTheme.of(context).tx2));
+  Widget build(BuildContext context) => Text(
+    text,
+    style: TextStyle(fontSize: 12, color: AppTheme.of(context).tx2),
+  );
 }
 
 /// Linear progress track (the design's 6 px bars).
 class TrackBar extends StatelessWidget {
-  const TrackBar({super.key, required this.value, required this.color, this.height = 6});
+  const TrackBar({
+    super.key,
+    required this.value,
+    required this.color,
+    this.height = 6,
+  });
 
   final double value;
   final Color color;
@@ -542,7 +709,10 @@ class TrackBar extends StatelessWidget {
               widthFactor: value.clamp(0.0, 1.0),
               heightFactor: 1,
               child: DecoratedBox(
-                decoration: BoxDecoration(color: color, borderRadius: c.r(height / 2)),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: c.r(height / 2),
+                ),
               ),
             ),
           ],
@@ -558,6 +728,7 @@ class PillSearch extends StatefulWidget {
   const PillSearch({
     super.key,
     required this.controller,
+    this.focusNode,
     this.hint,
     this.onChanged,
     this.onSubmitted,
@@ -567,6 +738,7 @@ class PillSearch extends StatefulWidget {
   });
 
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String? hint;
   final ValueChanged<String>? onChanged;
 
@@ -581,12 +753,13 @@ class PillSearch extends StatefulWidget {
 }
 
 class _PillSearchState extends State<PillSearch> {
-  final _focus = FocusNode();
+  final _ownedFocus = FocusNode();
+  FocusNode get _focus => widget.focusNode ?? _ownedFocus;
 
   @override
   void initState() {
     super.initState();
-    _focus.addListener(() => setState(() {}));
+    _focus.addListener(_changed);
     widget.controller.addListener(_changed);
   }
 
@@ -595,6 +768,10 @@ class _PillSearchState extends State<PillSearch> {
   @override
   void didUpdateWidget(PillSearch old) {
     super.didUpdateWidget(old);
+    if (old.focusNode != widget.focusNode) {
+      (old.focusNode ?? _ownedFocus).removeListener(_changed);
+      _focus.addListener(_changed);
+    }
     if (old.controller != widget.controller) {
       old.controller.removeListener(_changed);
       widget.controller.addListener(_changed);
@@ -604,7 +781,8 @@ class _PillSearchState extends State<PillSearch> {
   @override
   void dispose() {
     widget.controller.removeListener(_changed);
-    _focus.dispose();
+    _focus.removeListener(_changed);
+    _ownedFocus.dispose();
     super.dispose();
   }
 
@@ -674,11 +852,13 @@ class _PillSearchState extends State<PillSearch> {
 /// panels. Tablets in landscape use the desktop layout.
 bool isPhoneLayout(BuildContext context) {
   final size = MediaQuery.sizeOf(context);
-  return size.width < 600 || (Metrics.of(context).touch && size.height > size.width);
+  return size.width < 600 ||
+      (Metrics.of(context).touch && size.height > size.width);
 }
 
 /// Space the floating phone tab bar takes at the bottom of a page.
-double bottomInset(BuildContext context) => MediaQuery.paddingOf(context).bottom;
+double bottomInset(BuildContext context) =>
+    MediaQuery.paddingOf(context).bottom;
 
 /// On / off switch (display only; the parent handles the tap).
 class ToggleSwitch extends StatelessWidget {
@@ -695,14 +875,25 @@ class ToggleSwitch extends StatelessWidget {
       height: 22,
       padding: const EdgeInsets.all(2),
       alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-      decoration: BoxDecoration(color: value ? (c.industrial ? c.btn : const Color(0xFF34C759)) : c.track, borderRadius: BorderRadius.circular(c.industrial ? 4 : 11)),
+      decoration: BoxDecoration(
+        color: value
+            ? (c.industrial ? c.btn : const Color(0xFF34C759))
+            : c.track,
+        borderRadius: BorderRadius.circular(c.industrial ? 4 : 11),
+      ),
       child: Container(
         width: 18,
         height: 18,
         decoration: BoxDecoration(
           color: const Color(0xFFFFFFFF),
           borderRadius: BorderRadius.circular(c.industrial ? 3 : 9),
-          boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 2, offset: Offset(0, 1))],
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 2,
+              offset: Offset(0, 1),
+            ),
+          ],
         ),
       ),
     );
@@ -720,7 +911,10 @@ class Spinner extends StatefulWidget {
 }
 
 class _SpinnerState extends State<Spinner> with SingleTickerProviderStateMixin {
-  late final _turn = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+  late final _turn = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
 
   @override
   void dispose() {
@@ -733,7 +927,10 @@ class _SpinnerState extends State<Spinner> with SingleTickerProviderStateMixin {
     final c = AppTheme.of(context);
     return RotationTransition(
       turns: _turn,
-      child: SizedBox.square(dimension: widget.size, child: CustomPaint(painter: _ArcPainter(c.blue))),
+      child: SizedBox.square(
+        dimension: widget.size,
+        child: CustomPaint(painter: _ArcPainter(c.blue)),
+      ),
     );
   }
 }

@@ -44,49 +44,32 @@ void main() {
       await tester.pumpWidget(SmtFaiApp(state: state, touch: size.width < 840));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      if (size.width >= 1000) {
+      if (size.width >= 840) {
         final viewport = find.byKey(const ValueKey('check-results-viewport'));
-        expect(tester.getSize(viewport).height, greaterThanOrEqualTo(240));
+        expect(tester.getSize(viewport).height, greaterThan(size.height * .7));
         final before = tester.getRect(viewport);
         final verdict = find
-            .descendant(of: viewport, matching: find.text('NG'))
+            .descendant(of: viewport, matching: find.textContaining('NG ·'))
             .first;
-        expect(
-          tester.getRect(verdict).right,
-          lessThanOrEqualTo(before.right),
-          reason: 'The verdict must be visible without horizontal scrolling',
-        );
-        final direction = tester.getRect(
-          find.byKey(const ValueKey('direction-reminders-panel')),
-        );
-        expect(
-          direction.bottom,
-          lessThanOrEqualTo(
-            tester
-                    .getRect(
-                      find.byKey(const PageStorageKey('check-header-scroll')),
-                    )
-                    .bottom +
-                1,
-          ),
-          reason:
-              'Direction summary must be visible without scrolling the header',
-        );
-        await tester.ensureVisible(
-          find.byKey(const ValueKey('direction-expand')),
-        );
-        await tester.tap(find.byKey(const ValueKey('direction-expand')));
+        expect(tester.getRect(verdict).right, lessThanOrEqualTo(before.right));
+        await tester.tap(find.byKey(const ValueKey('workspace-directions')));
         await tester.pumpAndSettle();
-        expect(tester.getRect(viewport).bottom, closeTo(before.bottom, 1));
-        expect(tester.getSize(viewport).height, greaterThanOrEqualTo(240));
+        expect(
+          find.byKey(const ValueKey('workspace-inspector')),
+          findsOneWidget,
+        );
+        expect(tester.getRect(viewport).height, closeTo(before.height, 1));
+        await tester.tap(find.byKey(const ValueKey('workspace-close')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('workspace-filter-ng')));
       } else {
         expect(
           find.byKey(const ValueKey('input-files-summary')),
           findsOneWidget,
         );
+        await tester.ensureVisible(find.text('NG').first);
+        await tester.tap(find.text('NG').first);
       }
-      await tester.ensureVisible(find.text('NG').first);
-      await tester.tap(find.text('NG').first);
       await tester.pumpAndSettle();
       expect(state.filter, CheckStatus.ng);
       tester.view.physicalSize = const Size(1440, 900);
@@ -189,7 +172,7 @@ void main() {
     final viewport = find.byKey(const ValueKey('check-results-viewport'));
     final label = find.descendant(
       of: viewport,
-      matching: find.text('Approved substitute'),
+      matching: find.text('Listed substitute'),
     );
     expect(label, findsOneWidget);
     expect(
@@ -219,7 +202,7 @@ void main() {
       final columns = find.byKey(const PageStorageKey('check-table-columns'));
       tester.widget<SingleChildScrollView>(columns).controller!.jumpTo(100);
       await tester.pumpAndSettle();
-      tester.view.physicalSize = const Size(960, 640);
+      tester.view.physicalSize = const Size(800, 600);
       await tester.pumpAndSettle();
       expect(
         find.byKey(const PageStorageKey('check-card-rows')),

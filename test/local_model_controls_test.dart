@@ -8,6 +8,7 @@ import 'package:smt_fai/core/local_ai/model_store.dart';
 import 'package:smt_fai/core/settings.dart';
 import 'package:smt_fai/main.dart';
 import 'package:smt_fai/ui/widgets.dart';
+import 'package:smt_fai/ui/tour.dart';
 
 // File persistence is covered by local_required_test; keep widget clocks isolated
 // from real filesystem I/O while exercising the actual controls and state.
@@ -24,7 +25,10 @@ void main() {
     ) async {
       final dir = Directory.systemTemp.createTempSync('model-controls-');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final s = ControlsState(AppSettings(tourDone: true, checkMode: CheckMode.hybrid), dir.path);
+      final s = ControlsState(
+        AppSettings(tourDone: true, checkMode: CheckMode.hybrid),
+        dir.path,
+      );
       for (final m in embeddingModels.take(2)) {
         s.modelStatus[m.id] = const ModelStatus(ModelState.ready);
       }
@@ -33,6 +37,10 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(SmtFaiApp(state: s, touch: width < 840));
       await tester.pumpAndSettle();
+      if (width >= 840) {
+        await tester.tap(find.byKey(tourTargets.localModels));
+        await tester.pumpAndSettle();
+      }
       final toggle = find.byKey(const ValueKey('local-model-toggle'));
       final choice = find.byKey(const ValueKey('local-model-choice'));
       await tester.ensureVisible(toggle);

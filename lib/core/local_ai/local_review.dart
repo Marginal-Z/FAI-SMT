@@ -33,7 +33,10 @@ Map<String, dynamic> _side(BomPart? p) => p == null
         'quantity': p.quantity == null ? null : formatQuantity(p.quantity),
         'refs': p.refs,
         'dnp': p.dnp,
-        'other': p.extra,
+        'other': {
+          for (final e in p.extra.entries)
+            if (!isReferenceColumn(e.key)) e.key: e.value,
+        },
       };
 
 /// Model analysis covers PASS, NG, REVIEW and both sides' unmatched rows. A
@@ -58,7 +61,10 @@ Future<LocalReviewResult> reviewLocally(
 
   String payload(List<String> batch) => jsonEncode({
     'skipped': draft.skipped,
-    'columns': draft.compared,
+    'columns': {
+      for (final e in draft.compared.entries)
+        if (!isReferenceColumn(e.key, e.value)) e.key: e.value,
+    },
     'rows': [
       for (final id in batch)
         {

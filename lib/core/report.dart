@@ -17,8 +17,23 @@ String _stamp(DateTime t) {
 
 /// Column groups of the report table that can be left out; the number,
 /// part number and result are always there.
-const reportColumnGroups = ['source', 'description', 'quantity', 'refs', 'refs_diff', 'others', 'rows', 'basis', 'reasons', 'risk', 'params',
-  'orientation', 'local_ai', 'cloud', 'ai'];
+const reportColumnGroups = [
+  'source',
+  'description',
+  'quantity',
+  'refs',
+  'refs_diff',
+  'others',
+  'rows',
+  'basis',
+  'reasons',
+  'risk',
+  'params',
+  'orientation',
+  'local_ai',
+  'cloud',
+  'ai',
+];
 
 /// What the report holds: column groups left out ([reportColumnGroups]) and
 /// which results are listed (all when empty).
@@ -32,7 +47,14 @@ class ReportOptions {
 }
 
 class _Col {
-  const _Col(this.group, this.header, this.width, this.value, {this.diff, this.fill});
+  const _Col(
+    this.group,
+    this.header,
+    this.width,
+    this.value, {
+    this.diff,
+    this.fill,
+  });
 
   final String group;
   final String header;
@@ -47,11 +69,34 @@ class _Col {
 }
 
 /// [t] translates the report's text keys (`rep_*`, `status_*`).
-Uint8List exportCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = '', ReportOptions options = const ReportOptions()}) =>
-    buildCompareWorkbook(report, t, ai: ai, singleName: singleName, aName: aName, bName: bName, options: options).encode();
+Uint8List exportCompareWorkbook(
+  CompareReport report,
+  String Function(String key) t, {
+  AiResult? ai,
+  String singleName = '',
+  String aName = '',
+  String bName = '',
+  ReportOptions options = const ReportOptions(),
+}) => buildCompareWorkbook(
+  report,
+  t,
+  ai: ai,
+  singleName: singleName,
+  aName: aName,
+  bName: bName,
+  options: options,
+).encode();
 
 /// The report before encoding, so its cells and fills can be inspected.
-XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key) t, {AiResult? ai, String singleName = '', String aName = '', String bName = '', ReportOptions options = const ReportOptions()}) {
+XlsxWriter buildCompareWorkbook(
+  CompareReport report,
+  String Function(String key) t, {
+  AiResult? ai,
+  String singleName = '',
+  String aName = '',
+  String bName = '',
+  ReportOptions options = const ReportOptions(),
+}) {
   final book = XlsxWriter();
   final sheet = book.addSheet(t('rep_sheet'));
 
@@ -71,53 +116,183 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
   sheet.appendRow([t('rep_a'), aName]);
   if (bName.isNotEmpty) sheet.appendRow([t('rep_b'), bName]);
   sheet.appendRow([t('rep_time'), _stamp(report.at)]);
-  sheet.appendRow([t('rep_mode'), t('mode_${report.mode}'), if (report.models.isNotEmpty) '${t('rep_models')}: ${report.models.join(', ')}']);
+  sheet.appendRow([
+    t('rep_mode'),
+    t('mode_${report.mode}'),
+    if (report.models.isNotEmpty)
+      '${t('rep_models')}: ${report.models.join(', ')}',
+  ]);
   final usage = report.localModel;
   sheet.appendRow([
     t('local_usage_title'),
     t('local_state_${usage.state}'),
     usage.model,
     usage.kind == 'analysis'
-      ? t('local_analysis_counts').replaceAll('{n}', '${usage.rows}').replaceAll('{all}', '${usage.total}').replaceAll('{b}', '${usage.calls}').replaceAll('{ms}', '${usage.millis}')
-      : t('local_usage_counts').replaceAll('{n}', '${usage.texts}').replaceAll('{p}', '${usage.paired}').replaceAll('{ms}', '${usage.millis}'),
+        ? t('local_analysis_counts')
+              .replaceAll('{n}', '${usage.rows}')
+              .replaceAll('{all}', '${usage.total}')
+              .replaceAll('{b}', '${usage.calls}')
+              .replaceAll('{ms}', '${usage.millis}')
+        : t('local_usage_counts')
+              .replaceAll('{n}', '${usage.texts}')
+              .replaceAll('{p}', '${usage.paired}')
+              .replaceAll('{ms}', '${usage.millis}'),
     if (usage.error.isNotEmpty) t(usage.error),
   ]);
   // An incomplete check says so above the table.
-  sheet.appendRow([t('rep_complete'),
+  sheet.appendRow([
+    t('rep_complete'),
     report.pending
         ? t('rep_pending')
-        : report.complete ? t('rep_complete_yes') : t('rep_complete_no').replaceAll('{n}', '${report.uncovered.length}')]);
-  if (!report.complete) sheet.style(sheet.rowCount - 1, 1, const XlsxStyle(bold: true, fill: 'FDE2E1'));
-  if (report.skipped.isNotEmpty) sheet.appendRow([t('rep_skipped'), [for (final k in report.skipped) t('cmpf_$k')].join(', ')]);
-  if (options.statuses.isNotEmpty) sheet.appendRow([t('rep_listed'), [for (final st in options.statuses) t('status_${st.name}')].join(', ')]);
+        : report.complete
+        ? t('rep_complete_yes')
+        : t('rep_complete_no').replaceAll('{n}', '${report.uncovered.length}'),
+  ]);
+  sheet.appendRow([
+    t('reference_title'),
+    t('pairing_evidence').replaceAll('{by}', t('rep_basis')),
+  ]);
+  if (!report.complete) {
+    sheet.style(
+      sheet.rowCount - 1,
+      1,
+      const XlsxStyle(bold: true, fill: 'FDE2E1'),
+    );
+  }
+  if (report.skipped.isNotEmpty) {
+    sheet.appendRow([
+      t('rep_skipped'),
+      [for (final k in report.skipped) t('cmpf_$k')].join(', '),
+    ]);
+  }
+  if (options.statuses.isNotEmpty) {
+    sheet.appendRow([
+      t('rep_listed'),
+      [for (final st in options.statuses) t('status_${st.name}')].join(', '),
+    ]);
+  }
   sheet.appendRow([]);
 
-  String aiNotes(CompareRow r) => ai?.forPart(r.partNo).map((f) => f.message).join('; ') ?? '';
+  String aiNotes(CompareRow r) =>
+      ai?.forPart(r.partNo).map((f) => f.message).join('; ') ?? '';
   final others = report.compared.entries.toList();
   final cols = <_Col>[
     _Col('', '#', 6, (r) => null),
     _Col('', t('rep_part_no'), 22, (r) => r.partNo),
     _Col('', t('rep_result'), 10, (r) => t('status_${r.status.name}')),
     _Col('source', t('rep_source'), 8, (r) => r.sourceNames.join('+')),
-    _Col('description', t('rep_desc_single'), 36, (r) => r.single?.description ?? '', diff: 'description'),
-    _Col('description', t('rep_desc_merged'), 36, (r) => r.merged?.description ?? '', diff: 'description'),
-    _Col('quantity', t('rep_qty_single'), 8, (r) => formatQuantity(r.single?.quantity), diff: 'quantity'),
-    _Col('quantity', t('rep_qty_merged'), 8, (r) => formatQuantity(r.merged?.quantity), diff: 'quantity'),
-    _Col('refs', t('rep_refs_single'), 30, (r) => r.single?.refs.join(',') ?? '', diff: 'refs'),
-    _Col('refs', t('rep_refs_merged'), 30, (r) => r.merged?.refs.join(',') ?? '', diff: 'refs'),
-    _Col('refs_diff', t('rep_missing'), 18, (r) => r.missingRefs.join(','), fill: (r) => r.missingRefs.isNotEmpty),
-    _Col('refs_diff', t('rep_extra'), 18, (r) => r.extraRefs.join(','), fill: (r) => r.extraRefs.isNotEmpty),
+    _Col(
+      'description',
+      t('rep_desc_single'),
+      36,
+      (r) => r.single?.description ?? '',
+      diff: 'description',
+    ),
+    _Col(
+      'description',
+      t('rep_desc_merged'),
+      36,
+      (r) => r.merged?.description ?? '',
+      diff: 'description',
+    ),
+    _Col(
+      'quantity',
+      t('rep_qty_single'),
+      8,
+      (r) => formatQuantity(r.single?.quantity),
+      diff: 'quantity',
+    ),
+    _Col(
+      'quantity',
+      t('rep_qty_merged'),
+      8,
+      (r) => formatQuantity(r.merged?.quantity),
+      diff: 'quantity',
+    ),
+    _Col(
+      'refs',
+      t('rep_refs_single'),
+      30,
+      (r) => r.single?.refs.join(',') ?? '',
+      diff: 'refs',
+    ),
+    _Col(
+      'refs',
+      t('rep_refs_merged'),
+      30,
+      (r) => r.merged?.refs.join(',') ?? '',
+      diff: 'refs',
+    ),
+    _Col(
+      'refs_diff',
+      t('rep_missing'),
+      18,
+      (r) => r.missingRefs.join(','),
+      fill: (r) => r.missingRefs.isNotEmpty,
+    ),
+    _Col(
+      'refs_diff',
+      t('rep_extra'),
+      18,
+      (r) => r.extraRefs.join(','),
+      fill: (r) => r.extraRefs.isNotEmpty,
+    ),
     for (final o in others) ...[
-      _Col('others', '${o.value} (${t('rep_single_short')})', 18, (r) => r.single?.extra[o.key] ?? '', diff: 'col:${o.key}'),
-      _Col('others', '${o.value} (${t('side_merged')})', 18, (r) => r.merged?.extra[o.key] ?? '', diff: 'col:${o.key}'),
+      _Col(
+        'others',
+        '${o.value}${isReferenceColumn(o.key, o.value) ? ' · ${t('reference_short')}' : ''} (${t('rep_single_short')})',
+        18,
+        (r) => r.single?.extra[o.key] ?? '',
+        diff: 'col:${o.key}',
+      ),
+      _Col(
+        'others',
+        '${o.value}${isReferenceColumn(o.key, o.value) ? ' · ${t('reference_short')}' : ''} (${t('side_merged')})',
+        18,
+        (r) => r.merged?.extra[o.key] ?? '',
+        diff: 'col:${o.key}',
+      ),
     ],
-    _Col('rows', t('rep_src_single'), 26, (r) => r.single?.recordIds.join(', ') ?? ''),
-    _Col('rows', t('rep_src_merged'), 26, (r) => r.merged?.recordIds.join(', ') ?? ''),
-    _Col('basis', t('rep_basis'), 26, (r) => [for (final k in r.basis.kinds) t('basis_$k'), if (r.basis.kinds.isNotEmpty) '${(r.basis.confidence * 100).round()}%'].join(' · ')),
-    _Col('reasons', t('rep_reasons'), 26, (r) => [for (final k in r.reasons) t('reason_$k')].join('; ')),
+    _Col(
+      'rows',
+      t('rep_src_single'),
+      26,
+      (r) => r.single?.recordIds.join(', ') ?? '',
+    ),
+    _Col(
+      'rows',
+      t('rep_src_merged'),
+      26,
+      (r) => r.merged?.recordIds.join(', ') ?? '',
+    ),
+    _Col(
+      'basis',
+      t('rep_basis'),
+      26,
+      (r) => [
+        for (final k in r.basis.kinds) t('basis_$k'),
+        if (r.basis.kinds.isNotEmpty) '${(r.basis.confidence * 100).round()}%',
+      ].join(' · '),
+    ),
+    _Col(
+      'reasons',
+      t('rep_reasons'),
+      26,
+      (r) => [for (final k in r.reasons) t('reason_$k')].join('; '),
+    ),
     _Col('risk', t('rep_risk'), 10, (r) => t('risk_${riskOf(r).name}')),
-    _Col('params', t('rep_params_single'), 26, (r) => normalisedParams(r.single?.description ?? '')),
-    _Col('params', t('rep_params_merged'), 26, (r) => normalisedParams(r.merged?.description ?? '')),
+    _Col(
+      'params',
+      t('rep_params_single'),
+      26,
+      (r) => normalisedParams(r.single?.description ?? ''),
+    ),
+    _Col(
+      'params',
+      t('rep_params_merged'),
+      26,
+      (r) => normalisedParams(r.merged?.description ?? ''),
+    ),
     _Col(
       'reasons',
       t('input_integrity'),
@@ -153,16 +328,27 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
 
   var n = 0;
   for (final r in report.rows) {
-    if (options.statuses.isNotEmpty && !options.statuses.contains(r.status)) continue;
+    if (options.statuses.isNotEmpty && !options.statuses.contains(r.status)) {
+      continue;
+    }
     n++;
     final row = sheet.rowCount;
-    sheet.appendRow([for (final c in cols) c.header == '#' && c.group.isEmpty ? n : c.value(r)]);
+    sheet.appendRow([
+      for (final c in cols) c.header == '#' && c.group.isEmpty ? n : c.value(r),
+    ]);
     sheet.style(row, 2, statusFill[r.status]!);
     // Differing fields: both sides of the field are filled.
-    final differs = {for (final f in r.differences) f.key};
+    final differs = {for (final f in r.materialDifferences) f.key};
+    final reference = {for (final f in r.referenceDifferences) f.key};
     for (var c = 0; c < cols.length; c++) {
       final col = cols[c];
-      if ((col.diff != null && differs.contains(col.diff)) || (col.fill?.call(r) ?? false)) sheet.style(row, c, col.group == 'ai' ? aiFill : diffFill);
+      if (col.diff != null && reference.contains(col.diff)) {
+        sheet.style(row, c, aiFill);
+      }
+      if ((col.diff != null && differs.contains(col.diff)) ||
+          (col.fill?.call(r) ?? false)) {
+        sheet.style(row, c, col.group == 'ai' ? aiFill : diffFill);
+      }
     }
   }
 
@@ -187,7 +373,9 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
   sum.appendRow([t('rep_reasons'), t('rep_count')]);
   sum.style(reh, 0, head);
   sum.style(reh, 1, head);
-  for (final e in (report.reasonCounts.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) {
+  for (final e
+      in (report.reasonCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)))) {
     sum.appendRow([t('reason_${e.key}'), e.value]);
   }
   sum.setWidth(0, 44);
@@ -205,16 +393,37 @@ XlsxWriter buildCompareWorkbook(CompareReport report, String Function(String key
     s.appendRow([t('rep_time'), _stamp(ai.at)]);
     s.appendRow([t('rep_ai_summary'), ai.summary]);
     s.appendRow([]);
-    final h = [t('rep_part_no'), t('rep_ai_field'), t('rep_ai_severity'), t('rep_ai_single'), t('rep_ai_merged'), t('rep_ai_message')];
+    final h = [
+      t('rep_part_no'),
+      t('rep_ai_field'),
+      t('rep_ai_severity'),
+      t('rep_ai_single'),
+      t('rep_ai_merged'),
+      t('rep_ai_message'),
+    ];
     final hr = s.rowCount;
     s.appendRow(h);
     for (var c = 0; c < h.length; c++) {
       s.style(hr, c, head);
     }
     for (final f in ai.findings) {
-      s.appendRow([f.partNo, f.field, t('ai_sev_${f.severity.name}'), f.singleValue, f.mergedValue, f.message]);
+      s.appendRow([
+        f.partNo,
+        f.field,
+        t('ai_sev_${f.severity.name}'),
+        f.singleValue,
+        f.mergedValue,
+        f.message,
+      ]);
     }
-    for (final (c, w) in [(0, 22.0), (1, 14.0), (2, 8.0), (3, 30.0), (4, 30.0), (5, 70.0)]) {
+    for (final (c, w) in [
+      (0, 22.0),
+      (1, 14.0),
+      (2, 8.0),
+      (3, 30.0),
+      (4, 30.0),
+      (5, 70.0),
+    ]) {
       s.setWidth(c, w);
     }
   }
